@@ -1,8 +1,27 @@
+dist: focal
+sudo: true
+addons:
+  apt:
+    packages:
+      - qemu-kvm
+      - qemu-utils
 language: go
 go:
-  - 1.10.x
-  - 1.11.x
-  - master
+  - 1.15.x
 
+before_script:
+  # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
+  - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+  - chmod +x ./cc-test-reporter
+  - ./cc-test-reporter before-build
 script:
+  # HACK: /dev/kvm is root:kvm 0660 by default
+  - sudo chmod 666 /dev/kvm
+  - make gokvm
+  - make initrd
+  - make bzImage
+  - make golangci-lint
   - make test
+  - make clean
+after_script:
+  - ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT

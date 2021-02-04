@@ -1,4 +1,4 @@
-# gokvm
+# gokvm [![Build Status](https://travis-ci.com/nmi/gokvm.svg?branch=main)](https://travis-ci.com/nmi/gokvm) [![Go Reference](https://pkg.go.dev/badge/github.com/nmi/gokvm.svg)](https://pkg.go.dev/github.com/nmi/gokvm) [![Go Report Card](https://goreportcard.com/badge/github.com/nmi/gokvm)](https://goreportcard.com/report/github.com/nmi/gokvm) [![Maintainability](https://api.codeclimate.com/v1/badges/f60e75353f617035d732/maintainability)](https://codeclimate.com/github/nmi/gokvm/maintainability) [![Test Coverage](https://api.codeclimate.com/v1/badges/f60e75353f617035d732/test_coverage)](https://codeclimate.com/github/nmi/gokvm/test_coverage)
 
 __This is work in progress project__.
 
