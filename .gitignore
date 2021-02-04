@@ -4,6 +4,13 @@
 *.dll
 *.so
 *.dylib
+gokvm
+golangci-lint
+busybox.tar.bz2
+busybox
+initrd
+bzImage
+linux-*.tar.xz
 
 # Test binary, built with `go test -c`
 *.test
@@ -13,3 +20,5 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+busybox-*/
+linux-*/
