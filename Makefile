@@ -35,8 +35,7 @@ run:
 .PHONY: test
 test: golangci-lint initrd bzImage
 	./golangci-lint run --enable-all --disable gomnd --disable wrapcheck ./...
-	ls -la /dev/kvm
-	go test -v ./...
+	go test -v -coverprofile c.out ./...
 
 .PHONY: clean
 clean:
