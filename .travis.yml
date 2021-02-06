@@ -19,11 +19,8 @@ script:
   # HACK: /dev/kvm is root:kvm 0660 by default
   - sudo chmod 666 /dev/kvm
   - make gokvm
-  - make initrd
-  - make bzImage
-  - make golangci-lint
   - make test
-  - make clean
   - goveralls -service=travis-ci
+  - make clean
 after_script:
   - ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
