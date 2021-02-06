@@ -13,6 +13,7 @@ const (
 
 // https://www.kernel.org/doc/html/latest/x86/boot.html
 type BootProto struct {
+	Padding             [0x01F1]uint8
 	SetupSects          uint8
 	RootFlags           uint16
 	SysSize             uint32
@@ -64,7 +65,7 @@ func New(bzImagePath string) (*BootProto, error) {
 		return b, err
 	}
 
-	reader := bytes.NewReader(bzImage[0x01F1:])
+	reader := bytes.NewReader(bzImage)
 	err = binary.Read(reader, binary.LittleEndian, b)
 
 	if err != nil {

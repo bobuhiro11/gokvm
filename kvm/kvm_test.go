@@ -216,3 +216,12 @@ func TestAddNum(t *testing.T) {
 		}
 	}
 }
+
+func TestNewLinuxGuest(t *testing.T) {
+	t.Parallel()
+
+	_, err := kvm.NewLinuxGuest("../bzImage", "../initrd")
+	if err != nil {
+		t.Fatal(err)
+	}
+}

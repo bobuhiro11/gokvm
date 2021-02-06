@@ -10,7 +10,7 @@ func main() {
 		panic(err)
 	}
 
-	ioportHandler := func(port uint32, isIn bool, value byte) {
+	if err = g.Run(); err != nil {
+		panic(err)
 	}
-	_ = g.Run(ioportHandler)
 }
