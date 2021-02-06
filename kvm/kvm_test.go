@@ -33,6 +33,51 @@ func TestCreateVM(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = kvm.SetTSSAddr(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = kvm.SetIdentityMapAddr(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	CPUID := kvm.CPUID{}
+	CPUID.Nent = 100
+
+	if err = kvm.GetSupportedCPUID(devKVM.Fd(), &CPUID); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 100; i++ {
+		CPUID.Entries[i].Eax = kvm.CPUIDFeatures
+		CPUID.Entries[i].Ebx = 0x4b4d564b // KVMK
+		CPUID.Entries[i].Ecx = 0x564b4d56 // VMKV
+		CPUID.Entries[i].Edx = 0x4d       // M
+	}
+
+	if err = kvm.SetCPUID2(vcpuFd, &CPUID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCPUID(t *testing.T) {
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	defer devKVM.Close()
 
 	_, err = kvm.CreateVM(devKVM.Fd())
@@ -52,6 +97,16 @@ func TestCreateVCPU(t *testing.T) {
 	defer devKVM.Close()
 
 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = kvm.CreateIRQChip(vmFd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = kvm.CreatePIT2(vmFd)
 	if err != nil {
 		t.Fatal(err)
 	}
