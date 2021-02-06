@@ -18,6 +18,12 @@ const (
 	kvmGetRegs             = 0x8090ae81
 	kvmSetRegs             = 0x4090ae82
 	kvmSetUserMemoryRegion = 1075883590
+	kvmSetTSSAddr          = 0xae47
+	kvmSetIdentityMapAddr  = 0x4008AE48
+	kvmCreateIRQChip       = 0xAE60
+	kvmCreatePIT2          = 0x4040AE77
+	kvmGetSupportedCPUID   = 0xC008AE05
+	kvmSetCPUID2           = 0x4008AE90
 
 	EXITUNKNOWN       = 0
 	EXITEXCEPTION     = 1
@@ -42,6 +48,7 @@ const (
 	EXITIOOUT = 1
 
 	numInterrupts = 0x100
+	CPUIDFeatures = 0x40000001
 )
 
 type Regs struct {
@@ -208,6 +215,68 @@ func SetRegs(vcpuFd uintptr, regs Regs) error {
 
 func SetUserMemoryRegion(vmFd uintptr, region *UserspaceMemoryRegion) error {
 	_, err := ioctl(vmFd, uintptr(kvmSetUserMemoryRegion), uintptr(unsafe.Pointer(region)))
+
+	return err
+}
+
+func SetTSSAddr(vmFd uintptr) error {
+	_, err := ioctl(vmFd, kvmSetTSSAddr, 0xffffd000)
+
+	return err
+}
+
+func SetIdentityMapAddr(vmFd uintptr) error {
+	var mapAddr uint64 = 0xffffc000
+	_, err := ioctl(vmFd, kvmSetIdentityMapAddr, uintptr(unsafe.Pointer(&mapAddr)))
+
+	return err
+}
+
+func CreateIRQChip(vmFd uintptr) error {
+	_, err := ioctl(vmFd, kvmCreateIRQChip, 0)
+
+	return err
+}
+
+type PitConfig struct {
+	Flags uint32
+	_     [15]uint32
+}
+
+func CreatePIT2(vmFd uintptr) error {
+	pit := PitConfig{
+		Flags: 0,
+	}
+	_, err := ioctl(vmFd, kvmCreatePIT2, uintptr(unsafe.Pointer(&pit)))
+
+	return err
+}
+
+type CPUID struct {
+	Nent    uint32
+	Padding uint32
+	Entries [100]CPUIDEntry2
+}
+
+type CPUIDEntry2 struct {
+	Function uint32
+	Index    uint32
+	Flags    uint32
+	Eax      uint32
+	Ebx      uint32
+	Ecx      uint32
+	Edx      uint32
+	Padding  [3]uint32
+}
+
+func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
+	_, err := ioctl(kvmFd, kvmGetSupportedCPUID, uintptr(unsafe.Pointer(kvmCPUID)))
+
+	return err
+}
+
+func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
+	_, err := ioctl(vcpuFd, kvmSetCPUID2, uintptr(unsafe.Pointer(kvmCPUID)))
 
 	return err
 }
