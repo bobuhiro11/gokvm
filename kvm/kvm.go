@@ -1,10 +1,14 @@
 package kvm
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"syscall"
 	"unsafe"
+
+	"github.com/nmi/gokvm/bootproto"
 )
 
 const (
@@ -47,8 +51,9 @@ const (
 	EXITIOIN  = 0
 	EXITIOOUT = 1
 
-	numInterrupts = 0x100
-	CPUIDFeatures = 0x40000001
+	numInterrupts  = 0x100
+	CPUIDFeatures  = 0x40000001
+	CPUIDSignature = 0x40000000
 )
 
 type Regs struct {
@@ -154,6 +159,7 @@ func (r *UserspaceMemoryRegion) SetMemReadonly() {
 }
 
 func ioctl(fd, op, arg uintptr) (uintptr, error) {
+	// fmt.Printf("ioctl called.\n")
 	res, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL, fd, op, arg)
 
@@ -281,39 +287,124 @@ func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
 	return err
 }
 
+// InitialRegState GuestPhysAddr                      Binary files [+ offsets in the file]
+//
+//                 0x00000000    +------------------+
+//                               |                  |
+// RSI -->         0x00010000    +------------------+ bzImage [+ 0]
+//                               |                  |
+//                               |  boot protocol   |
+//                               |                  |
+//                               +------------------+
+//                               |                  |
+//                 0x00020000    +------------------+
+//                               |                  |
+//                               |   cmdline        |
+//                               |                  |
+//                               +------------------+
+//                               |                  |
+// RIP -->         0x00100000    +------------------+ bzImage [+ 512 x (setup_sects in boot protocol header)]
+//                               |                  |
+//                               |   64bit kernel   |
+//                               |                  |
+//                               +------------------+
+//                               |                  |
+//                 0x0f000000    +------------------+ initrd [+ 0]
+//                               |                  |
+//                               |   initrd         |
+//                               |                  |
+//                               +------------------+
+//                               |                  |
+//                 0x40000000    +------------------+
 const (
 	memSize = 1 << 30
 
-	// bootParamAddr     = 0x10000.
-	// cmdlineAddr       = 0x20000.
+	bootParamAddr = 0x10000
+	cmdlineAddr   = 0x20000
 
 	kernelAddr = 0x100000
 	initrdAddr = 0xf000000
 )
 
+// loadflags.
+const (
+	LoadedHigh   = uint8(1 << 0)
+	KASLRFlag    = uint8(1 << 1)
+	QuietFlag    = uint8(1 << 5)
+	KeepSegments = uint8(1 << 6)
+	CanUseHeap   = uint8(1 << 7)
+)
+
 type LinuxGuest struct {
 	kvmFd, vmFd, vcpuFd uintptr
 	mem                 []byte
+	run                 *RunData
 }
 
 func NewLinuxGuest(bzImagePath, initPath string) (*LinuxGuest, error) {
 	g := &LinuxGuest{}
-	devKVM, _ := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
-	g.kvmFd = devKVM.Fd()
-	g.vmFd, _ = CreateVM(g.kvmFd)
-	g.vcpuFd, _ = CreateVCPU(g.vmFd)
-	g.mem, _ = syscall.Mmap(-1, 0, memSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
 
-	// Load kernel
-	bzImage, err := ioutil.ReadFile(bzImagePath)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
-		return g, err
+		panic(err)
 	}
 
-	offset := 0 // copy to g.mem with offest setupsz
+	g.kvmFd = devKVM.Fd()
+	g.vmFd, err = CreateVM(g.kvmFd)
 
-	for i := 0; i < len(bzImage); i++ {
-		g.mem[kernelAddr+i+offset] = bzImage[i]
+	if err != nil {
+		panic(err)
+	}
+
+	if err := SetTSSAddr(g.vmFd); err != nil {
+		panic(err)
+	}
+
+	if err := SetIdentityMapAddr(g.vmFd); err != nil {
+		panic(err)
+	}
+
+	if err := CreateIRQChip(g.vmFd); err != nil {
+		panic(err)
+	}
+
+	if err := CreatePIT2(g.vmFd); err != nil {
+		panic(err)
+	}
+
+	g.vcpuFd, err = CreateVCPU(g.vmFd)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := g.initCPUID(); err != nil {
+		panic(err)
+	}
+
+	g.mem, err = syscall.Mmap(-1, 0, memSize,
+		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	if err != nil {
+		panic(err)
+	}
+
+	mmapSize, err := GetVCPUMMmapSize(g.kvmFd)
+	if err != nil {
+		panic(err)
+	}
+
+	r, err := syscall.Mmap(int(g.vcpuFd), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if err != nil {
+		panic(err)
+	}
+
+	g.run = (*RunData)(unsafe.Pointer(&r[0]))
+
+	err = SetUserMemoryRegion(g.vmFd, &UserspaceMemoryRegion{
+		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: 1 << 30,
+		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&g.mem[0]))),
+	})
+	if err != nil {
+		panic(err)
 	}
 
 	// Load initrd
@@ -324,6 +415,51 @@ func NewLinuxGuest(bzImagePath, initPath string) (*LinuxGuest, error) {
 
 	for i := 0; i < len(initrd); i++ {
 		g.mem[initrdAddr+i] = initrd[i]
+	}
+
+	// Load cmdline
+	cmdline := "console=ttyS0"
+	for i, b := range []byte(cmdline) {
+		g.mem[cmdlineAddr+i] = b
+	}
+
+	g.mem[cmdlineAddr+len(cmdline)] = 0 // for null terminated string
+
+	// Load Boot Parameter
+	bootProto, err := bootproto.New(bzImagePath)
+	if err != nil {
+		return g, err
+	}
+
+	bootProto.VidMode = 0xFFFF
+	bootProto.TypeOfLoader = 0xFF
+	bootProto.RamdiskImage = initrdAddr
+	bootProto.RamdiskSize = uint32(len(initrd))
+	bootProto.LoadFlags |= CanUseHeap | LoadedHigh | KeepSegments
+	bootProto.HeapEndPtr = 0xFE00
+	bootProto.ExtLoaderVer = 0
+	bootProto.CmdlinePtr = cmdlineAddr
+	bootProto.CmdlineSize = uint32(len(cmdline) + 1)
+
+	bytes, err := bootProto.Bytes()
+	if err != nil {
+		return g, err
+	}
+
+	for i, b := range bytes {
+		g.mem[bootParamAddr+i] = b
+	}
+
+	// Load kernel
+	bzImage, err := ioutil.ReadFile(bzImagePath)
+	if err != nil {
+		return g, err
+	}
+
+	offset := int(bootProto.SetupSects+1) * 512 // copy to g.mem with offest setupsz
+
+	for i := 0; i < len(bzImage)-offset; i++ {
+		g.mem[kernelAddr+i] = bzImage[offset+i]
 	}
 
 	if err = g.initRegs(); err != nil {
@@ -338,7 +474,11 @@ func NewLinuxGuest(bzImagePath, initPath string) (*LinuxGuest, error) {
 }
 
 func (g *LinuxGuest) initRegs() error {
-	regs, _ := GetRegs(g.vcpuFd)
+	regs, err := GetRegs(g.vcpuFd)
+	if err != nil {
+		return err
+	}
+
 	regs.RFLAGS = 2
 	regs.RIP = 0x100000
 	regs.RSI = 0x10000
@@ -351,7 +491,10 @@ func (g *LinuxGuest) initRegs() error {
 }
 
 func (g *LinuxGuest) initSregs() error {
-	sregs, _ := GetSregs(g.vcpuFd)
+	sregs, err := GetSregs(g.vcpuFd)
+	if err != nil {
+		return err
+	}
 
 	// set all segment flat
 	sregs.CS.Base, sregs.CS.Limit, sregs.CS.G = 0, 0xFFFFFFFF, 1
@@ -371,6 +514,55 @@ func (g *LinuxGuest) initSregs() error {
 	return nil
 }
 
-func (g *LinuxGuest) Run(ioportHandler func(port uint32, isIn bool, value byte)) error {
+func (g *LinuxGuest) initCPUID() error {
+	cpuid := CPUID{}
+	cpuid.Nent = 100
+
+	if err := GetSupportedCPUID(g.kvmFd, &cpuid); err != nil {
+		return err
+	}
+
+	// https://www.kernel.org/doc/html/latest/virt/kvm/cpuid.html
+	for i := 0; i < int(cpuid.Nent); i++ {
+		if cpuid.Entries[i].Function != CPUIDSignature {
+			continue
+		}
+
+		cpuid.Entries[i].Eax = CPUIDFeatures
+		cpuid.Entries[i].Ebx = 0x4b4d564b // KVMK
+		cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
+		cpuid.Entries[i].Edx = 0x4d       // M
+	}
+
+	if err := SetCPUID2(g.vcpuFd, &cpuid); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+var ErrorUnexpectedEXITReason = errors.New("unexpected kvm exit reason")
+
+func (g *LinuxGuest) Run() error {
+	for {
+		if err := Run(g.vcpuFd); err != nil {
+			return err
+		}
+
+		switch g.run.ExitReason {
+		case EXITHLT:
+			fmt.Println("KVM_EXIT_HLT")
+
+			return nil
+		case EXITIO:
+			direction, size, port, count, offset := g.run.IO()
+			if direction == EXITIOOUT && size == 1 && port == 0x3f8 && count == 1 {
+				p := uintptr(unsafe.Pointer(g.run))
+				c := *(*byte)(unsafe.Pointer(p + uintptr(offset)))
+				fmt.Printf("%c", c)
+			}
+		default:
+			return fmt.Errorf("%w: %d", ErrorUnexpectedEXITReason, g.run.ExitReason)
+		}
+	}
 }

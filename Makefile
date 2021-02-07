@@ -34,7 +34,13 @@ run:
 
 .PHONY: test
 test: golangci-lint initrd bzImage
-	./golangci-lint run --enable-all --disable gomnd --disable wrapcheck --disable maligned ./...
+	./golangci-lint run --enable-all \
+		--disable gomnd \
+		--disable wrapcheck \
+		--disable maligned \
+		--disable forbidigo \
+		--disable funlen \
+		./...
 	go test -v -coverprofile c.out ./...
 
 .PHONY: clean
