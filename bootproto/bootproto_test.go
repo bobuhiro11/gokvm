@@ -14,6 +14,14 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNewNotbzImage(t *testing.T) {
+	t.Parallel()
+
+	if _, err := bootproto.New("../README.md"); err == nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBytes(t *testing.T) {
 	t.Parallel()
 

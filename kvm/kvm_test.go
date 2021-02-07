@@ -153,6 +153,20 @@ func TestGetVCPUMMapSize(t *testing.T) {
 	}
 }
 
+func TestCreateVCPUWithNoVmFd(t *testing.T) {
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = kvm.CreateVCPU(devKVM.Fd())
+	if err == nil {
+		t.Fatal(err)
+	}
+}
+
 // mirror from https://lwn.net/Articles/658512/
 func TestAddNum(t *testing.T) {
 	t.Parallel()
@@ -220,8 +234,31 @@ func TestAddNum(t *testing.T) {
 func TestNewLinuxGuest(t *testing.T) {
 	t.Parallel()
 
-	_, err := kvm.NewLinuxGuest("../bzImage", "../initrd")
+	g, err := kvm.NewLinuxGuest("../bzImage", "../initrd")
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	for i := 0; i < 1000; i++ {
+		isContinue, err := g.RunOnce()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !isContinue {
+			t.Fatal("guest finished unexpectedly")
+		}
+	}
+}
+
+func TestSetMemLogDirtyPages(t *testing.T) {
+	t.Parallel()
+
+	u := kvm.UserspaceMemoryRegion{}
+	u.SetMemLogDirtyPages()
+	u.SetMemReadonly()
+
+	if u.Flags != 0x3 {
+		t.Fatal("unexpected flags")
 	}
 }

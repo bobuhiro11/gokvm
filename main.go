@@ -10,7 +10,7 @@ func main() {
 		panic(err)
 	}
 
-	if err = g.Run(); err != nil {
+	if err = g.RunInfiniteLoop(); err != nil {
 		panic(err)
 	}
 }

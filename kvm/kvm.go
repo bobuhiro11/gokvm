@@ -543,26 +543,39 @@ func (g *LinuxGuest) initCPUID() error {
 
 var ErrorUnexpectedEXITReason = errors.New("unexpected kvm exit reason")
 
-func (g *LinuxGuest) Run() error {
+func (g *LinuxGuest) RunInfiniteLoop() error {
 	for {
-		if err := Run(g.vcpuFd); err != nil {
+		isContinute, err := g.RunOnce()
+		if err != nil {
 			return err
 		}
 
-		switch g.run.ExitReason {
-		case EXITHLT:
-			fmt.Println("KVM_EXIT_HLT")
-
+		if !isContinute {
 			return nil
-		case EXITIO:
-			direction, size, port, count, offset := g.run.IO()
-			if direction == EXITIOOUT && size == 1 && port == 0x3f8 && count == 1 {
-				p := uintptr(unsafe.Pointer(g.run))
-				c := *(*byte)(unsafe.Pointer(p + uintptr(offset)))
-				fmt.Printf("%c", c)
-			}
-		default:
-			return fmt.Errorf("%w: %d", ErrorUnexpectedEXITReason, g.run.ExitReason)
 		}
+	}
+}
+
+func (g *LinuxGuest) RunOnce() (bool, error) {
+	if err := Run(g.vcpuFd); err != nil {
+		return false, err
+	}
+
+	switch g.run.ExitReason {
+	case EXITHLT:
+		fmt.Println("KVM_EXIT_HLT")
+
+		return false, nil
+	case EXITIO:
+		direction, size, port, count, offset := g.run.IO()
+		if direction == EXITIOOUT && size == 1 && port == 0x3f8 && count == 1 {
+			p := uintptr(unsafe.Pointer(g.run))
+			c := *(*byte)(unsafe.Pointer(p + uintptr(offset)))
+			fmt.Printf("%c", c)
+		}
+
+		return true, nil
+	default:
+		return false, fmt.Errorf("%w: %d", ErrorUnexpectedEXITReason, g.run.ExitReason)
 	}
 }
