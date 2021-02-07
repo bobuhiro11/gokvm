@@ -29,7 +29,7 @@ bzImage:
 	rm -rf linux-$(LINUX_VERSION)
 
 .PHONY: run
-run:
+run: initrd bzImage
 	go run .
 
 .PHONY: test
