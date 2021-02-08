@@ -9,21 +9,30 @@ golangci-lint:
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
 		| sh -s -- -b . $(GOLANGCI_LINT_VERSION)
 
-initrd:
+busybox.tar.bz2:
 	curl https://busybox.net/downloads/busybox-$(BUSYBOX_VERSION).tar.bz2 -o busybox.tar.bz2
+
+initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS
 	tar -xf busybox.tar.bz2
 	cp busybox.config busybox-$(BUSYBOX_VERSION)/.config
 	make -C busybox-$(BUSYBOX_VERSION) install
-	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/etc
-	cp inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
+	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/etc/init.d
+	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/proc
+	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/sys
+	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
+	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
+	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
 	cd busybox-$(BUSYBOX_VERSION)/_install && find . | cpio -o --format=newc > ../../initrd
 	rm -rf busybox-$(BUSYBOX_VERSION)
 
-bzImage:
-	curl https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.12.tar.xz \
-		-o linux-$(LINUX_VERSION).tar.xz
-	tar Jxf ./linux-5.10.12.tar.xz
+linux.tar.xz:
+	curl https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
+		-o linux.tar.xz
+
+bzImage: linux.config linux.tar.xz
+	tar Jxf ./linux.tar.xz
 	cp linux.config linux-$(LINUX_VERSION)/.config
+	cd linux-$(LINUX_VERSION) && patch -p1 < ../linux-5.10.12-patch-0000-enable-serial-debug-autoconf.patch
 	make -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
 	rm -rf linux-$(LINUX_VERSION)

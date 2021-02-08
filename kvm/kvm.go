@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/nmi/gokvm/bootproto"
+	"github.com/nmi/gokvm/serial"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 	kvmCreatePIT2          = 0x4040AE77
 	kvmGetSupportedCPUID   = 0xC008AE05
 	kvmSetCPUID2           = 0x4008AE90
+	kvmIRQLine             = 0xc008ae67
 
 	EXITUNKNOWN       = 0
 	EXITEXCEPTION     = 1
@@ -238,6 +240,22 @@ func SetIdentityMapAddr(vmFd uintptr) error {
 	return err
 }
 
+type IRQLevel struct {
+	IRQ   uint32
+	Level uint32
+}
+
+func IRQLine(vmFd uintptr, irq, level uint32) error {
+	irqLevel := IRQLevel{
+		IRQ:   irq,
+		Level: level,
+	}
+
+	_, err := ioctl(vmFd, kvmIRQLine, uintptr(unsafe.Pointer(&irqLevel)))
+
+	return err
+}
+
 func CreateIRQChip(vmFd uintptr) error {
 	_, err := ioctl(vmFd, kvmCreateIRQChip, 0)
 
@@ -339,6 +357,7 @@ type LinuxGuest struct {
 	kvmFd, vmFd, vcpuFd uintptr
 	mem                 []byte
 	run                 *RunData
+	serial              *serial.Serial
 }
 
 func NewLinuxGuest(bzImagePath, initPath string) (*LinuxGuest, error) {
@@ -470,7 +489,27 @@ func NewLinuxGuest(bzImagePath, initPath string) (*LinuxGuest, error) {
 		return g, err
 	}
 
+	serialIRQCallback := func(irq, level uint32) {
+		err := IRQLine(g.vmFd, irq, level)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if g.serial, err = serial.New(serialIRQCallback); err != nil {
+		return g, err
+	}
+
 	return g, nil
+}
+
+func (g *LinuxGuest) GetInputChan() chan<- byte {
+	return g.serial.GetInputChan()
+}
+
+func (g *LinuxGuest) InjectSerialIRQ() {
+	g.serial.InjectIRQ(0)
+	g.serial.InjectIRQ(1)
 }
 
 func (g *LinuxGuest) initRegs() error {
@@ -568,14 +607,43 @@ func (g *LinuxGuest) RunOnce() (bool, error) {
 		return false, nil
 	case EXITIO:
 		direction, size, port, count, offset := g.run.IO()
-		if direction == EXITIOOUT && size == 1 && port == 0x3f8 && count == 1 {
-			p := uintptr(unsafe.Pointer(g.run))
-			c := *(*byte)(unsafe.Pointer(p + uintptr(offset)))
-			fmt.Printf("%c", c)
+		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(g.run)) + uintptr(offset))))[0:size]
+
+		for i := 0; i < int(count); i++ {
+			if err := g.handleExitIO(direction, port, bytes); err != nil {
+				return false, err
+			}
 		}
 
 		return true, nil
 	default:
 		return false, fmt.Errorf("%w: %d", ErrorUnexpectedEXITReason, g.run.ExitReason)
+	}
+}
+
+func (g *LinuxGuest) handleExitIO(direction, port uint64, bytes []byte) error {
+	switch {
+	case 0x3c0 <= port && port <= 0x3da:
+		return nil // VGA
+	case 0x60 <= port && port <= 0x6F:
+		return nil // PS/2 Keyboard (Always 8042 Chip)
+	case 0x70 <= port && port <= 0x71:
+		return nil // CMOS clock
+	case 0x80 <= port && port <= 0x9F:
+		return nil // DMA Page Registers (Commonly 74L612 Chip)
+	case 0x2f8 <= port && port <= 0x2FF:
+		return nil // Serial port 2
+	case 0x3e8 <= port && port <= 0x3ef:
+		return nil // Serial port 3
+	case 0x2e8 <= port && port <= 0x2ef:
+		return nil // Serial port 4
+	case serial.COM1Addr <= port && port < serial.COM1Addr+8:
+		if direction == EXITIOIN {
+			return g.serial.In(port, bytes)
+		}
+
+		return g.serial.Out(port, bytes)
+	default:
+		return fmt.Errorf("%w: unexpected io port 0x%x", ErrorUnexpectedEXITReason, port)
 	}
 }

@@ -11,6 +11,7 @@ busybox
 initrd
 bzImage
 linux-*.tar.xz
+linux.tar.xz
 
 # Test binary, built with `go test -c`
 *.test
