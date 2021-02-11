@@ -490,8 +490,7 @@ func NewLinuxGuest(bzImagePath, initPath string) (*LinuxGuest, error) {
 	}
 
 	serialIRQCallback := func(irq, level uint32) {
-		err := IRQLine(g.vmFd, irq, level)
-		if err != nil {
+		if err := IRQLine(g.vmFd, irq, level); err != nil {
 			panic(err)
 		}
 	}
@@ -508,8 +507,7 @@ func (g *LinuxGuest) GetInputChan() chan<- byte {
 }
 
 func (g *LinuxGuest) InjectSerialIRQ() {
-	g.serial.InjectIRQ(0)
-	g.serial.InjectIRQ(1)
+	g.serial.InjectIRQ()
 }
 
 func (g *LinuxGuest) initRegs() error {
