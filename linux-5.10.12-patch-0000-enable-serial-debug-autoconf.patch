@@ -1,0 +1,11 @@
+--- linux-5.10.12/drivers/tty/serial/8250/8250_port.c	2021-02-09 00:14:11.470906210 +0900
++++ linux-5.10.12/drivers/tty/serial/8250/8250_port.c.orig	2021-02-09 00:14:03.514875736 +0900
+@@ -44,7 +44,7 @@
+ /*
+  * Debugging.
+  */
+-#if 0
++#if 1
+ #define DEBUG_AUTOCONF(fmt...)	printk(fmt)
+ #else
+ #define DEBUG_AUTOCONF(fmt...)	do { } while (0)

@@ -239,7 +239,7 @@ func TestNewLinuxGuest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10; i++ {
 		isContinue, err := g.RunOnce()
 		if err != nil {
 			t.Fatal(err)
