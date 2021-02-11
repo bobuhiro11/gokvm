@@ -32,7 +32,6 @@ linux.tar.xz:
 bzImage: linux.config linux.tar.xz
 	tar Jxf ./linux.tar.xz
 	cp linux.config linux-$(LINUX_VERSION)/.config
-	cd linux-$(LINUX_VERSION) && patch -p1 < ../linux-5.10.12-patch-0000-enable-serial-debug-autoconf.patch
 	make -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
 	rm -rf linux-$(LINUX_VERSION)
