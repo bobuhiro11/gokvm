@@ -36,8 +36,9 @@ func (s *Serial) dlab() bool {
 	return s.LCR&0x80 != 0
 }
 
-func (s *Serial) InjectIRQ(level uint32) {
-	s.irqCallback(4, level)
+func (s *Serial) InjectIRQ() {
+	s.irqCallback(4, 0)
+	s.irqCallback(4, 1)
 }
 
 func (s *Serial) In(port uint64, values []byte) error {
@@ -52,34 +53,28 @@ func (s *Serial) In(port uint64, values []byte) error {
 	case port == 0 && s.dlab():
 		// DLL
 		values[0] = 0xc // baud rate 9600
-		fmt.Printf("[IN  DLL] value: %#v\n", values)
 	case port == 1 && !s.dlab():
 		// IER
 		values[0] = s.IER
-		// fmt.Printf("[IN  IER] value: %#v\n", values)
 	case port == 1 && s.dlab():
 		// DLM
 		values[0] = 0x0 // baud rate 9600
-		fmt.Printf("[IN  DLM] value: %#v\n", values)
 	case port == 2:
 		// IIR
-		// fmt.Printf("[IN  IIR] value: %#v\n", values)
 	case port == 3:
 		// LCR
-		fmt.Printf("[IN  LCR] value: %#v\n", values)
 	case port == 4:
 		// MCR
-		fmt.Printf("[IN  MCR] value: %#v\n", values)
 	case port == 5:
 		// LSR
-		values[0] = 0x60 // THR is empty
+		values[0] |= 0x20 // Empty Transmitter Holding Register
+		values[0] |= 0x40 // Empty Data Holding Registers
+
 		if len(s.inputChan) > 0 {
-			values[0] |= 0x1 // Data available
+			values[0] |= 0x1 // Data Ready
 		}
-		// fmt.Printf("[IN  LSR] value: %#v\n", values)
 	case port == 6:
 		// MSR
-		// fmt.Printf("[IN  MSR] value: %#v\n", values)
 		break
 	}
 
@@ -95,30 +90,24 @@ func (s *Serial) Out(port uint64, values []byte) error {
 		fmt.Printf("%c", values[0])
 	case port == 0 && s.dlab():
 		// DLL
-		fmt.Printf("[OUT DLL] value: %#v\n", values)
 	case port == 1 && !s.dlab():
 		// IER
 		s.IER = values[0]
 		if s.IER != 0 {
-			s.InjectIRQ(0)
-			s.InjectIRQ(1)
+			s.InjectIRQ()
 		}
-		// fmt.Printf("[OUT IER] value: %#v\n", values)
 	case port == 1 && s.dlab():
 		// DLM
-		fmt.Printf("[OUT DLM] value: %#v\n", values)
 	case port == 2:
 		// FCR
-		fmt.Printf("[OUT FCR] value: %#v\n", values)
 	case port == 3:
 		// LCR
 		s.LCR = values[0]
-		fmt.Printf("[OUT LCR] value: %#v\n", values)
 	case port == 4:
 		// MCR
-		fmt.Printf("[OUT MCR] value: %#v\n", values)
 	default:
-		fmt.Printf("factory test or not used\n")
+		// factory test or not used
+		break
 	}
 
 	return nil

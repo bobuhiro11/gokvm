@@ -262,3 +262,18 @@ func TestSetMemLogDirtyPages(t *testing.T) {
 		t.Fatal("unexpected flags")
 	}
 }
+
+func TestIRQLine(t *testing.T) {
+	t.Parallel()
+
+	devKVM, _ := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	vmFd, _ := kvm.CreateVM(devKVM.Fd())
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.IRQLine(vmFd, 4, 0); err != nil {
+		t.Fatal(err)
+	}
+}
