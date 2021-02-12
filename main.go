@@ -2,13 +2,10 @@ package main
 
 import (
 	"bufio"
-	"log"
 	"os"
 
 	"github.com/nmi/gokvm/machine"
-
-	// change to own library.
-	"golang.org/x/term"
+	"github.com/nmi/gokvm/term"
 )
 
 func main() {
@@ -27,17 +24,12 @@ func main() {
 		}
 	}()
 
-	// fd 0 is stdin
-	state, err := term.MakeRaw(0)
+	restoreMode, err := term.SetRawMode()
 	if err != nil {
-		log.Fatalln("setting stdin to raw:", err)
+		panic(err)
 	}
 
-	defer func() {
-		if err := term.Restore(0, state); err != nil {
-			log.Println("warning, failed to restore terminal:", err)
-		}
-	}()
+	defer restoreMode()
 
 	var before byte = 0
 
@@ -46,9 +38,7 @@ func main() {
 	for {
 		b, err := in.ReadByte()
 		if err != nil {
-			log.Println("stdin:", err)
-
-			break
+			panic(err)
 		}
 		m.GetInputChan() <- b
 
