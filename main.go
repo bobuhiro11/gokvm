@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/nmi/gokvm/flag"
 	"github.com/nmi/gokvm/machine"
 
 	// change to own library.
@@ -12,12 +13,17 @@ import (
 )
 
 func main() {
+	kernelPath, initrdPath, err := flag.ParseArgs(os.Args)
+	if err != nil {
+		panic(err)
+	}
+
 	m, err := machine.New()
 	if err != nil {
 		panic(err)
 	}
 
-	if err := m.LoadLinux("./bzImage", "./initrd"); err != nil {
+	if err := m.LoadLinux(kernelPath, initrdPath); err != nil {
 		panic(err)
 	}
 
