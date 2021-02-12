@@ -5,20 +5,24 @@ import (
 	"log"
 	"os"
 
-	"github.com/nmi/gokvm/kvm"
+	"github.com/nmi/gokvm/machine"
 
 	// change to own library.
 	"golang.org/x/term"
 )
 
 func main() {
-	g, err := kvm.NewLinuxGuest("./bzImage", "./initrd")
+	m, err := machine.New()
 	if err != nil {
 		panic(err)
 	}
 
+	if err := m.LoadLinux("./bzImage", "./initrd"); err != nil {
+		panic(err)
+	}
+
 	go func() {
-		if err = g.RunInfiniteLoop(); err != nil {
+		if err = m.RunInfiniteLoop(); err != nil {
 			panic(err)
 		}
 	}()
@@ -46,10 +50,10 @@ func main() {
 
 			break
 		}
-		g.GetInputChan() <- b
+		m.GetInputChan() <- b
 
-		if len(g.GetInputChan()) > 0 {
-			g.InjectSerialIRQ()
+		if len(m.GetInputChan()) > 0 {
+			m.InjectSerialIRQ()
 		}
 
 		if before == 0x1 && b == 'x' {

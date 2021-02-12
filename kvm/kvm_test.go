@@ -231,26 +231,6 @@ func TestAddNum(t *testing.T) {
 	}
 }
 
-func TestNewLinuxGuest(t *testing.T) {
-	t.Parallel()
-
-	g, err := kvm.NewLinuxGuest("../bzImage", "../initrd")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		isContinue, err := g.RunOnce()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !isContinue {
-			t.Fatal("guest finished unexpectedly")
-		}
-	}
-}
-
 func TestSetMemLogDirtyPages(t *testing.T) {
 	t.Parallel()
 
