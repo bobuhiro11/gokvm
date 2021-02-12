@@ -157,7 +157,6 @@ func (r *UserspaceMemoryRegion) SetMemReadonly() {
 }
 
 func ioctl(fd, op, arg uintptr) (uintptr, error) {
-	// fmt.Printf("ioctl called.\n")
 	res, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL, fd, op, arg)
 
