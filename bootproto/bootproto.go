@@ -9,6 +9,10 @@ import (
 
 const (
 	BootProtoMagicSignature = 0x53726448
+
+	LoadedHigh   = uint8(1 << 0)
+	KeepSegments = uint8(1 << 6)
+	CanUseHeap   = uint8(1 << 7)
 )
 
 // https://www.kernel.org/doc/html/latest/x86/boot.html
