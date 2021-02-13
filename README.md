@@ -1,35 +1,35 @@
 # gokvm [![Build Status](https://travis-ci.com/nmi/gokvm.svg?branch=main)](https://travis-ci.com/nmi/gokvm) [![Coverage Status](https://coveralls.io/repos/github/nmi/gokvm/badge.svg?branch=main)](https://coveralls.io/github/nmi/gokvm?branch=main) ![Lines of code](https://img.shields.io/tokei/lines/github/nmi/gokvm) [![Go Reference](https://pkg.go.dev/badge/github.com/nmi/gokvm.svg)](https://pkg.go.dev/github.com/nmi/gokvm) [![Go Report Card](https://goreportcard.com/badge/github.com/nmi/gokvm)](https://goreportcard.com/report/github.com/nmi/gokvm) [![Maintainability](https://api.codeclimate.com/v1/badges/f60e75353f617035d732/maintainability)](https://codeclimate.com/github/nmi/gokvm/maintainability)
 
-__This is work in progress project__.
+gokvm is a hypervisor that uses KVM as an acceleration.
+It is implemented completely in the Go language and has no dependencies other than the standard library.
+With **only 1.5k lines of code**, it can **boot Linux 5.10**, the latest version at the time, without any modifications.
+It includes a naive and simple device emulation for serial consoles, but does not support networking, disks, etc.
+The execution environment is limited to the x86-64 Linux environment.
+This should be useful for those who are interested in how to use KVM from userland.
 
-## Features
+**This is an experimental project, so please do not use it in production.**
 
-- Cooperate with Linux KVM
-- Pure Golang (use only standard libraries)
-- Aimed to run only unmodified linux
-- No emuration of Networking, disk, etc.
+## CLI
 
-## How to use the CLI tool
+Extract the latest release from the Github Release tab and run it.
+Before running, make sure /dev/kvm exists.
+You can use existing bzImage and initrd, or you can create them using the Makefile of this project.
 
 ```bash
-$ go get github.com/nmi/gokvm
-$ gokvm -h
+wget https://github.com/nmi/gokvm/releases/download/v0.0.1/gokvm_0.0.1_linux_amd64.tar.gz
+tar zxvf gokvm_0.0.1_linux_amd64.tar.gz
+./gokvm -k ./bzImage -i ./initrd
 ```
 
-## How to use as golang package
+## Go package
 
-Pseudo code is as below:
+This project includes a thin wrapper for the KVM API using ioctl. Please refer to the following link to use it.
 
-```go
-import "github.com/nmi/gokvm/kvm"
-
-ioportHandler := func (port uint32, isIn bool, value byte) {
-  ...
-}
-kvm.LinuxRun(bzImagePath, initrdPath, ioportHandler)
-```
+https://pkg.go.dev/github.com/nmi/gokvm
 
 ## Reference
+
+Thanks to the many useful resources on KVM, this project was able to boot Linux on a virtual machine.
 
 - [Using the KVM API, lwn.net](https://lwn.net/Articles/658511/)
 - [kvmtest.c, lwn.net](https://lwn.net/Articles/658512/)
