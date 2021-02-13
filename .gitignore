@@ -12,6 +12,7 @@ initrd
 bzImage
 linux-*.tar.xz
 linux.tar.xz
+cc-test-reporter
 
 # Test binary, built with `go test -c`
 *.test
