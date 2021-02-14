@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	kernelPath, initrdPath, err := flag.ParseArgs(os.Args)
+	kernelPath, initrdPath, params, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		panic(err)
 	}
@@ -20,7 +20,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := m.LoadLinux(kernelPath, initrdPath); err != nil {
+	if err := m.LoadLinux(kernelPath, initrdPath, params); err != nil {
 		panic(err)
 	}
 

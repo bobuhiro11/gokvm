@@ -15,9 +15,11 @@ func TestParseArg(t *testing.T) {
 		"initrd_path",
 		"-k",
 		"kernel_path",
+		"-p",
+		"params",
 	}
 
-	kernel, initrd, err := flag.ParseArgs(args)
+	kernel, initrd, params, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,5 +30,9 @@ func TestParseArg(t *testing.T) {
 
 	if initrd != "initrd_path" {
 		t.Fatal("invalid initrd path")
+	}
+
+	if params != "params" {
+		t.Fatal("invalid kernel command-line parameters")
 	}
 }
