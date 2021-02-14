@@ -126,7 +126,7 @@ func New() (*Machine, error) {
 	return m, nil
 }
 
-func (m *Machine) LoadLinux(bzImagePath, initPath string) error {
+func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	// Load initrd
 	initrd, err := ioutil.ReadFile(initPath)
 	if err != nil {
@@ -137,13 +137,12 @@ func (m *Machine) LoadLinux(bzImagePath, initPath string) error {
 		m.mem[initrdAddr+i] = initrd[i]
 	}
 
-	// Load cmdline
-	cmdline := "console=ttyS0"
-	for i, b := range []byte(cmdline) {
+	// Load kernel command-line parameters
+	for i, b := range []byte(params) {
 		m.mem[cmdlineAddr+i] = b
 	}
 
-	m.mem[cmdlineAddr+len(cmdline)] = 0 // for null terminated string
+	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
 
 	// Load Boot Parameter
 	bootProto, err := bootproto.New(bzImagePath)
@@ -159,7 +158,7 @@ func (m *Machine) LoadLinux(bzImagePath, initPath string) error {
 	bootProto.HeapEndPtr = 0xFE00
 	bootProto.ExtLoaderVer = 0
 	bootProto.CmdlinePtr = cmdlineAddr
-	bootProto.CmdlineSize = uint32(len(cmdline) + 1)
+	bootProto.CmdlineSize = uint32(len(params) + 1)
 
 	bytes, err := bootProto.Bytes()
 	if err != nil {

@@ -14,7 +14,7 @@ func TestNewAndLoadLinux(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = m.LoadLinux("../bzImage", "../initrd"); err != nil {
+	if err = m.LoadLinux("../bzImage", "../initrd", "console=ttyS0"); err != nil {
 		t.Fatal(err)
 	}
 
