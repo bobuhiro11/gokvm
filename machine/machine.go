@@ -293,6 +293,12 @@ func (m *Machine) RunInfiniteLoop() error {
 
 func (m *Machine) RunOnce() (bool, error) {
 	if err := kvm.Run(m.vcpuFd); err != nil {
+		// When a signal is sent to the thread hosting the VM it will result in EINTR
+		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
+		if m.run.ExitReason == kvm.EXITINTR {
+			return true, nil
+		}
+
 		return false, err
 	}
 
