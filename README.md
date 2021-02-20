@@ -11,14 +11,13 @@ This should be useful for those who are interested in how to use KVM from userla
 
 ## CLI
 
-Extract the latest release from the Github Release tab and run it.
+Extract the latest release from [the Github Release tab](https://github.com/nmi/gokvm/releases) and run it.
 Before running, make sure /dev/kvm exists.
 You can use existing bzImage and initrd, or you can create them using the Makefile of this project.
 
 ```bash
-wget https://github.com/nmi/gokvm/releases/download/v0.0.1/gokvm_0.0.1_linux_amd64.tar.gz
-tar zxvf gokvm_0.0.1_linux_amd64.tar.gz
-./gokvm -k ./bzImage -i ./initrd
+tar zxvf gokvm*.tar.gz
+./gokvm -k ./bzImage -i ./initrd  # To exit, press Ctrl-a x.
 ```
 
 ## Go package
