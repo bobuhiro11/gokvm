@@ -6,11 +6,11 @@ gokvm: $(wildcard *.go)
 	go build .
 
 golangci-lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+	curl --retry 5 -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
 		| sh -s -- -b . $(GOLANGCI_LINT_VERSION)
 
 busybox.tar.bz2:
-	curl https://busybox.net/downloads/busybox-$(BUSYBOX_VERSION).tar.bz2 -o busybox.tar.bz2
+	curl --retry 5 https://busybox.net/downloads/busybox-$(BUSYBOX_VERSION).tar.bz2 -o busybox.tar.bz2
 
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS
 	tar -xf busybox.tar.bz2
@@ -26,7 +26,7 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	rm -rf busybox-$(BUSYBOX_VERSION)
 
 linux.tar.xz:
-	curl https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
+	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
 		-o linux.tar.xz
 
 bzImage: linux.config linux.tar.xz
