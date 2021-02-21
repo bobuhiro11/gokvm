@@ -10,12 +10,12 @@ import (
 )
 
 func main() {
-	kernelPath, initrdPath, params, err := flag.ParseArgs(os.Args)
+	kernelPath, initrdPath, params, nCpus, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		panic(err)
 	}
 
-	m, err := machine.New()
+	m, err := machine.New(nCpus)
 	if err != nil {
 		panic(err)
 	}
@@ -24,11 +24,13 @@ func main() {
 		panic(err)
 	}
 
-	go func() {
-		if err = m.RunInfiniteLoop(); err != nil {
-			panic(err)
-		}
-	}()
+	for i := 0; i < nCpus; i++ {
+		go func() {
+			if err = m.RunInfiniteLoop(0); err != nil {
+				panic(err)
+			}
+		}()
+	}
 
 	restoreMode, err := term.SetRawMode()
 	if err != nil {
