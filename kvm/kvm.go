@@ -120,7 +120,8 @@ type Descriptor struct {
 
 type RunData struct {
 	RequestInterruptWindow     uint8
-	_                          [7]uint8
+	ImmediateExit              uint8
+	_                          [6]uint8
 	ExitReason                 uint32
 	ReadyForInterruptInjection uint8
 	IfFlag                     uint8
