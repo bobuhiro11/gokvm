@@ -11,7 +11,8 @@ type termios struct {
 	Cflag  uint32
 	Lflag  uint32
 	Line   uint8
-	Cc     [19]uint8
+	Cc     [32]uint8
+	Pad    [3]byte
 	Ispeed uint32
 	Ospeed uint32
 }
@@ -52,13 +53,13 @@ func SetRawMode() (func(), error) {
 
 	oldTermios := t
 
-	t.Iflag &^= 0b10111101011
-	t.Oflag &^= 1
-	t.Lflag &^= 0b1000000001001011
-	t.Cflag &^= 0b01001000 | 0b100000000
-	t.Cflag |= 48
-	t.Cc[6] = 1
-	t.Cc[5] = 0
+	t.Iflag &^= syscall.BRKINT | syscall.ICRNL | syscall.INPCK | syscall.ISTRIP | syscall.IXON
+	t.Oflag &^= syscall.OPOST
+	t.Cflag &^= syscall.CSIZE | syscall.PARENB
+	t.Cflag |= syscall.CS8
+	t.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.IEXTEN | syscall.ISIG
+	t.Cc[syscall.VMIN] = 1
+	t.Cc[syscall.VTIME] = 0
 
 	return func() {
 		_ = write(0, oldTermios)
