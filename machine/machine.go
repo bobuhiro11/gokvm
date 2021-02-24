@@ -328,6 +328,18 @@ func (m *Machine) handleExitIO(direction, port uint64, bytes []byte) error {
 	case 0x3c0 <= port && port <= 0x3da:
 		return nil // VGA
 	case 0x60 <= port && port <= 0x6F:
+		if direction == kvm.EXITIOIN {
+			// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
+			// infinitely. To deal with this issue, refer to kvmtool and
+			// configure the input to the Status Register of the PS2 controller.
+			//
+			// refs:
+			// https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/hw/i8042.c#L312
+			// https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/tree/hw/i8042.c#n312
+			// https://wiki.osdev.org/%228042%22_PS/2_Controller
+			bytes[0] = 0x20
+		}
+
 		return nil // PS/2 Keyboard (Always 8042 Chip)
 	case 0x70 <= port && port <= 0x71:
 		return nil // CMOS clock
