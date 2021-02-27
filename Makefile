@@ -40,6 +40,14 @@ bzImage: linux.config linux.tar.xz
 run: initrd bzImage
 	go run .
 
+.PHONY: run-system-kernel
+run-system-kernel:
+	# Implemented based on fedora's default path.
+	# Other distributions need to be considered.
+	go run . -p "console=ttyS0 rdinit=/bin/sh pci=off earlyprintk=serial nokaslr" \
+		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
+		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
+
 .PHONY: test
 test: golangci-lint initrd bzImage
 	./golangci-lint run --enable-all \

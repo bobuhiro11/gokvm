@@ -55,6 +55,7 @@ type Machine struct {
 	mem                 []byte
 	run                 *kvm.RunData
 	serial              *serial.Serial
+	ioportHandlers      [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
 
 func New() (*Machine, error) {
@@ -189,6 +190,8 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		return err
 	}
 
+	m.initIOPortHandlers()
+
 	serialIRQCallback := func(irq, level uint32) {
 		if err := kvm.IRQLine(m.vmFd, irq, level); err != nil {
 			panic(err)
@@ -309,10 +312,11 @@ func (m *Machine) RunOnce() (bool, error) {
 		return false, nil
 	case kvm.EXITIO:
 		direction, size, port, count, offset := m.run.IO()
+		f := m.ioportHandlers[port][direction]
 		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.run)) + uintptr(offset))))[0:size]
 
 		for i := 0; i < int(count); i++ {
-			if err := m.handleExitIO(direction, port, bytes); err != nil {
+			if err := f(m, port, bytes); err != nil {
 				return false, err
 			}
 		}
@@ -323,12 +327,61 @@ func (m *Machine) RunOnce() (bool, error) {
 	}
 }
 
-func (m *Machine) handleExitIO(direction, port uint64, bytes []byte) error {
-	switch {
-	case 0x3c0 <= port && port <= 0x3da:
-		return nil // VGA
-	case 0x60 <= port && port <= 0x6F:
-		if direction == kvm.EXITIOIN {
+func (m *Machine) initIOPortHandlers() {
+	funcNone := func(m *Machine, port uint64, bytes []byte) error {
+		return nil
+	}
+
+	funcError := func(m *Machine, port uint64, bytes []byte) error {
+		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
+	}
+
+	// default handler
+	for port := 0; port < 0x10000; port++ {
+		for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
+			m.ioportHandlers[port][dir] = funcError
+		}
+	}
+
+	for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
+		// VGA
+		for port := 0x3c0; port <= 0x3da; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		for port := 0x3b4; port <= 0x3b5; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// CMOS clock
+		for port := 0x70; port <= 0x71; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// DMA Page Registers (Commonly 74L612 Chip)
+		for port := 0x80; port <= 0x9f; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// Serial port 2
+		for port := 0x2f8; port <= 0x2ff; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// Serial port 3
+		for port := 0x3e8; port <= 0x3ef; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// Serial port 4
+		for port := 0x2e8; port <= 0x2ef; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+	}
+
+	// PS/2 Keyboard (Always 8042 Chip)
+	for port := 0x60; port <= 0x6f; port++ {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
 			// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
 			// infinitely. To deal with this issue, refer to kvmtool and
 			// configure the input to the Status Register of the PS2 controller.
@@ -338,26 +391,19 @@ func (m *Machine) handleExitIO(direction, port uint64, bytes []byte) error {
 			// https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/tree/hw/i8042.c#n312
 			// https://wiki.osdev.org/%228042%22_PS/2_Controller
 			bytes[0] = 0x20
-		}
 
-		return nil // PS/2 Keyboard (Always 8042 Chip)
-	case 0x70 <= port && port <= 0x71:
-		return nil // CMOS clock
-	case 0x80 <= port && port <= 0x9F:
-		return nil // DMA Page Registers (Commonly 74L612 Chip)
-	case 0x2f8 <= port && port <= 0x2FF:
-		return nil // Serial port 2
-	case 0x3e8 <= port && port <= 0x3ef:
-		return nil // Serial port 3
-	case 0x2e8 <= port && port <= 0x2ef:
-		return nil // Serial port 4
-	case serial.COM1Addr <= port && port < serial.COM1Addr+8:
-		if direction == kvm.EXITIOIN {
+			return nil
+		}
+		m.ioportHandlers[port][kvm.EXITIOOUT] = funcNone
+	}
+
+	// Serial port 1
+	for port := serial.COM1Addr; port < serial.COM1Addr+8; port++ {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
 			return m.serial.In(port, bytes)
 		}
-
-		return m.serial.Out(port, bytes)
-	default:
-		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
+		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.serial.Out(port, bytes)
+		}
 	}
 }
