@@ -38,13 +38,13 @@ bzImage: linux.config linux.tar.xz
 
 .PHONY: run
 run: initrd bzImage
-	go run .
+	go run . -p "console=ttyS0 earlyprintk=serial debug ignore_loglevel"
 
 .PHONY: run-system-kernel
 run-system-kernel:
 	# Implemented based on fedora's default path.
 	# Other distributions need to be considered.
-	go run . -p "console=ttyS0 rdinit=/bin/sh pci=off earlyprintk=serial nokaslr" \
+	go run . -p "console=ttyS0 pci=off earlyprintk=serial nokaslr rdinit=/bin/sh" \
 		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
