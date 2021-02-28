@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/nmi/gokvm/bootproto"
+	"github.com/nmi/gokvm/bootparam"
 	"github.com/nmi/gokvm/kvm"
 	"github.com/nmi/gokvm/serial"
 )
@@ -18,7 +18,7 @@ import (
 //                               |                  |
 // RSI -->         0x00010000    +------------------+ bzImage [+ 0]
 //                               |                  |
-//                               |  boot protocol   |
+//                               |  boot param      |
 //                               |                  |
 //                               +------------------+
 //                               |                  |
@@ -28,7 +28,7 @@ import (
 //                               |                  |
 //                               +------------------+
 //                               |                  |
-// RIP -->         0x00100000    +------------------+ bzImage [+ 512 x (setup_sects in boot protocol header)]
+// RIP -->         0x00100000    +------------------+ bzImage [+ 512 x (setup_sects in boot param header + 1)]
 //                               |                  |
 //                               |   64bit kernel   |
 //                               |                  |
@@ -42,8 +42,7 @@ import (
 //                               |                  |
 //                 0x40000000    +------------------+
 const (
-	memSize = 1 << 30
-
+	memSize       = 1 << 30
 	bootParamAddr = 0x10000
 	cmdlineAddr   = 0x20000
 	kernelAddr    = 0x100000
@@ -145,23 +144,45 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 
 	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
 
-	// Load Boot Parameter
-	bootProto, err := bootproto.New(bzImagePath)
+	// Load Boot Param
+	bootParam, err := bootparam.New(bzImagePath)
 	if err != nil {
 		return err
 	}
 
-	bootProto.VidMode = 0xFFFF
-	bootProto.TypeOfLoader = 0xFF
-	bootProto.RamdiskImage = initrdAddr
-	bootProto.RamdiskSize = uint32(len(initrd))
-	bootProto.LoadFlags |= bootproto.CanUseHeap | bootproto.LoadedHigh | bootproto.KeepSegments
-	bootProto.HeapEndPtr = 0xFE00
-	bootProto.ExtLoaderVer = 0
-	bootProto.CmdlinePtr = cmdlineAddr
-	bootProto.CmdlineSize = uint32(len(params) + 1)
+	// refs https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/x86/bios.c#L66-L86
+	bootParam.AddE820Entry(
+		bootparam.RealModeIvtBegin,
+		bootparam.EBDAStart-bootparam.RealModeIvtBegin,
+		bootparam.E820Ram,
+	)
+	bootParam.AddE820Entry(
+		bootparam.EBDAStart,
+		bootparam.VGARAMBegin-bootparam.EBDAStart,
+		bootparam.E820Reserved,
+	)
+	bootParam.AddE820Entry(
+		bootparam.MBBIOSBegin,
+		bootparam.MBBIOSEnd-bootparam.MBBIOSBegin,
+		bootparam.E820Reserved,
+	)
+	bootParam.AddE820Entry(
+		kernelAddr,
+		memSize-kernelAddr,
+		bootparam.E820Ram,
+	)
 
-	bytes, err := bootProto.Bytes()
+	bootParam.Hdr.VidMode = 0xFFFF
+	bootParam.Hdr.TypeOfLoader = 0xFF
+	bootParam.Hdr.RamdiskImage = initrdAddr
+	bootParam.Hdr.RamdiskSize = uint32(len(initrd))
+	bootParam.Hdr.LoadFlags |= bootparam.CanUseHeap | bootparam.LoadedHigh | bootparam.KeepSegments
+	bootParam.Hdr.HeapEndPtr = 0xFE00
+	bootParam.Hdr.ExtLoaderVer = 0
+	bootParam.Hdr.CmdlinePtr = cmdlineAddr
+	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)
+
+	bytes, err := bootParam.Bytes()
 	if err != nil {
 		return err
 	}
@@ -176,7 +197,14 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		return err
 	}
 
-	offset := int(bootProto.SetupSects+1) * 512 // copy to g.mem with offest setupsz
+	// copy to g.mem with offest setupsz
+	//
+	// The 32-bit (non-real-mode) kernel starts at offset (setup_sects+1)*512 in
+	// the kernel file (again, if setup_sects == 0 the real value is 4.) It should
+	// be loaded at address 0x10000 for Image/zImage kernels and 0x100000 for bzImage kernels.
+	//
+	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
+	offset := int(bootParam.Hdr.SetupSects+1) * 512
 
 	for i := 0; i < len(bzImage)-offset; i++ {
 		m.mem[kernelAddr+i] = bzImage[offset+i]
@@ -220,8 +248,8 @@ func (m *Machine) initRegs() error {
 	}
 
 	regs.RFLAGS = 2
-	regs.RIP = 0x100000
-	regs.RSI = 0x10000
+	regs.RIP = kernelAddr
+	regs.RSI = bootParamAddr
 
 	if err := kvm.SetRegs(m.vcpuFd, regs); err != nil {
 		return err
