@@ -133,8 +133,8 @@ func (b *BootParam) isValid() error {
 		return ErrorSignatureNotMatch
 	}
 
-	// Currently, only Protocol 2.15 is supported.
-	if b.Hdr.Version != 0x020f {
+	// Protocol 2.06+ is required.
+	if b.Hdr.Version < 0x0206 {
 		return fmt.Errorf("%w: 0x%x", ErrorOldProtocolVersion, b.Hdr.Version)
 	}
 
