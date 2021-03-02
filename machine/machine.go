@@ -172,15 +172,15 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		bootparam.E820Ram,
 	)
 
-	bootParam.Hdr.VidMode = 0xFFFF
-	bootParam.Hdr.TypeOfLoader = 0xFF
-	bootParam.Hdr.RamdiskImage = initrdAddr
-	bootParam.Hdr.RamdiskSize = uint32(len(initrd))
-	bootParam.Hdr.LoadFlags |= bootparam.CanUseHeap | bootparam.LoadedHigh | bootparam.KeepSegments
-	bootParam.Hdr.HeapEndPtr = 0xFE00
-	bootParam.Hdr.ExtLoaderVer = 0
-	bootParam.Hdr.CmdlinePtr = cmdlineAddr
-	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)
+	bootParam.Hdr.VidMode = 0xFFFF                                                                  // Proto ALL
+	bootParam.Hdr.TypeOfLoader = 0xFF                                                               // Proto 2.00+
+	bootParam.Hdr.RamdiskImage = initrdAddr                                                         // Proto 2.00+
+	bootParam.Hdr.RamdiskSize = uint32(len(initrd))                                                 // Proto 2.00+
+	bootParam.Hdr.LoadFlags |= bootparam.CanUseHeap | bootparam.LoadedHigh | bootparam.KeepSegments // Proto 2.00+
+	bootParam.Hdr.HeapEndPtr = 0xFE00                                                               // Proco 2.01+
+	bootParam.Hdr.ExtLoaderVer = 0                                                                  // Proco 2.02+
+	bootParam.Hdr.CmdlinePtr = cmdlineAddr                                                          // Proco 2.06+
+	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)                                             // Proco 2.06+
 
 	bytes, err := bootParam.Bytes()
 	if err != nil {
