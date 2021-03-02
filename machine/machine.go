@@ -11,6 +11,7 @@ import (
 	"github.com/bobuhiro11/gokvm/bootparam"
 	"github.com/bobuhiro11/gokvm/ebda"
 	"github.com/bobuhiro11/gokvm/kvm"
+	"github.com/bobuhiro11/gokvm/pci"
 	"github.com/bobuhiro11/gokvm/serial"
 )
 
@@ -56,6 +57,7 @@ type Machine struct {
 	vcpuFds        []uintptr
 	mem            []byte
 	runs           []*kvm.RunData
+	pci            *pci.PCI
 	serial         *serial.Serial
 	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
@@ -248,6 +250,8 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	if m.serial, err = serial.New(serialIRQCallback); err != nil {
 		return err
 	}
+
+	m.pci = pci.New()
 
 	return nil
 }
@@ -443,6 +447,14 @@ func (m *Machine) initIOPortHandlers() {
 		for port := 0x2e8; port <= 0x2ef; port++ {
 			m.ioportHandlers[port][dir] = funcNone
 		}
+
+		// Intel Pentium motherboard ("Neptune" chipset)
+		m.ioportHandlers[0xC008][dir] = funcNone
+
+		// Intel Ethernet NIC
+		for port := 0xc000; port <= 0xcfff; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
 	}
 
 	// PS/2 Keyboard (Always 8042 Chip)
@@ -470,6 +482,16 @@ func (m *Machine) initIOPortHandlers() {
 		}
 		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
 			return m.serial.Out(port, bytes)
+		}
+	}
+
+	// PCI configuration
+	for _, port := range append(pci.DataPorts, pci.AddrPorts...) {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.pci.In(port, bytes)
+		}
+		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.pci.Out(port, bytes)
 		}
 	}
 }
