@@ -9,6 +9,8 @@ This should be useful for those who are interested in how to use KVM from userla
 
 **This is an experimental project, so please do not use it in production.**
 
+![demo](https://raw.githubusercontent.com/nmi/gokvm/main/demo.gif)
+
 ## CLI
 
 Extract the latest release from [the Github Release tab](https://github.com/nmi/gokvm/releases) and run it.
