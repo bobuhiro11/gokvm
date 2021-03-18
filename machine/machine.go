@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/nmi/gokvm/bootparam"
-	"github.com/nmi/gokvm/kvm"
-	"github.com/nmi/gokvm/serial"
+	"github.com/bobuhiro11/gokvm/bootparam"
+	"github.com/bobuhiro11/gokvm/kvm"
+	"github.com/bobuhiro11/gokvm/serial"
 )
 
 // InitialRegState GuestPhysAddr                      Binary files [+ offsets in the file]

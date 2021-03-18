@@ -3,7 +3,7 @@ package serial_test
 import (
 	"testing"
 
-	"github.com/nmi/gokvm/serial"
+	"github.com/bobuhiro11/gokvm/serial"
 )
 
 func TestNew(t *testing.T) {

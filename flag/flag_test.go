@@ -3,7 +3,7 @@ package flag_test
 import (
 	"testing"
 
-	"github.com/nmi/gokvm/flag"
+	"github.com/bobuhiro11/gokvm/flag"
 )
 
 func TestParseArg(t *testing.T) {

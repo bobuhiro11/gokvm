@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/nmi/gokvm/kvm"
+	"github.com/bobuhiro11/gokvm/kvm"
 )
 
 func TestGetAPIVersion(t *testing.T) {
