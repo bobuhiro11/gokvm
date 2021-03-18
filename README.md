@@ -1,4 +1,5 @@
-# gokvm [![Build Status](https://travis-ci.com/nmi/gokvm.svg?branch=main)](https://travis-ci.com/nmi/gokvm) [![Coverage Status](https://coveralls.io/repos/github/nmi/gokvm/badge.svg?branch=main)](https://coveralls.io/github/nmi/gokvm?branch=main) ![Lines of code](https://img.shields.io/tokei/lines/github/nmi/gokvm) [![Go Reference](https://pkg.go.dev/badge/github.com/nmi/gokvm.svg)](https://pkg.go.dev/github.com/nmi/gokvm) [![Go Report Card](https://goreportcard.com/badge/github.com/nmi/gokvm)](https://goreportcard.com/report/github.com/nmi/gokvm) [![Maintainability](https://api.codeclimate.com/v1/badges/f60e75353f617035d732/maintainability)](https://codeclimate.com/github/nmi/gokvm/maintainability)
+# gokvm [![Build Status](https://travis-ci.com/bobuhiro11/gokvm.svg?branch=main)](https://travis-ci.com/bobuhiro11/gokvm) [![Coverage Status](https://coveralls.io/repos/github/bobuhiro11/gokvm/badge.svg?branch=main)](https://coveralls.io/github/bobuhiro11/gokvm?branch=main) ![Lines of code](https://img.shields.io/tokei/lines/github/bobuhiro11/gokvm) [![Go Reference](https://pkg.go.dev/badge/github.com/bobuhiro11/gokvm.svg)](https://pkg.go.dev/github.com/bobuhiro11/gokvm) [![Go Report Card](https://goreportcard.com/badge/github.com/bobuhiro11/gokvm)](https://goreportcard.com/report/github.com/bobuhiro11/gokvm) [![Maintainability](https://api.codeclimate.com/v1/badges/f60e75353f617035d732/maintainability)](https://codeclimate.com/github/bobuhiro11/gokvm/maintainability)
+
 
 gokvm is a hypervisor that uses KVM as an acceleration.
 It is implemented completely in the Go language and has no dependencies other than the standard library.
@@ -9,11 +10,11 @@ This should be useful for those who are interested in how to use KVM from userla
 
 **This is an experimental project, so please do not use it in production.**
 
-![demo](https://raw.githubusercontent.com/nmi/gokvm/main/demo.gif)
+![demo](https://raw.githubusercontent.com/bobuhiro11/gokvm/main/demo.gif)
 
 ## CLI
 
-Extract the latest release from [the Github Release tab](https://github.com/nmi/gokvm/releases) and run it.
+Extract the latest release from [the Github Release tab](https://github.com/bobuhiro11/gokvm/releases) and run it.
 Before running, make sure /dev/kvm exists.
 You can use existing bzImage and initrd, or you can create them using the Makefile of this project.
 
@@ -26,7 +27,7 @@ tar zxvf gokvm*.tar.gz
 
 This project includes a thin wrapper for the KVM API using ioctl. Please refer to the following link to use it.
 
-https://pkg.go.dev/github.com/nmi/gokvm
+https://pkg.go.dev/github.com/bobuhiro11/gokvm
 
 ## Reference
 

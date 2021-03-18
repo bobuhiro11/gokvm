@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/nmi/gokvm/bootparam"
+	"github.com/bobuhiro11/gokvm/bootparam"
 )
 
 func TestNew(t *testing.T) {

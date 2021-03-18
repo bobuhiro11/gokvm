@@ -1,3 +1,3 @@
-module github.com/nmi/gokvm
+module github.com/bobuhiro11/gokvm
 
 go 1.15

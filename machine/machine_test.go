@@ -3,7 +3,7 @@ package machine_test
 import (
 	"testing"
 
-	"github.com/nmi/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/machine"
 )
 
 func TestNewAndLoadLinux(t *testing.T) {
