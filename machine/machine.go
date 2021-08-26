@@ -126,6 +126,11 @@ func New() (*Machine, error) {
 	return m, nil
 }
 
+// RunData returns the kvm.RunData for the VM
+func (m *Machine) RunData() *kvm.RunData {
+	return m.run
+
+}
 func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	// Load initrd
 	initrd, err := ioutil.ReadFile(initPath)
