@@ -126,11 +126,11 @@ func New() (*Machine, error) {
 	return m, nil
 }
 
-// RunData returns the kvm.RunData for the VM
+// RunData returns the kvm.RunData for the VM.
 func (m *Machine) RunData() *kvm.RunData {
 	return m.run
-
 }
+
 func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	// Load initrd
 	initrd, err := ioutil.ReadFile(initPath)
@@ -182,10 +182,10 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	bootParam.Hdr.RamdiskImage = initrdAddr                                                         // Proto 2.00+
 	bootParam.Hdr.RamdiskSize = uint32(len(initrd))                                                 // Proto 2.00+
 	bootParam.Hdr.LoadFlags |= bootparam.CanUseHeap | bootparam.LoadedHigh | bootparam.KeepSegments // Proto 2.00+
-	bootParam.Hdr.HeapEndPtr = 0xFE00                                                               // Proco 2.01+
-	bootParam.Hdr.ExtLoaderVer = 0                                                                  // Proco 2.02+
-	bootParam.Hdr.CmdlinePtr = cmdlineAddr                                                          // Proco 2.06+
-	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)                                             // Proco 2.06+
+	bootParam.Hdr.HeapEndPtr = 0xFE00                                                               // Proto 2.01+
+	bootParam.Hdr.ExtLoaderVer = 0                                                                  // Proto 2.02+
+	bootParam.Hdr.CmdlinePtr = cmdlineAddr                                                          // Proto 2.06+
+	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)                                             // Proto 2.06+
 
 	bytes, err := bootParam.Bytes()
 	if err != nil {
@@ -316,12 +316,12 @@ func (m *Machine) initCPUID() error {
 
 func (m *Machine) RunInfiniteLoop() error {
 	for {
-		isContinute, err := m.RunOnce()
+		isContinue, err := m.RunOnce()
 		if err != nil {
 			return err
 		}
 
-		if !isContinute {
+		if !isContinue {
 			return nil
 		}
 	}
