@@ -25,11 +25,11 @@ func main() {
 	}
 
 	for i := 0; i < nCpus; i++ {
-		go func() {
-			if err = m.RunInfiniteLoop(0); err != nil {
+		go func(cpuId int) {
+			if err = m.RunInfiniteLoop(cpuId); err != nil {
 				panic(err)
 			}
-		}()
+		}(i)
 	}
 
 	restoreMode, err := term.SetRawMode()

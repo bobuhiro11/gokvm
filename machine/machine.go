@@ -6,6 +6,7 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+	"runtime"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
 	"github.com/bobuhiro11/gokvm/kvm"
@@ -91,37 +92,36 @@ func New(nCpus int) (*Machine, error) {
 		return m, err
 	}
 
-	for i := 0; i < nCpus; i++ {
-		m.vcpuFds[i], err = kvm.CreateVCPU(m.vmFd, i)
-		if err != nil {
-			return m, err
-		}
-	}
-
-	for i := 0; i < nCpus; i++ {
-		if err := m.initCPUID(i); err != nil {
-			return m, err
-		}
-	}
-
-	m.mem, err = syscall.Mmap(-1, 0, memSize,
-		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
-	if err != nil {
-		return m, err
-	}
-
 	mmapSize, err := kvm.GetVCPUMMmapSize(m.kvmFd)
 	if err != nil {
 		return m, err
 	}
 
 	for i := 0; i < nCpus; i++ {
+		// Create vCPU
+		m.vcpuFds[i], err = kvm.CreateVCPU(m.vmFd, i)
+		if err != nil {
+			return m, err
+		}
+
+		// init CPUID
+		if err := m.initCPUID(i); err != nil {
+			return m, err
+		}
+
+		// init kvm_run structure
 		r, err := syscall.Mmap(int(m.vcpuFds[i]), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
 			return m, err
 		}
 
 		m.runs[i] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
+	}
+
+	m.mem, err = syscall.Mmap(-1, 0, memSize,
+		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	if err != nil {
+		return m, err
 	}
 
 	err = kvm.SetUserMemoryRegion(m.vmFd, &kvm.UserspaceMemoryRegion{
@@ -326,6 +326,23 @@ func (m *Machine) initCPUID(i int) error {
 }
 
 func (m *Machine) RunInfiniteLoop(i int) error {
+	// https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
+	// - vcpu ioctls: These query and set attributes that control the operation
+	//   of a single virtual cpu.
+	//
+	//   vcpu ioctls should be issued from the same thread that was used to create
+	//   the vcpu, except for asynchronous vcpu ioctl that are marked as such in
+	//   the documentation.  Otherwise, the first ioctl after switching threads
+	//   could see a performance impact.
+	//
+	// - device ioctls: These query and set attributes that control the operation
+	//   of a single device.
+	//
+	//   device ioctls must be issued from the same process (address space) that
+	//   was used to create the VM.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	for {
 		isContinue, err := m.RunOnce(i)
 		if err != nil {
