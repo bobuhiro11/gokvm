@@ -1,21 +1,22 @@
 GOLANGCI_LINT_VERSION = v1.35.2
-BUSYBOX_VERSION = 1.33.0
-LINUX_VERSION = 5.10.12
+BUSYBOX_VERSION = 1.33.1
+LINUX_VERSION = 5.14.3
+NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 
 gokvm: $(wildcard *.go)
 	go build .
 
 golangci-lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+	curl --retry 5 -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
 		| sh -s -- -b . $(GOLANGCI_LINT_VERSION)
 
 busybox.tar.bz2:
-	curl https://busybox.net/downloads/busybox-$(BUSYBOX_VERSION).tar.bz2 -o busybox.tar.bz2
+	curl --retry 5 https://busybox.net/downloads/busybox-$(BUSYBOX_VERSION).tar.bz2 -o busybox.tar.bz2
 
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS
 	tar -xf busybox.tar.bz2
 	cp busybox.config busybox-$(BUSYBOX_VERSION)/.config
-	make -C busybox-$(BUSYBOX_VERSION) install
+	make -j$(nproc) -C busybox-$(BUSYBOX_VERSION) install
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/etc/init.d
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/proc
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/sys
@@ -26,19 +27,27 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	rm -rf busybox-$(BUSYBOX_VERSION)
 
 linux.tar.xz:
-	curl https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
+	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
 		-o linux.tar.xz
 
 bzImage: linux.config linux.tar.xz
 	tar Jxf ./linux.tar.xz
 	cp linux.config linux-$(LINUX_VERSION)/.config
-	make -C linux-$(LINUX_VERSION)
+	make -j$(nproc) -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
 	rm -rf linux-$(LINUX_VERSION)
 
 .PHONY: run
 run: initrd bzImage
-	go run .
+	go run . -p "console=ttyS0 earlyprintk=serial debug ignore_loglevel"
+
+.PHONY: run-system-kernel
+run-system-kernel:
+	# Implemented based on fedora's default path.
+	# Other distributions need to be considered.
+	go run . -p "console=ttyS0 pci=off earlyprintk=serial nokaslr rdinit=/bin/sh" \
+		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
+		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
 .PHONY: test
 test: golangci-lint initrd bzImage

@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"os"
 
-	"github.com/nmi/gokvm/flag"
-	"github.com/nmi/gokvm/machine"
-	"github.com/nmi/gokvm/term"
+	"github.com/bobuhiro11/gokvm/flag"
+	"github.com/bobuhiro11/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/term"
 )
 
 func main() {

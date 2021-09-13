@@ -11,7 +11,7 @@ go:
 
 before_script:
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
-  - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+  - curl --retry 5 -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod +x ./cc-test-reporter
   - ./cc-test-reporter before-build
   - GO111MODULE=off go get github.com/mattn/goveralls
@@ -27,6 +27,6 @@ after_script:
 deploy:
 - provider: script
   skip_cleanup: true
-  script: curl -sL https://git.io/goreleaser | bash
+  script: curl --retry 5 -sL https://git.io/goreleaser | bash
   on:
     tags: true

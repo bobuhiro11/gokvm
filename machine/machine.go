@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/nmi/gokvm/bootproto"
-	"github.com/nmi/gokvm/kvm"
-	"github.com/nmi/gokvm/serial"
+	"github.com/bobuhiro11/gokvm/bootparam"
+	"github.com/bobuhiro11/gokvm/kvm"
+	"github.com/bobuhiro11/gokvm/serial"
 )
 
 // InitialRegState GuestPhysAddr                      Binary files [+ offsets in the file]
@@ -18,7 +18,7 @@ import (
 //                               |                  |
 // RSI -->         0x00010000    +------------------+ bzImage [+ 0]
 //                               |                  |
-//                               |  boot protocol   |
+//                               |  boot param      |
 //                               |                  |
 //                               +------------------+
 //                               |                  |
@@ -28,7 +28,7 @@ import (
 //                               |                  |
 //                               +------------------+
 //                               |                  |
-// RIP -->         0x00100000    +------------------+ bzImage [+ 512 x (setup_sects in boot protocol header)]
+// RIP -->         0x00100000    +------------------+ bzImage [+ 512 x (setup_sects in boot param header + 1)]
 //                               |                  |
 //                               |   64bit kernel   |
 //                               |                  |
@@ -42,8 +42,7 @@ import (
 //                               |                  |
 //                 0x40000000    +------------------+
 const (
-	memSize = 1 << 30
-
+	memSize       = 1 << 30
 	bootParamAddr = 0x10000
 	cmdlineAddr   = 0x20000
 	kernelAddr    = 0x100000
@@ -53,9 +52,10 @@ const (
 type Machine struct {
 	kvmFd, vmFd uintptr
 	vcpuFds     []uintptr
-	mem         []byte
-	runs        []*kvm.RunData
-	serial      *serial.Serial
+	mem                 []byte
+	runs                []*kvm.RunData
+	serial              *serial.Serial
+	ioportHandlers      [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
 
 func New(nCpus int) (*Machine, error) {
@@ -135,6 +135,11 @@ func New(nCpus int) (*Machine, error) {
 	return m, nil
 }
 
+// RunData returns the kvm.RunData for the VM.
+func (m *Machine) RunData() []*kvm.RunData {
+	return m.runs
+}
+
 func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	// Load initrd
 	initrd, err := ioutil.ReadFile(initPath)
@@ -153,23 +158,45 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 
 	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
 
-	// Load Boot Parameter
-	bootProto, err := bootproto.New(bzImagePath)
+	// Load Boot Param
+	bootParam, err := bootparam.New(bzImagePath)
 	if err != nil {
 		return err
 	}
 
-	bootProto.VidMode = 0xFFFF
-	bootProto.TypeOfLoader = 0xFF
-	bootProto.RamdiskImage = initrdAddr
-	bootProto.RamdiskSize = uint32(len(initrd))
-	bootProto.LoadFlags |= bootproto.CanUseHeap | bootproto.LoadedHigh | bootproto.KeepSegments
-	bootProto.HeapEndPtr = 0xFE00
-	bootProto.ExtLoaderVer = 0
-	bootProto.CmdlinePtr = cmdlineAddr
-	bootProto.CmdlineSize = uint32(len(params) + 1)
+	// refs https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/x86/bios.c#L66-L86
+	bootParam.AddE820Entry(
+		bootparam.RealModeIvtBegin,
+		bootparam.EBDAStart-bootparam.RealModeIvtBegin,
+		bootparam.E820Ram,
+	)
+	bootParam.AddE820Entry(
+		bootparam.EBDAStart,
+		bootparam.VGARAMBegin-bootparam.EBDAStart,
+		bootparam.E820Reserved,
+	)
+	bootParam.AddE820Entry(
+		bootparam.MBBIOSBegin,
+		bootparam.MBBIOSEnd-bootparam.MBBIOSBegin,
+		bootparam.E820Reserved,
+	)
+	bootParam.AddE820Entry(
+		kernelAddr,
+		memSize-kernelAddr,
+		bootparam.E820Ram,
+	)
 
-	bytes, err := bootProto.Bytes()
+	bootParam.Hdr.VidMode = 0xFFFF                                                                  // Proto ALL
+	bootParam.Hdr.TypeOfLoader = 0xFF                                                               // Proto 2.00+
+	bootParam.Hdr.RamdiskImage = initrdAddr                                                         // Proto 2.00+
+	bootParam.Hdr.RamdiskSize = uint32(len(initrd))                                                 // Proto 2.00+
+	bootParam.Hdr.LoadFlags |= bootparam.CanUseHeap | bootparam.LoadedHigh | bootparam.KeepSegments // Proto 2.00+
+	bootParam.Hdr.HeapEndPtr = 0xFE00                                                               // Proto 2.01+
+	bootParam.Hdr.ExtLoaderVer = 0                                                                  // Proto 2.02+
+	bootParam.Hdr.CmdlinePtr = cmdlineAddr                                                          // Proto 2.06+
+	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)                                             // Proto 2.06+
+
+	bytes, err := bootParam.Bytes()
 	if err != nil {
 		return err
 	}
@@ -184,7 +211,14 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		return err
 	}
 
-	offset := int(bootProto.SetupSects+1) * 512 // copy to g.mem with offest setupsz
+	// copy to g.mem with offest setupsz
+	//
+	// The 32-bit (non-real-mode) kernel starts at offset (setup_sects+1)*512 in
+	// the kernel file (again, if setup_sects == 0 the real value is 4.) It should
+	// be loaded at address 0x10000 for Image/zImage kernels and 0x100000 for bzImage kernels.
+	//
+	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
+	offset := int(bootParam.Hdr.SetupSects+1) * 512
 
 	for i := 0; i < len(bzImage)-offset; i++ {
 		m.mem[kernelAddr+i] = bzImage[offset+i]
@@ -199,6 +233,8 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 			return err
 		}
 	}
+
+	m.initIOPortHandlers()
 
 	serialIRQCallback := func(irq, level uint32) {
 		if err := kvm.IRQLine(m.vmFd, irq, level); err != nil {
@@ -228,8 +264,8 @@ func (m *Machine) initRegs(i int) error {
 	}
 
 	regs.RFLAGS = 2
-	regs.RIP = 0x100000
-	regs.RSI = 0x10000
+	regs.RIP = kernelAddr
+	regs.RSI = bootParamAddr
 
 	if err := kvm.SetRegs(m.vcpuFds[i], regs); err != nil {
 		return err
@@ -291,12 +327,12 @@ func (m *Machine) initCPUID(i int) error {
 
 func (m *Machine) RunInfiniteLoop(i int) error {
 	for {
-		isContinute, err := m.RunOnce(i)
+		isContinue, err := m.RunOnce(i)
 		if err != nil {
 			return err
 		}
 
-		if !isContinute {
+		if !isContinue {
 			return nil
 		}
 	}
@@ -320,10 +356,11 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 		return false, nil
 	case kvm.EXITIO:
 		direction, size, port, count, offset := m.runs[i].IO()
+		f := m.ioportHandlers[port][direction]
 		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[i])) + uintptr(offset))))[0:size]
 
 		for i := 0; i < int(count); i++ {
-			if err := m.handleExitIO(direction, port, bytes); err != nil {
+			if err := f(m, port, bytes); err != nil {
 				return false, err
 			}
 		}
@@ -334,29 +371,83 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 	}
 }
 
-func (m *Machine) handleExitIO(direction, port uint64, bytes []byte) error {
-	switch {
-	case 0x3c0 <= port && port <= 0x3da:
-		return nil // VGA
-	case 0x60 <= port && port <= 0x6F:
-		return nil // PS/2 Keyboard (Always 8042 Chip)
-	case 0x70 <= port && port <= 0x71:
-		return nil // CMOS clock
-	case 0x80 <= port && port <= 0x9F:
-		return nil // DMA Page Registers (Commonly 74L612 Chip)
-	case 0x2f8 <= port && port <= 0x2FF:
-		return nil // Serial port 2
-	case 0x3e8 <= port && port <= 0x3ef:
-		return nil // Serial port 3
-	case 0x2e8 <= port && port <= 0x2ef:
-		return nil // Serial port 4
-	case serial.COM1Addr <= port && port < serial.COM1Addr+8:
-		if direction == kvm.EXITIOIN {
-			return m.serial.In(port, bytes)
+func (m *Machine) initIOPortHandlers() {
+	funcNone := func(m *Machine, port uint64, bytes []byte) error {
+		return nil
+	}
+
+	funcError := func(m *Machine, port uint64, bytes []byte) error {
+		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
+	}
+
+	// default handler
+	for port := 0; port < 0x10000; port++ {
+		for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
+			m.ioportHandlers[port][dir] = funcError
+		}
+	}
+
+	for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
+		// VGA
+		for port := 0x3c0; port <= 0x3da; port++ {
+			m.ioportHandlers[port][dir] = funcNone
 		}
 
-		return m.serial.Out(port, bytes)
-	default:
-		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
+		for port := 0x3b4; port <= 0x3b5; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// CMOS clock
+		for port := 0x70; port <= 0x71; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// DMA Page Registers (Commonly 74L612 Chip)
+		for port := 0x80; port <= 0x9f; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// Serial port 2
+		for port := 0x2f8; port <= 0x2ff; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// Serial port 3
+		for port := 0x3e8; port <= 0x3ef; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// Serial port 4
+		for port := 0x2e8; port <= 0x2ef; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+	}
+
+	// PS/2 Keyboard (Always 8042 Chip)
+	for port := 0x60; port <= 0x6f; port++ {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+			// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
+			// infinitely. To deal with this issue, refer to kvmtool and
+			// configure the input to the Status Register of the PS2 controller.
+			//
+			// refs:
+			// https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/hw/i8042.c#L312
+			// https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/tree/hw/i8042.c#n312
+			// https://wiki.osdev.org/%228042%22_PS/2_Controller
+			bytes[0] = 0x20
+
+			return nil
+		}
+		m.ioportHandlers[port][kvm.EXITIOOUT] = funcNone
+	}
+
+	// Serial port 1
+	for port := serial.COM1Addr; port < serial.COM1Addr+8; port++ {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.serial.In(port, bytes)
+		}
+		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.serial.Out(port, bytes)
+		}
 	}
 }
