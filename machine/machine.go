@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"syscall"
 	"unsafe"
-	"runtime"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
 	"github.com/bobuhiro11/gokvm/kvm"
@@ -51,12 +51,12 @@ const (
 )
 
 type Machine struct {
-	kvmFd, vmFd uintptr
-	vcpuFds     []uintptr
-	mem                 []byte
-	runs                []*kvm.RunData
-	serial              *serial.Serial
-	ioportHandlers      [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
+	kvmFd, vmFd    uintptr
+	vcpuFds        []uintptr
+	mem            []byte
+	runs           []*kvm.RunData
+	serial         *serial.Serial
+	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
 
 func New(nCpus int) (*Machine, error) {
