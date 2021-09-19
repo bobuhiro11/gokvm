@@ -16,7 +16,7 @@ busybox.tar.bz2:
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS
 	tar -xf busybox.tar.bz2
 	cp busybox.config busybox-$(BUSYBOX_VERSION)/.config
-	make -j$(nproc) -C busybox-$(BUSYBOX_VERSION) install
+	$(MAKE) -C busybox-$(BUSYBOX_VERSION) install
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/etc/init.d
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/proc
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/sys
@@ -33,7 +33,7 @@ linux.tar.xz:
 bzImage: linux.config linux.tar.xz
 	tar Jxf ./linux.tar.xz
 	cp linux.config linux-$(LINUX_VERSION)/.config
-	make -j$(nproc) -C linux-$(LINUX_VERSION)
+	$(MAKE) -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
 	rm -rf linux-$(LINUX_VERSION)
 
