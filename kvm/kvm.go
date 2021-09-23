@@ -177,8 +177,8 @@ func CreateVM(kvmFd uintptr) (uintptr, error) {
 	return ioctl(kvmFd, uintptr(kvmCreateVM), uintptr(0))
 }
 
-func CreateVCPU(vmFd uintptr) (uintptr, error) {
-	return ioctl(vmFd, uintptr(kvmCreateVCPU), uintptr(0))
+func CreateVCPU(vmFd uintptr, vcpuID int) (uintptr, error) {
+	return ioctl(vmFd, uintptr(kvmCreateVCPU), uintptr(vcpuID))
 }
 
 func Run(vcpuFd uintptr) error {

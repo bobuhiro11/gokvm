@@ -17,9 +17,11 @@ func TestParseArg(t *testing.T) {
 		"kernel_path",
 		"-p",
 		"params",
+		"-c",
+		"2",
 	}
 
-	kernel, initrd, params, err := flag.ParseArgs(args)
+	kernel, initrd, params, nCpus, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,5 +36,9 @@ func TestParseArg(t *testing.T) {
 
 	if params != "params" {
 		t.Fatal("invalid kernel command-line parameters")
+	}
+
+	if nCpus != 2 {
+		t.Fatal("invalid number of vcpus")
 	}
 }

@@ -9,7 +9,7 @@ import (
 func TestNewAndLoadLinux(t *testing.T) {
 	t.Parallel()
 
-	m, err := machine.New()
+	m, err := machine.New(1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,7 +19,7 @@ func TestNewAndLoadLinux(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		isContinue, err := m.RunOnce()
+		isContinue, err := m.RunOnce(0)
 		if err != nil {
 			t.Fatal(err)
 		}

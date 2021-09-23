@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -50,14 +51,15 @@ const (
 )
 
 type Machine struct {
-	kvmFd, vmFd, vcpuFd uintptr
-	mem                 []byte
-	run                 *kvm.RunData
-	serial              *serial.Serial
-	ioportHandlers      [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
+	kvmFd, vmFd    uintptr
+	vcpuFds        []uintptr
+	mem            []byte
+	runs           []*kvm.RunData
+	serial         *serial.Serial
+	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
 
-func New() (*Machine, error) {
+func New(nCpus int) (*Machine, error) {
 	m := &Machine{}
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -67,6 +69,8 @@ func New() (*Machine, error) {
 
 	m.kvmFd = devKVM.Fd()
 	m.vmFd, err = kvm.CreateVM(m.kvmFd)
+	m.vcpuFds = make([]uintptr, nCpus)
+	m.runs = make([]*kvm.RunData, nCpus)
 
 	if err != nil {
 		return m, err
@@ -88,13 +92,30 @@ func New() (*Machine, error) {
 		return m, err
 	}
 
-	m.vcpuFd, err = kvm.CreateVCPU(m.vmFd)
+	mmapSize, err := kvm.GetVCPUMMmapSize(m.kvmFd)
 	if err != nil {
 		return m, err
 	}
 
-	if err := m.initCPUID(); err != nil {
-		return m, err
+	for i := 0; i < nCpus; i++ {
+		// Create vCPU
+		m.vcpuFds[i], err = kvm.CreateVCPU(m.vmFd, i)
+		if err != nil {
+			return m, err
+		}
+
+		// init CPUID
+		if err := m.initCPUID(i); err != nil {
+			return m, err
+		}
+
+		// init kvm_run structure
+		r, err := syscall.Mmap(int(m.vcpuFds[i]), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		if err != nil {
+			return m, err
+		}
+
+		m.runs[i] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
 	m.mem, err = syscall.Mmap(-1, 0, memSize,
@@ -102,18 +123,6 @@ func New() (*Machine, error) {
 	if err != nil {
 		return m, err
 	}
-
-	mmapSize, err := kvm.GetVCPUMMmapSize(m.kvmFd)
-	if err != nil {
-		return m, err
-	}
-
-	r, err := syscall.Mmap(int(m.vcpuFd), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-	if err != nil {
-		return m, err
-	}
-
-	m.run = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 
 	err = kvm.SetUserMemoryRegion(m.vmFd, &kvm.UserspaceMemoryRegion{
 		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: 1 << 30,
@@ -127,8 +136,8 @@ func New() (*Machine, error) {
 }
 
 // RunData returns the kvm.RunData for the VM.
-func (m *Machine) RunData() *kvm.RunData {
-	return m.run
+func (m *Machine) RunData() []*kvm.RunData {
+	return m.runs
 }
 
 func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
@@ -215,12 +224,14 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		m.mem[kernelAddr+i] = bzImage[offset+i]
 	}
 
-	if err = m.initRegs(); err != nil {
-		return err
-	}
+	for i := range m.vcpuFds {
+		if err = m.initRegs(i); err != nil {
+			return err
+		}
 
-	if err = m.initSregs(); err != nil {
-		return err
+		if err = m.initSregs(i); err != nil {
+			return err
+		}
 	}
 
 	m.initIOPortHandlers()
@@ -246,8 +257,8 @@ func (m *Machine) InjectSerialIRQ() {
 	m.serial.InjectIRQ()
 }
 
-func (m *Machine) initRegs() error {
-	regs, err := kvm.GetRegs(m.vcpuFd)
+func (m *Machine) initRegs(i int) error {
+	regs, err := kvm.GetRegs(m.vcpuFds[i])
 	if err != nil {
 		return err
 	}
@@ -256,15 +267,15 @@ func (m *Machine) initRegs() error {
 	regs.RIP = kernelAddr
 	regs.RSI = bootParamAddr
 
-	if err := kvm.SetRegs(m.vcpuFd, regs); err != nil {
+	if err := kvm.SetRegs(m.vcpuFds[i], regs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Machine) initSregs() error {
-	sregs, err := kvm.GetSregs(m.vcpuFd)
+func (m *Machine) initSregs(i int) error {
+	sregs, err := kvm.GetSregs(m.vcpuFds[i])
 	if err != nil {
 		return err
 	}
@@ -280,14 +291,14 @@ func (m *Machine) initSregs() error {
 	sregs.CS.DB, sregs.SS.DB = 1, 1
 	sregs.CR0 |= 1 // protected mode
 
-	if err := kvm.SetSregs(m.vcpuFd, sregs); err != nil {
+	if err := kvm.SetSregs(m.vcpuFds[i], sregs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Machine) initCPUID() error {
+func (m *Machine) initCPUID(i int) error {
 	cpuid := kvm.CPUID{}
 	cpuid.Nent = 100
 
@@ -307,16 +318,33 @@ func (m *Machine) initCPUID() error {
 		cpuid.Entries[i].Edx = 0x4d       // M
 	}
 
-	if err := kvm.SetCPUID2(m.vcpuFd, &cpuid); err != nil {
+	if err := kvm.SetCPUID2(m.vcpuFds[i], &cpuid); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Machine) RunInfiniteLoop() error {
+func (m *Machine) RunInfiniteLoop(i int) error {
+	// https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
+	// - vcpu ioctls: These query and set attributes that control the operation
+	//   of a single virtual cpu.
+	//
+	//   vcpu ioctls should be issued from the same thread that was used to create
+	//   the vcpu, except for asynchronous vcpu ioctl that are marked as such in
+	//   the documentation.  Otherwise, the first ioctl after switching threads
+	//   could see a performance impact.
+	//
+	// - device ioctls: These query and set attributes that control the operation
+	//   of a single device.
+	//
+	//   device ioctls must be issued from the same process (address space) that
+	//   was used to create the VM.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	for {
-		isContinue, err := m.RunOnce()
+		isContinue, err := m.RunOnce(i)
 		if err != nil {
 			return err
 		}
@@ -327,26 +355,26 @@ func (m *Machine) RunInfiniteLoop() error {
 	}
 }
 
-func (m *Machine) RunOnce() (bool, error) {
-	if err := kvm.Run(m.vcpuFd); err != nil {
+func (m *Machine) RunOnce(i int) (bool, error) {
+	if err := kvm.Run(m.vcpuFds[i]); err != nil {
 		// When a signal is sent to the thread hosting the VM it will result in EINTR
 		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
-		if m.run.ExitReason == kvm.EXITINTR {
+		if m.runs[i].ExitReason == kvm.EXITINTR {
 			return true, nil
 		}
 
 		return false, err
 	}
 
-	switch m.run.ExitReason {
+	switch m.runs[i].ExitReason {
 	case kvm.EXITHLT:
 		fmt.Println("KVM_EXIT_HLT")
 
 		return false, nil
 	case kvm.EXITIO:
-		direction, size, port, count, offset := m.run.IO()
+		direction, size, port, count, offset := m.runs[i].IO()
 		f := m.ioportHandlers[port][direction]
-		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.run)) + uintptr(offset))))[0:size]
+		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[i])) + uintptr(offset))))[0:size]
 
 		for i := 0; i < int(count); i++ {
 			if err := f(m, port, bytes); err != nil {
@@ -356,7 +384,7 @@ func (m *Machine) RunOnce() (bool, error) {
 
 		return true, nil
 	default:
-		return false, fmt.Errorf("%w: %d", kvm.ErrorUnexpectedEXITReason, m.run.ExitReason)
+		return false, fmt.Errorf("%w: %d", kvm.ErrorUnexpectedEXITReason, m.runs[i].ExitReason)
 	}
 }
 

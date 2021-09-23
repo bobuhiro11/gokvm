@@ -46,7 +46,7 @@ func TestCreateVM(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	vcpuFd, err := kvm.CreateVCPU(vmFd)
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestCreateVCPU(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	vcpuFd, err := kvm.CreateVCPU(vmFd)
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestCreateVCPUWithNoVmFd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = kvm.CreateVCPU(devKVM.Fd())
+	_, err = kvm.CreateVCPU(devKVM.Fd(), 0)
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestAddNum(t *testing.T) {
 		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&mem[0]))),
 	})
 
-	vcpuFd, _ := kvm.CreateVCPU(vmFd)
+	vcpuFd, _ := kvm.CreateVCPU(vmFd, 0)
 	mmapSize, _ := kvm.GetVCPUMMmapSize(devKVM.Fd())
 
 	r, _ := syscall.Mmap(int(vcpuFd), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
