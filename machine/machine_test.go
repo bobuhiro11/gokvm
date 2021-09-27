@@ -18,6 +18,10 @@ func TestNewAndLoadLinux(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	m.GetInputChan()
+	m.InjectSerialIRQ()
+	m.RunData()
+
 	for i := 0; i < 10; i++ {
 		isContinue, err := m.RunOnce(0)
 		if err != nil {
