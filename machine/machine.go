@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
+	"github.com/bobuhiro11/gokvm/ebda"
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/serial"
 )
@@ -130,6 +131,20 @@ func New(nCpus int) (*Machine, error) {
 	})
 	if err != nil {
 		return m, err
+	}
+
+	e, err := ebda.New()
+	if err != nil {
+		return m, err
+	}
+
+	bytes, err := e.Bytes()
+	if err != nil {
+		return m, err
+	}
+
+	for i, b := range bytes {
+		m.mem[bootparam.EBDAStart+i] = b
 	}
 
 	return m, nil

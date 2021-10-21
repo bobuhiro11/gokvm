@@ -39,7 +39,7 @@ bzImage: linux.config linux.tar.xz
 
 .PHONY: run
 run: initrd bzImage
-	go run . -p "console=ttyS0 earlyprintk=serial debug ignore_loglevel"
+	go run . -p "console=ttyS0 earlyprintk=serial debug ignore_loglevel apic=debug show_lapic=all" -c 2
 
 .PHONY: run-system-kernel
 run-system-kernel:
