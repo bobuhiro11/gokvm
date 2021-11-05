@@ -116,8 +116,8 @@ type MPCTable struct {
 	OEM       [8]uint8
 	ProductID [12]uint8
 	OEMPtr    uint32
-	OEMSize   uint32
-	OEMCount  uint32
+	OEMSize   uint16
+	OEMCount  uint16
 	LAPIC     uint32 // Local APIC addresss must be set.
 	Reserved  uint32
 }
@@ -125,8 +125,9 @@ type MPCTable struct {
 func NewMPCTable() (*MPCTable, error) {
 	m := &MPCTable{}
 	m.Signature = (('P' << 24) | ('M' << 16) | ('C' << 8) | 'P')
-	m.Length = 42 // this field must contain the size of entries.
+	m.Length = 44 // this field must contain the size of entries.
 	m.Spec = 1
+	m.LAPIC = 0xFEE00000
 
 	var err error
 
