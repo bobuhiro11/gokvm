@@ -3,9 +3,13 @@ package ebda
 import (
 	"bytes"
 	"encoding/binary"
+	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
 )
+
+// this must be fixed.
+const NumCPUs = 2
 
 // Extended BIOS Data Area (EBDA).
 type EBDA struct {
@@ -120,16 +124,28 @@ type MPCTable struct {
 	OEMCount  uint16
 	LAPIC     uint32 // Local APIC addresss must be set.
 	Reserved  uint32
+
+	mpcCPU [NumCPUs]MPCCpu
 }
 
 func NewMPCTable() (*MPCTable, error) {
 	m := &MPCTable{}
 	m.Signature = (('P' << 24) | ('M' << 16) | ('C' << 8) | 'P')
-	m.Length = 44 // this field must contain the size of entries.
+	m.Length = uint16(unsafe.Sizeof(MPCTable{})) // this field must contain the size of entries.
+	// m.Length += uint16(unsafe.Sizeof(MPCCpu{})) * NumCPUs
 	m.Spec = 1
 	m.LAPIC = 0xFEE00000
 
 	var err error
+
+	for i := 0; i < NumCPUs; i++ {
+		mpcCPU, err := NewMPCCpu(i)
+		if err != nil {
+			return m, err
+		}
+
+		m.mpcCPU[i] = *mpcCPU
+	}
 
 	m.CheckSum, err = m.CalcCheckSum()
 	if err != nil {
@@ -164,4 +180,29 @@ func (m *MPCTable) Bytes() ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+type MPCCpu struct {
+	Type        uint8
+	APICID      uint8 // Local APIC number
+	APICVER     uint8
+	CPUFlag     uint8
+	CPUFeature  uint32
+	FeatureFlag uint32
+	Reserved    [2]uint32
+}
+
+func NewMPCCpu(i int) (*MPCCpu, error) {
+	m := &MPCCpu{}
+
+	m.Type = 0
+	m.APICID = uint8(i)
+	m.APICVER = 0x14
+	m.CPUFlag |= 1 // enabled processor
+
+	if i == 0 {
+		m.CPUFlag |= 2 // boot processor
+	}
+
+	return m, nil
 }
