@@ -24,6 +24,8 @@ const (
 	kvmGetSupportedCPUID   = 0xC008AE05
 	kvmSetCPUID2           = 0x4008AE90
 	kvmIRQLine             = 0xc008ae67
+	kvmGetLAPIC            = 0x8400ae8e
+	kvmSetLAPIC            = 0x4400ae8f
 
 	EXITUNKNOWN       = 0
 	EXITEXCEPTION     = 1
@@ -211,6 +213,19 @@ func GetRegs(vcpuFd uintptr) (Regs, error) {
 	return regs, err
 }
 
+func GetLAPIC(vcpuFd uintptr) (LocalAPIC, error) {
+	lapic := LocalAPIC{}
+	_, err := ioctl(vcpuFd, uintptr(kvmGetLAPIC), uintptr(unsafe.Pointer(&lapic)))
+
+	return lapic, err
+}
+
+func SetLAPIC(vcpuFd uintptr, lapic LocalAPIC) error {
+	_, err := ioctl(vcpuFd, uintptr(kvmSetLAPIC), uintptr(unsafe.Pointer(&lapic)))
+
+	return err
+}
+
 func SetRegs(vcpuFd uintptr, regs Regs) error {
 	_, err := ioctl(vcpuFd, uintptr(kvmSetRegs), uintptr(unsafe.Pointer(&regs)))
 
@@ -299,4 +314,22 @@ func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
 	_, err := ioctl(vcpuFd, kvmSetCPUID2, uintptr(unsafe.Pointer(kvmCPUID)))
 
 	return err
+}
+
+const (
+	KVMAPICRegSize = 0x400
+)
+
+type LocalAPIC struct {
+	_ [0x350]uint8
+
+	// 0x350 (0x10 bytes)
+	LvtLint0 uint32
+	_        [3]uint32
+
+	// 0x360 (0x10 bytes)
+	LvtLint1 uint32
+	_        [3]uint32
+
+	_ [KVMAPICRegSize - 0x350 - 0x10 - 0x10]uint8
 }
