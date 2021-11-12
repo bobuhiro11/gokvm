@@ -155,6 +155,11 @@ func (m *Machine) RunData() []*kvm.RunData {
 	return m.runs
 }
 
+const (
+	APICModeExtInt = 0x7
+	APICModeNMI    = 0x4
+)
+
 func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	// Load initrd
 	initrd, err := ioutil.ReadFile(initPath)
@@ -245,6 +250,21 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		}
 
 		if err = m.initSregs(i); err != nil {
+			return err
+		}
+
+		vcpuFd := m.vcpuFds[i]
+
+		lapic, err := kvm.GetLAPIC(vcpuFd)
+		if err != nil {
+			return err
+		}
+
+		lapic.LvtLint0 |= APICModeExtInt << 8
+		lapic.LvtLint1 |= APICModeNMI << 8
+
+		err = kvm.SetLAPIC(vcpuFd, lapic)
+		if err != nil {
 			return err
 		}
 	}
