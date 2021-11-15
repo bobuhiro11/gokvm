@@ -26,6 +26,7 @@ const (
 	kvmIRQLine             = 0xc008ae67
 	kvmGetLAPIC            = 0x8400ae8e
 	kvmSetLAPIC            = 0x4400ae8f
+	kvmSetMSRs             = 0x4008ae89
 
 	EXITUNKNOWN       = 0
 	EXITEXCEPTION     = 1
@@ -120,6 +121,18 @@ type Descriptor struct {
 	_     [3]uint16
 }
 
+type MSRs struct {
+	NumOfMSRs uint32
+	Padding   uint32
+	Entries   [100]MsrEntry
+}
+
+type MsrEntry struct {
+	Index    uint32
+	Reserved uint32
+	Data     uint32
+}
+
 type RunData struct {
 	RequestInterruptWindow     uint8
 	ImmediateExit              uint8
@@ -202,6 +215,12 @@ func GetSregs(vcpuFd uintptr) (Sregs, error) {
 
 func SetSregs(vcpuFd uintptr, sregs Sregs) error {
 	_, err := ioctl(vcpuFd, uintptr(kvmSetSregs), uintptr(unsafe.Pointer(&sregs)))
+
+	return err
+}
+
+func SetMSRs(vcpuFd uintptr, msrs MSRs) error {
+	_, err := ioctl(vcpuFd, uintptr(kvmSetMSRs), uintptr(unsafe.Pointer(&msrs)))
 
 	return err
 }

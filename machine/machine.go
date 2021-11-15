@@ -110,6 +110,10 @@ func New(nCpus int) (*Machine, error) {
 			return m, err
 		}
 
+		if err := m.initMSR(i); err != nil {
+			return m, err
+		}
+
 		// init kvm_run structure
 		r, err := syscall.Mmap(int(m.vcpuFds[i]), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
@@ -327,6 +331,62 @@ func (m *Machine) initSregs(i int) error {
 	sregs.CR0 |= 1 // protected mode
 
 	if err := kvm.SetSregs(m.vcpuFds[i], sregs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const (
+	MsrIA32SystemCS             = 0x00000174
+	MsrIA32SystemESP            = 0x00000175
+	MsrIA32SystemEIP            = 0x00000176
+	MsrSTAR                     = 0xc0000081
+	MsrCSTAR                    = 0xc0000083
+	MsrKernelGSBase             = 0xc0000102
+	MsrSyscallMask              = 0xc0000084
+	MsrLSTAR                    = 0xc0000082
+	MsrIA32TSC                  = 0x00000010
+	MsrIA32MiscEnable           = 0x000001a0
+	MsrIA32MiscEnableFastString = 1
+)
+
+func (m *Machine) initMSR(i int) error {
+	msrs := kvm.MSRs{}
+
+	msrs.Entries[0].Index = MsrIA32SystemCS
+	msrs.Entries[0].Data = 0
+
+	msrs.Entries[1].Index = MsrIA32SystemESP
+	msrs.Entries[1].Data = 0
+
+	msrs.Entries[2].Index = MsrIA32SystemEIP
+	msrs.Entries[2].Data = 0
+
+	msrs.Entries[3].Index = MsrSTAR
+	msrs.Entries[3].Data = 0
+
+	msrs.Entries[4].Index = MsrCSTAR
+	msrs.Entries[4].Data = 0
+
+	msrs.Entries[5].Index = MsrKernelGSBase
+	msrs.Entries[5].Data = 0
+
+	msrs.Entries[6].Index = MsrSyscallMask
+	msrs.Entries[6].Data = 0
+
+	msrs.Entries[7].Index = MsrLSTAR
+	msrs.Entries[7].Data = 0
+
+	msrs.Entries[8].Index = MsrIA32TSC
+	msrs.Entries[8].Data = 0
+
+	msrs.Entries[9].Index = MsrIA32MiscEnable
+	msrs.Entries[9].Data = MsrIA32MiscEnableFastString
+
+	msrs.NumOfMSRs = 10
+
+	if err := kvm.SetMSRs(m.vcpuFds[i], msrs); err != nil {
 		return err
 	}
 
