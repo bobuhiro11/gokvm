@@ -323,14 +323,14 @@ func (m *Machine) initCPUID(i int) error {
 
 	// https://www.kernel.org/doc/html/latest/virt/kvm/cpuid.html
 	for i := 0; i < int(cpuid.Nent); i++ {
-		if cpuid.Entries[i].Function != kvm.CPUIDSignature {
-			continue
+		if cpuid.Entries[i].Function == kvm.CPUIDFuncPerMon {
+			cpuid.Entries[i].Eax = 0 // disable
+		} else if cpuid.Entries[i].Function == kvm.CPUIDSignature {
+			cpuid.Entries[i].Eax = kvm.CPUIDFeatures
+			cpuid.Entries[i].Ebx = 0x4b4d564b // KVMK
+			cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
+			cpuid.Entries[i].Edx = 0x4d       // M
 		}
-
-		cpuid.Entries[i].Eax = kvm.CPUIDFeatures
-		cpuid.Entries[i].Ebx = 0x4b4d564b // KVMK
-		cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
-		cpuid.Entries[i].Edx = 0x4d       // M
 	}
 
 	if err := kvm.SetCPUID2(m.vcpuFds[i], &cpuid); err != nil {

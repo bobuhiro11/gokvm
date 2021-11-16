@@ -47,9 +47,10 @@ const (
 	EXITIOIN  = 0
 	EXITIOOUT = 1
 
-	numInterrupts  = 0x100
-	CPUIDFeatures  = 0x40000001
-	CPUIDSignature = 0x40000000
+	numInterrupts   = 0x100
+	CPUIDFeatures   = 0x40000001
+	CPUIDSignature  = 0x40000000
+	CPUIDFuncPerMon = 0x0A
 )
 
 var ErrorUnexpectedEXITReason = errors.New("unexpected kvm exit reason")
