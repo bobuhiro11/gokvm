@@ -478,6 +478,8 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 		}
 
 		return true, nil
+	case kvm.EXITUNKNOWN:
+		return true, nil
 	default:
 		return false, fmt.Errorf("%w: %d", kvm.ErrorUnexpectedEXITReason, m.runs[i].ExitReason)
 	}
