@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
+	"github.com/bobuhiro11/gokvm/ebda"
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/serial"
 )
@@ -130,6 +131,20 @@ func New(nCpus int) (*Machine, error) {
 	})
 	if err != nil {
 		return m, err
+	}
+
+	e, err := ebda.New(nCpus)
+	if err != nil {
+		return m, err
+	}
+
+	bytes, err := e.Bytes()
+	if err != nil {
+		return m, err
+	}
+
+	for i, b := range bytes {
+		m.mem[bootparam.EBDAStart+i] = b
 	}
 
 	return m, nil
@@ -308,14 +323,14 @@ func (m *Machine) initCPUID(i int) error {
 
 	// https://www.kernel.org/doc/html/latest/virt/kvm/cpuid.html
 	for i := 0; i < int(cpuid.Nent); i++ {
-		if cpuid.Entries[i].Function != kvm.CPUIDSignature {
-			continue
+		if cpuid.Entries[i].Function == kvm.CPUIDFuncPerMon {
+			cpuid.Entries[i].Eax = 0 // disable
+		} else if cpuid.Entries[i].Function == kvm.CPUIDSignature {
+			cpuid.Entries[i].Eax = kvm.CPUIDFeatures
+			cpuid.Entries[i].Ebx = 0x4b4d564b // KVMK
+			cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
+			cpuid.Entries[i].Edx = 0x4d       // M
 		}
-
-		cpuid.Entries[i].Eax = kvm.CPUIDFeatures
-		cpuid.Entries[i].Ebx = 0x4b4d564b // KVMK
-		cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
-		cpuid.Entries[i].Edx = 0x4d       // M
 	}
 
 	if err := kvm.SetCPUID2(m.vcpuFds[i], &cpuid); err != nil {
@@ -382,6 +397,8 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 			}
 		}
 
+		return true, nil
+	case kvm.EXITUNKNOWN:
 		return true, nil
 	default:
 		return false, fmt.Errorf("%w: %d", kvm.ErrorUnexpectedEXITReason, m.runs[i].ExitReason)
