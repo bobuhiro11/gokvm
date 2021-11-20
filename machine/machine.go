@@ -133,7 +133,7 @@ func New(nCpus int) (*Machine, error) {
 		return m, err
 	}
 
-	e, err := ebda.New()
+	e, err := ebda.New(nCpus)
 	if err != nil {
 		return m, err
 	}

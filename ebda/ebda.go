@@ -8,8 +8,9 @@ import (
 	"github.com/bobuhiro11/gokvm/bootparam"
 )
 
-// this must be fixed.
-const NumCPUs = 2
+const (
+	MaxVCPUs = 64
+)
 
 // Extended BIOS Data Area (EBDA).
 type EBDA struct {
@@ -31,7 +32,7 @@ func (e *EBDA) Bytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func New() (*EBDA, error) {
+func New(nCPUs int) (*EBDA, error) {
 	e := &EBDA{}
 
 	mpfIntel, err := NewMPFIntel()
@@ -41,7 +42,7 @@ func New() (*EBDA, error) {
 
 	e.mpfIntel = *mpfIntel
 
-	mpcTable, err := NewMPCTable()
+	mpcTable, err := NewMPCTable(nCPUs)
 	if err != nil {
 		return e, err
 	}
@@ -125,20 +126,29 @@ type MPCTable struct {
 	LAPIC     uint32 // Local APIC addresss must be set.
 	Reserved  uint32
 
-	mpcCPU [NumCPUs]MPCCpu
+	mpcCPU [MaxVCPUs]MPCCpu
 }
 
-func NewMPCTable() (*MPCTable, error) {
+const (
+	APICDefaultPhysBase = 0xfee00000
+	APICBaseAddrStep    = 0x00400000
+)
+
+func apicAddr(apic uint32) uint32 {
+	return APICDefaultPhysBase + apic*APICBaseAddrStep
+}
+
+func NewMPCTable(nCPUs int) (*MPCTable, error) {
 	m := &MPCTable{}
 	m.Signature = (('P' << 24) | ('M' << 16) | ('C' << 8) | 'P')
 	m.Length = uint16(unsafe.Sizeof(MPCTable{})) // this field must contain the size of entries.
-	// m.Length += uint16(unsafe.Sizeof(MPCCpu{})) * NumCPUs
-	m.Spec = 1
-	m.LAPIC = 0xFEE00000
+	m.Spec = 4
+	m.LAPIC = apicAddr(0)
+	m.OEMCount = MaxVCPUs // This must be the number of entries
 
 	var err error
 
-	for i := 0; i < NumCPUs; i++ {
+	for i := 0; i < nCPUs; i++ {
 		mpcCPU, err := NewMPCCpu(i)
 		if err != nil {
 			return m, err
@@ -203,6 +213,9 @@ func NewMPCCpu(i int) (*MPCCpu, error) {
 	if i == 0 {
 		m.CPUFlag |= 2 // boot processor
 	}
+
+	m.CPUFeature = 0x600  // STEPPING
+	m.FeatureFlag = 0x201 // CPU_FEATURE_APIC
 
 	return m, nil
 }

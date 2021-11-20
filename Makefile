@@ -39,7 +39,8 @@ bzImage: linux.config linux.tar.xz
 
 .PHONY: run
 run: initrd bzImage
-	go run . -p "console=ttyS0 earlyprintk=serial debug ignore_loglevel apic=debug show_lapic=all" -c 2
+	# refs: commit 1621292e73770aabbc146e72036de5e26f901e86 in kvmtool
+	go run . -p "console=ttyS0 earlyprintk=serial noapic noacpi notsc debug apic=debug show_lapic=all mitigations=off lapic dyndbg=\"file arch/x86/kernel/smpboot.c +plf\"" -c 4
 
 .PHONY: run-system-kernel
 run-system-kernel:
