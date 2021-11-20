@@ -3,6 +3,7 @@ package ebda
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
@@ -11,6 +12,8 @@ import (
 const (
 	MaxVCPUs = 64
 )
+
+var errorVCPUNumExceed = fmt.Errorf("the number of vCPUs must be less than or equal to %d", MaxVCPUs)
 
 // Extended BIOS Data Area (EBDA).
 type EBDA struct {
@@ -145,6 +148,10 @@ func NewMPCTable(nCPUs int) (*MPCTable, error) {
 	m.Spec = 4
 	m.LAPIC = apicAddr(0)
 	m.OEMCount = MaxVCPUs // This must be the number of entries
+
+	if nCPUs > MaxVCPUs {
+		return nil, errorVCPUNumExceed
+	}
 
 	var err error
 
