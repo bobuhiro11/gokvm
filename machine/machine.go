@@ -143,9 +143,7 @@ func New(nCpus int) (*Machine, error) {
 		return m, err
 	}
 
-	for i, b := range bytes {
-		m.mem[bootparam.EBDAStart+i] = b
-	}
+	copy(m.mem[bootparam.EBDAStart:], bytes)
 
 	return m, nil
 }
