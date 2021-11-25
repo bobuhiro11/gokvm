@@ -161,6 +161,7 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	if err != nil {
 		return err
 	}
+
 	copy(m.mem[initrdAddr:], initrd)
 
 	// Load kernel command-line parameters
