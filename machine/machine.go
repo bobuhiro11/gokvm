@@ -143,9 +143,7 @@ func New(nCpus int) (*Machine, error) {
 		return m, err
 	}
 
-	for i, b := range bytes {
-		m.mem[bootparam.EBDAStart+i] = b
-	}
+	copy(m.mem[bootparam.EBDAStart:], bytes)
 
 	return m, nil
 }
@@ -162,15 +160,10 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		return err
 	}
 
-	for i := 0; i < len(initrd); i++ {
-		m.mem[initrdAddr+i] = initrd[i]
-	}
+	copy(m.mem[initrdAddr:], initrd)
 
 	// Load kernel command-line parameters
-	for i, b := range []byte(params) {
-		m.mem[cmdlineAddr+i] = b
-	}
-
+	copy(m.mem[cmdlineAddr:], params)
 	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
 
 	// Load Boot Param
@@ -216,9 +209,7 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		return err
 	}
 
-	for i, b := range bytes {
-		m.mem[bootParamAddr+i] = b
-	}
+	copy(m.mem[bootParamAddr:], bytes)
 
 	// Load kernel
 	bzImage, err := ioutil.ReadFile(bzImagePath)
@@ -234,10 +225,7 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	//
 	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
 	offset := int(bootParam.Hdr.SetupSects+1) * 512
-
-	for i := 0; i < len(bzImage)-offset; i++ {
-		m.mem[kernelAddr+i] = bzImage[offset+i]
-	}
+	copy(m.mem[kernelAddr:], bzImage[offset:])
 
 	for i := range m.vcpuFds {
 		if err = m.initRegs(i); err != nil {
