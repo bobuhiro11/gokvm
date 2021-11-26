@@ -359,21 +359,13 @@ func (m *Machine) RunInfiniteLoop(i int) error {
 }
 
 func (m *Machine) RunOnce(i int) (bool, error) {
-	if err := kvm.Run(m.vcpuFds[i]); err != nil {
-		// When a signal is sent to the thread hosting the VM it will result in EINTR
-		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
-		if m.runs[i].ExitReason == kvm.EXITINTR {
-			return true, nil
-		}
-
-		return false, err
-	}
+	err := kvm.Run(m.vcpuFds[i])
 
 	switch m.runs[i].ExitReason {
 	case kvm.EXITHLT:
 		fmt.Println("KVM_EXIT_HLT")
 
-		return false, nil
+		return false, err
 	case kvm.EXITIO:
 		direction, size, port, count, offset := m.runs[i].IO()
 		f := m.ioportHandlers[port][direction]
@@ -385,10 +377,18 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 			}
 		}
 
-		return true, nil
+		return true, err
 	case kvm.EXITUNKNOWN:
+		return true, err
+	case kvm.EXITINTR:
+		// When a signal is sent to the thread hosting the VM it will result in EINTR
+		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
 		return true, nil
 	default:
+		if err != nil {
+			return false, err
+		}
+
 		return false, fmt.Errorf("%w: %d", kvm.ErrorUnexpectedEXITReason, m.runs[i].ExitReason)
 	}
 }
