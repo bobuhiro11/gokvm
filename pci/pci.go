@@ -44,6 +44,7 @@ func New() *PCI {
 }
 
 func (p *PCI) In(port uint64, values []byte) error {
+	fmt.Printf("PCI IN: port=0x%x values=%v\r\n", port, values)
 	if len(values) != 2 || p.addr.getBusNumber() != 0 || p.addr.getDeviceNumber() != 3 || p.addr.getFunctionNumber() != 0 {
 		for i := 0; i < len(values); i++ {
 			values[i] = 0xff
@@ -77,12 +78,11 @@ func (p *PCI) In(port uint64, values []byte) error {
 		values[1] = 0x00 // BIST
 	}
 
-	fmt.Printf("PCI  IN: port=0x%x values=%v\r\n", port, values)
-
 	return nil
 }
 
 func (p *PCI) Out(port uint64, values []byte) error {
+	fmt.Printf("PCI OUT: port=0x%x values=%v\r\n", port, values)
 	for i := range AddrPorts {
 		if int(port) != AddrPorts[i] {
 			continue

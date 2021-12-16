@@ -48,7 +48,7 @@ bzImage: linux.config linux.tar.xz
 	cp linux.config linux-$(LINUX_VERSION)/.config
 	$(MAKE) -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
-	rm -rf linux-$(LINUX_VERSION)
+	# rm -rf linux-$(LINUX_VERSION)
 
 .PHONY: run
 run: initrd bzImage
