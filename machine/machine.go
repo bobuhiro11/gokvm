@@ -147,6 +147,8 @@ func New(nCpus int) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
+	m.pci = pci.New()
+
 	return m, nil
 }
 
@@ -250,8 +252,6 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	if m.serial, err = serial.New(serialIRQCallback); err != nil {
 		return err
 	}
-
-	m.pci = pci.New()
 
 	return nil
 }
@@ -448,10 +448,15 @@ func (m *Machine) initIOPortHandlers() {
 			m.ioportHandlers[port][dir] = funcNone
 		}
 
-		// Intel Pentium motherboard ("Neptune" chipset)
-		m.ioportHandlers[0xC008][dir] = funcNone
+		// unknown
+		for port := 0xcfe; port <= 0xcfe; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+		for port := 0xcfa; port <= 0xcfb; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
 
-		// Intel Ethernet NIC
+		// PCI Configuration Space Access Mechanism #2
 		for port := 0xc000; port <= 0xcfff; port++ {
 			m.ioportHandlers[port][dir] = funcNone
 		}
@@ -486,12 +491,23 @@ func (m *Machine) initIOPortHandlers() {
 	}
 
 	// PCI configuration
-	for _, port := range append(pci.DataPorts, pci.AddrPorts...) {
+	//
+	// 0xcf8 for address register for PCI Config Space
+	// 0xcfc + 0xcff for data for PCI Config Space
+	// see https://github.com/torvalds/linux/blob/master/arch/x86/pci/direct.c for more detail.
+
+	m.ioportHandlers[0xCF8][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+		return m.pci.PciConfAddrIn(port, bytes)
+	}
+	m.ioportHandlers[0xCF8][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+		return m.pci.PciConfAddrOut(port, bytes)
+	}
+	for port := 0xcfc; port < 0xcfc+4; port++ {
 		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
-			return m.pci.In(port, bytes)
+			return m.pci.PciConfDataIn(port, bytes)
 		}
 		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
-			return m.pci.Out(port, bytes)
+			return m.pci.PciConfDataOut(port, bytes)
 		}
 	}
 }

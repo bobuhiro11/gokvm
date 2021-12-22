@@ -44,7 +44,7 @@ linux.tar.xz:
 		-o linux.tar.xz
 
 bzImage: linux.config linux.tar.xz
-	tar Jxf ./linux.tar.xz
+	# tar Jxf ./linux.tar.xz
 	cp linux.config linux-$(LINUX_VERSION)/.config
 	$(MAKE) -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .

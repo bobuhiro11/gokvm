@@ -4,14 +4,12 @@ import (
 	"fmt"
 )
 
+// Configuration Space Access Mechanism #1
+//
 // refs
 // https://wiki.osdev.org/PCI
 // http://www2.comp.ufscar.br/~helio/boot-int/pci.html
 // nolint:gochecknoglobals
-var (
-	AddrPorts = []int{0xcf8, 0xcf9, 0xcfa, 0xcfb}
-	DataPorts = []int{0xcfc, 0xcfd, 0xcfe, 0xcff}
-)
 
 type address uint32
 
@@ -40,77 +38,66 @@ type PCI struct {
 }
 
 func New() *PCI {
-	return &PCI{}
+	return &PCI{
+		addr: 0xaabbccdd,
+	}
 }
 
-func (p *PCI) In(port uint64, values []byte) error {
-	fmt.Printf("PCI IN: port=0x%x values=%v\r\n", port, values)
-	if len(values) != 2 || p.addr.getBusNumber() != 0 || p.addr.getDeviceNumber() != 3 || p.addr.getFunctionNumber() != 0 {
-		for i := 0; i < len(values); i++ {
-			values[i] = 0xff
-		}
-
-		return nil
+func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
+	if p.addr.getRegisterOffset() == 0 {
+		// Vendor ID for virtio PCI
+		values[0] = 0xF4
+		values[1] = 0x1A
 	}
-
-	// vendor id: intel 0x8086
-	if p.addr.getRegisterOffset() == 0x0 {
-		values[0] = 0x86
-		values[1] = 0x80
-	}
-
-	// device id: 82542 Gigabit Ethernet Controller (Fiber)
-	if p.addr.getRegisterOffset() == 0x2 {
+	if p.addr.getRegisterOffset() == 8 {
+		// Device ID for virtio PCI
 		values[0] = 0x00
 		values[1] = 0x10
 	}
+	fmt.Printf("PciConfDataIn: values: %#v\r\n", values)
+	return nil
+}
 
-	// class code & subclass
-	// ethernet controller
-	if p.addr.getRegisterOffset() == 0xa {
-		values[0] = 0x00 // sub class
-		values[1] = 0x02 // class code
+func (p *PCI) PciConfDataOut(port uint64, values []byte) error {
+	fmt.Printf("PciConfDataOut: values: %#v\r\n", values)
+	return nil
+}
+
+func (p *PCI) PciConfAddrIn(port uint64, values []byte) error {
+	if len(values) != 4 {
+		return nil
 	}
 
-	// header type
-	if p.addr.getRegisterOffset() == 0xe {
-		values[0] = 0x00 // header type
-		values[1] = 0x00 // BIST
-	}
+	values[3] = uint8((p.addr >> 24) & 0xff)
+	values[2] = uint8((p.addr >> 16) & 0xff)
+	values[1] = uint8((p.addr >> 8) & 0xff)
+	values[0] = uint8((p.addr >> 0) & 0xff)
+
+	fmt.Printf("PciConfAddrIn: port=0x%x x=0x%x slot=%d func=%d offset=%x\r\n", port, p.addr,
+		p.addr.getDeviceNumber(),
+		p.addr.getFunctionNumber(),
+		p.addr.getRegisterOffset())
 
 	return nil
 }
 
-func (p *PCI) Out(port uint64, values []byte) error {
-	fmt.Printf("PCI OUT: port=0x%x values=%v\r\n", port, values)
-	for i := range AddrPorts {
-		if int(port) != AddrPorts[i] {
-			continue
-		}
-
-		if len(values) != 4 {
-			continue
-		}
-
-		if port != 0x0cf8 {
-			continue
-		}
-
-		p.addr = 0
-		p.addr |= address(values[3]) << 24
-		p.addr |= address(values[2]) << 16
-		p.addr |= address(values[1]) << 8
-		p.addr |= address(values[0]) << 0
-
-		if p.addr.getBusNumber() == 0 && p.addr.getDeviceNumber() == 3 && p.addr.getFunctionNumber() == 0 {
-			fmt.Printf("pci address = %x:%x:%x, offset = 0x%x, enabled = %v\r\n",
-				p.addr.getBusNumber(),
-				p.addr.getDeviceNumber(),
-				p.addr.getFunctionNumber(),
-				p.addr.getRegisterOffset(),
-				p.addr.isEnable())
-		}
+func (p *PCI) PciConfAddrOut(port uint64, values []byte) error {
+	if len(values) != 4 {
+		return nil
 	}
+
+	x := uint32(0)
+	x |= uint32(values[3]) << 24
+	x |= uint32(values[2]) << 16
+	x |= uint32(values[1]) << 8
+	x |= uint32(values[0]) << 0
+
+	p.addr = address(x)
+
+	fmt.Printf("PciConfAddrOut: port=0x%x x=0x%x slot=%d func=%d offset=%x\r\n", port, p.addr,
+		p.addr.getDeviceNumber(),
+		p.addr.getFunctionNumber(),
+		p.addr.getRegisterOffset())
 
 	return nil
 }
