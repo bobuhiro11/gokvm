@@ -1,6 +1,7 @@
 GOLANGCI_LINT_VERSION = v1.35.2
 BUSYBOX_VERSION = 1.33.1
 LINUX_VERSION = 5.14.3
+PCIUTILS_VERSION = 3.7.0
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 
 gokvm: $(wildcard *.go)
@@ -13,13 +14,25 @@ golangci-lint:
 busybox.tar.bz2:
 	curl --retry 5 https://busybox.net/downloads/busybox-$(BUSYBOX_VERSION).tar.bz2 -o busybox.tar.bz2
 
-initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS
+pciutils.tar.gz:
+	curl --retry 5 https://mirrors.edge.kernel.org/pub/software/utils/pciutils/pciutils-$(PCIUTILS_VERSION).tar.gz \
+		-o pciutils.tar.gz
+
+initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz
+	tar -xf pciutils.tar.gz
+	make -C pciutils-$(PCIUTILS_VERSION) \
+		OPT="-O2 -static -static-libstdc++ -static-libgcc" \
+		LDFLAGS=-static ZLIB=no DNS=no LIBKMOD=no HWDB=no
 	tar -xf busybox.tar.bz2
 	cp busybox.config busybox-$(BUSYBOX_VERSION)/.config
 	$(MAKE) -C busybox-$(BUSYBOX_VERSION) install
+	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/usr/local/share
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/etc/init.d
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/proc
 	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/sys
+	rm -f busybox-$(BUSYBOX_VERSION)/_install/usr/bin/lspci
+	cp pciutils-$(PCIUTILS_VERSION)/lspci busybox-$(BUSYBOX_VERSION)/_install/usr/bin/lspci
+	cp pciutils-$(PCIUTILS_VERSION)/pci.ids busybox-$(BUSYBOX_VERSION)/_install/usr/local/share/pci.ids
 	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
 	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
 	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
