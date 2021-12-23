@@ -1,6 +1,8 @@
 package pci
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 )
 
@@ -33,14 +35,62 @@ func (a address) isEnable() bool {
 	return ((uint32(a) >> 31) | 0x1) == 0x1
 }
 
+type deviceHeader struct {
+	vendorID uint16
+	deviceID uint16
+	command uint16
+	status uint16
+	revisonID uint8
+	classCode [3]uint8
+	cacheLineSize uint8
+	latencyTimer uint8
+	headerTYpe uint8
+	bist uint8
+	baseAddressRegister [6]uint32
+	cardbusCISPointer uint32
+	subsystemVendorID uint16
+	subsystemID uint16
+	expansionROMBaseAddress uint32
+	capabilitiesPointer uint8
+	reserved [7]uint8
+	interruptLine uint8
+	interruptPin uint8
+	minGnt uint8
+	maxLat uint8
+}
+
+func (h *deviceHeader) Bytes() ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.LittleEndian, h); err != nil {
+		return []byte{}, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 type PCI struct {
 	addr address
+	headers []*deviceHeader
 }
 
 func New() *PCI {
-	return &PCI{
-		addr: 0xaabbccdd,
-	}
+	p := &PCI{}
+
+	// 00:00.0 for PCI bridge
+	p.headers = append(p.headers, &deviceHeader{
+		deviceID: 0x6000,
+		vendorID: 0x8086,
+		headerTYpe: 1,
+	})
+
+	// 00:01.0 for Virtio PCI
+	p.headers = append(p.headers, &deviceHeader{
+		deviceID: 0x1000,
+		vendorID: 0x1AF4,
+		headerTYpe: 0,
+	})
+	return p
 }
 
 func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
@@ -48,28 +98,29 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 	//        (address from IO port 0xcf8) & 0xfc + (IO port address for Data) - 0xCFC
 	// see pci_conf1_read in linux/arch/x86/pci/direct.c for more detail.
 
-	offset := p.addr.getRegisterOffset() + uint32(port - 0xCFC)
+	offset := int(p.addr.getRegisterOffset() + uint32(port - 0xCFC))
 
-	// 00:00.0 for PCI Bridge
-	if p.addr.getBusNumber() == 0 && p.addr.getDeviceNumber() == 0 && p.addr.getFunctionNumber() == 0 {
-		if offset == 0x0a { // PCI_CLASS_DEVICE
-			values[0] = 0x00 // PCI_CLASS_BRIDGE_HOST
-			values[1] = 0x60
-		}
-
-		if offset == 0x00 { // PCI_VENDOR_ID
-			values[0] = 0x86 // PCI_VENDOR_ID_INTEL
-			values[1] = 0x80
-		}
+	if p.addr.getBusNumber() != 0 {
+		return nil
 	}
-	// 00:01.0 for Virtio PCI
-	if p.addr.getBusNumber() == 0 && p.addr.getDeviceNumber() == 1 && p.addr.getFunctionNumber() == 0 {
-		if offset == 0x00 && len(values) == 4 {
-			values[0] = 0xF4 // Vendor ID
-			values[1] = 0x1A
-			values[2] = 0x00 // Device ID
-			values[3] = 0x10
-		}
+
+	if p.addr.getFunctionNumber() != 0 {
+		return nil
+	}
+
+	slot := int(p.addr.getDeviceNumber())
+
+	if slot >= len(p.headers) {
+		return nil
+	}
+
+	b, err := p.headers[slot].Bytes()
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(values); i++ {
+		values[i] = b[offset+i]
 	}
 
 	fmt.Printf("PciConfDataIn: offset:0x%x values: %#v\r\n", offset, values)
