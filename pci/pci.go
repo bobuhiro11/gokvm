@@ -49,14 +49,27 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 	// see pci_conf1_read in linux/arch/x86/pci/direct.c for more detail.
 
 	offset := p.addr.getRegisterOffset() + uint32(port - 0xCFC)
-	if offset == 0x0a { // PCI_CLASS_DEVICE
-		values[0] = 0x00 // PCI_CLASS_BRIDGE_HOST
-		values[1] = 0x60
-	}
 
-	if offset == 0x00 { // PCI_VENDOR_ID
-		values[0] = 0x86 // PCI_VENDOR_ID_INTEL
-		values[1] = 0x80
+	// 00:00.0 for PCI Bridge
+	if p.addr.getBusNumber() == 0 && p.addr.getDeviceNumber() == 0 && p.addr.getFunctionNumber() == 0 {
+		if offset == 0x0a { // PCI_CLASS_DEVICE
+			values[0] = 0x00 // PCI_CLASS_BRIDGE_HOST
+			values[1] = 0x60
+		}
+
+		if offset == 0x00 { // PCI_VENDOR_ID
+			values[0] = 0x86 // PCI_VENDOR_ID_INTEL
+			values[1] = 0x80
+		}
+	}
+	// 00:01.0 for Virtio PCI
+	if p.addr.getBusNumber() == 0 && p.addr.getDeviceNumber() == 1 && p.addr.getFunctionNumber() == 0 {
+		if offset == 0x00 && len(values) == 4 {
+			values[0] = 0xF4 // Vendor ID
+			values[1] = 0x1A
+			values[2] = 0x00 // Device ID
+			values[3] = 0x10
+		}
 	}
 
 	fmt.Printf("PciConfDataIn: offset:0x%x values: %#v\r\n", offset, values)
