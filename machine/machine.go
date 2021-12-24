@@ -11,6 +11,7 @@ import (
 	"github.com/bobuhiro11/gokvm/bootparam"
 	"github.com/bobuhiro11/gokvm/ebda"
 	"github.com/bobuhiro11/gokvm/kvm"
+	"github.com/bobuhiro11/gokvm/pci"
 	"github.com/bobuhiro11/gokvm/serial"
 )
 
@@ -56,6 +57,7 @@ type Machine struct {
 	vcpuFds        []uintptr
 	mem            []byte
 	runs           []*kvm.RunData
+	pci            *pci.PCI
 	serial         *serial.Serial
 	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
@@ -144,6 +146,8 @@ func New(nCpus int) (*Machine, error) {
 	}
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
+
+	m.pci = pci.New()
 
 	return m, nil
 }
@@ -443,6 +447,20 @@ func (m *Machine) initIOPortHandlers() {
 		for port := 0x2e8; port <= 0x2ef; port++ {
 			m.ioportHandlers[port][dir] = funcNone
 		}
+
+		// unknown
+		for port := 0xcfe; port <= 0xcfe; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		for port := 0xcfa; port <= 0xcfb; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// PCI Configuration Space Access Mechanism #2
+		for port := 0xc000; port <= 0xcfff; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
 	}
 
 	// PS/2 Keyboard (Always 8042 Chip)
@@ -470,6 +488,28 @@ func (m *Machine) initIOPortHandlers() {
 		}
 		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
 			return m.serial.Out(port, bytes)
+		}
+	}
+
+	// PCI configuration
+	//
+	// 0xcf8 for address register for PCI Config Space
+	// 0xcfc + 0xcff for data for PCI Config Space
+	// see https://github.com/torvalds/linux/blob/master/arch/x86/pci/direct.c for more detail.
+
+	m.ioportHandlers[0xCF8][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+		return m.pci.PciConfAddrIn(port, bytes)
+	}
+	m.ioportHandlers[0xCF8][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+		return m.pci.PciConfAddrOut(port, bytes)
+	}
+
+	for port := 0xcfc; port < 0xcfc+4; port++ {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.pci.PciConfDataIn(port, bytes)
+		}
+		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+			return m.pci.PciConfDataOut(port, bytes)
 		}
 	}
 }
