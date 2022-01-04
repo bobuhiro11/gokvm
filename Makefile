@@ -44,11 +44,12 @@ linux.tar.xz:
 		-o linux.tar.xz
 
 bzImage: linux.config linux.tar.xz
-	tar Jxf ./linux.tar.xz
-	cp linux.config linux-$(LINUX_VERSION)/.config
+	if ! test -f linux-$(LINUX_VERSION)/.config; then \
+		tar Jxf ./linux.tar.xz; \
+		cp linux.config linux-$(LINUX_VERSION)/.config; \
+	fi
 	$(MAKE) -C linux-$(LINUX_VERSION)
 	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
-	rm -rf linux-$(LINUX_VERSION)
 
 .PHONY: run
 run: initrd bzImage
@@ -70,8 +71,8 @@ test: golangci-lint initrd bzImage
 		--disable maligned \
 		--disable forbidigo \
 		--disable funlen \
-		./...
-	go test -v -coverprofile c.out ./...
+		$(shell find . -type f -name "*.go" | xargs dirname | sort)
+	go test -v -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
 
 .PHONY: clean
 clean:
