@@ -43,6 +43,10 @@ import (
 //                               |                  |
 //                               +------------------+
 //                               |                  |
+//                 0x3f000000    +------------------+
+//                               |  PCI MMIO        |
+//                               +------------------+
+//                               |                  |
 //                 0x40000000    +------------------+
 const (
 	memSize       = 1 << 30
@@ -121,14 +125,14 @@ func New(nCpus int) (*Machine, error) {
 		m.runs[i] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
-	m.mem, err = syscall.Mmap(-1, 0, memSize,
+	m.mem, err = syscall.Mmap(-1, 0, pci.MMIOStart,
 		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
 	if err != nil {
 		return m, err
 	}
 
 	err = kvm.SetUserMemoryRegion(m.vmFd, &kvm.UserspaceMemoryRegion{
-		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: 1 << 30,
+		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: pci.MMIOStart,
 		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&m.mem[0]))),
 	})
 	if err != nil {
@@ -196,6 +200,11 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 		kernelAddr,
 		memSize-kernelAddr,
 		bootparam.E820Ram,
+	)
+	bootParam.AddE820Entry(
+		pci.MMIOStart,
+		memSize-pci.MMIOStart,
+		bootparam.E820Reserved,
 	)
 
 	bootParam.Hdr.VidMode = 0xFFFF                                                                  // Proto ALL
@@ -459,6 +468,11 @@ func (m *Machine) initIOPortHandlers() {
 
 		// PCI Configuration Space Access Mechanism #2
 		for port := 0xc000; port <= 0xcfff; port++ {
+			m.ioportHandlers[port][dir] = funcNone
+		}
+
+		// BAR for 00:01.0
+		for port := pci.IOportStart; port < pci.IOportStart + pci.PciIOSize; port++ {
 			m.ioportHandlers[port][dir] = funcNone
 		}
 	}
