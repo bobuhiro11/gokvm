@@ -3,6 +3,7 @@ package pci
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
 // Configuration Space Access Mechanism #1
@@ -33,27 +34,27 @@ func (a address) isEnable() bool {
 }
 
 type deviceHeader struct {
-	vendorID   uint16
-	deviceID   uint16
-	command    uint16
-	_          uint16   // status
-	_          uint8    // revisonID
-	_          [3]uint8 // classCode
-	_          uint8    // cacheLineSize
-	_          uint8    // latencyTimer
-	headerType uint8
-	_          uint8 // bist
-	bar        [6]uint32
-	_          uint32   // cardbusCISPointer
-	_          uint16   // subsystemVendorID
-	_          uint16   // subsystemID
-	_          uint32   // expansionROMBaseAddress
-	_          uint8    // capabilitiesPointer
-	_          [7]uint8 // reserved
-	_          uint8    // interruptLine
-	_          uint8    // interruptPin
-	_          uint8    // minGnt
-	_          uint8    // maxLat
+	vendorID    uint16
+	deviceID    uint16
+	command     uint16
+	_           uint16   // status
+	_           uint8    // revisonID
+	_           [3]uint8 // classCode
+	_           uint8    // cacheLineSize
+	_           uint8    // latencyTimer
+	headerType  uint8
+	_           uint8 // bist
+	bar         [6]uint32
+	_           uint32 // cardbusCISPointer
+	_           uint16 // subsystemVendorID
+	subsystemID uint16
+	_           uint32   // expansionROMBaseAddress
+	_           uint8    // capabilitiesPointer
+	_           [7]uint8 // reserved
+	_           uint8    // interruptLine
+	_           uint8    // interruptPin
+	_           uint8    // minGnt
+	_           uint8    // maxLat
 }
 
 func (h *deviceHeader) Bytes() ([]byte, error) {
@@ -99,10 +100,25 @@ func New() *PCI {
 			IOportStart | barIO,
 			MMIOStart | barMem,
 		},
-		command: 0x1 | 0x2, // IO_EN, MEM_EN
+		subsystemID: 1,         // network card
+		command:     0x1 | 0x2, // IO_EN, MEM_EN
 	})
 
 	return p
+}
+
+func (p *PCI) VirtioIn(port uint64, values []byte) error {
+	offset := port - IOportStart
+	fmt.Printf("VirtioIn offset:0x%x values:%#v\r\n", offset, values)
+
+	return nil
+}
+
+func (p *PCI) VirtioOut(port uint64, values []byte) error {
+	offset := port - IOportStart
+	fmt.Printf("VirtioOut offset:0x%x values:%#v\r\n", offset, values)
+
+	return nil
 }
 
 func (p *PCI) PciConfDataIn(port uint64, values []byte) error {

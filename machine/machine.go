@@ -472,8 +472,13 @@ func (m *Machine) initIOPortHandlers() {
 		}
 
 		// BAR for 00:01.0
-		for port := pci.IOportStart; port < pci.IOportStart + pci.PciIOSize; port++ {
-			m.ioportHandlers[port][dir] = funcNone
+		for port := pci.IOportStart; port < pci.IOportStart+pci.PciIOSize; port++ {
+			m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+				return m.pci.VirtioIn(port, bytes)
+			}
+			m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
+				return m.pci.VirtioOut(port, bytes)
+			}
 		}
 	}
 
