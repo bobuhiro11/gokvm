@@ -5,6 +5,7 @@ addons:
     packages:
       - qemu-kvm
       - qemu-utils
+      - libmnl-dev
 language: go
 go:
   - 1.15.x
