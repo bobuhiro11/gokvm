@@ -33,28 +33,90 @@ func (a address) isEnable() bool {
 	return ((uint32(a) >> 31) | 0x1) == 0x1
 }
 
+const (
+	hostFeatures  = 0
+	guestFeatures = 4
+	queuePFN      = 8
+	queueNUM      = 12
+	queueSEL      = 14
+	queueNotify   = 16
+	status        = 18
+	isr           = 19
+
+	// virtio-net.
+	mac               = 20
+	netStatus         = 26
+	maxVirtQueuePairs = 28
+)
+
+func offset2Str(offset uint64) string {
+	switch offset {
+	case hostFeatures:
+		return "hostFeatures"
+	case guestFeatures:
+		return "guestFeatures"
+	case queuePFN:
+		return "queuePFN"
+	case queueNUM:
+		return "queueNUM"
+	case queueSEL:
+		return "queueSEL"
+	case queueNotify:
+		return "queueNotify"
+	case status:
+		return "status"
+	case isr:
+		return "isr"
+	case mac:
+		return "mac"
+	case netStatus:
+		return "netStatus"
+	case maxVirtQueuePairs:
+		return "maxVirtQueuePairs"
+	default:
+		return ""
+	}
+}
+
+// type virtioHeader struct {
+// 	// common
+// 	hostFeatures uint32
+// 	guestFeatures uint32
+// 	queuePFN uint32
+// 	queueNUM uint16
+// 	queueSEL uint16
+// 	queueNotify uint16
+// 	status uint8
+// 	isr uint8
+//
+// 	// virtio-net
+// 	mac [6]uint8
+// 	netStatus uint16
+// 	maxVirtQueuePairs uint16
+// }
+
 type deviceHeader struct {
-	vendorID    uint16
-	deviceID    uint16
-	command     uint16
-	_           uint16   // status
-	_           uint8    // revisonID
-	_           [3]uint8 // classCode
-	_           uint8    // cacheLineSize
-	_           uint8    // latencyTimer
-	headerType  uint8
-	_           uint8 // bist
-	bar         [6]uint32
-	_           uint32 // cardbusCISPointer
-	_           uint16 // subsystemVendorID
-	subsystemID uint16
-	_           uint32   // expansionROMBaseAddress
-	_           uint8    // capabilitiesPointer
-	_           [7]uint8 // reserved
-	_           uint8    // interruptLine
-	_           uint8    // interruptPin
-	_           uint8    // minGnt
-	_           uint8    // maxLat
+	vendorID      uint16
+	deviceID      uint16
+	command       uint16
+	_             uint16   // status
+	_             uint8    // revisonID
+	_             [3]uint8 // classCode
+	_             uint8    // cacheLineSize
+	_             uint8    // latencyTimer
+	headerType    uint8
+	_             uint8 // bist
+	bar           [6]uint32
+	_             uint32 // cardbusCISPointer
+	_             uint16 // subsystemVendorID
+	subsystemID   uint16
+	_             uint32   // expansionROMBaseAddress
+	_             uint8    // capabilitiesPointer
+	_             [7]uint8 // reserved
+	interruptLine uint8
+	interruptPin  uint8
+	_             uint8 // minGnt
+	_             uint8 // maxLat
 }
 
 func (h *deviceHeader) Bytes() ([]byte, error) {
@@ -70,6 +132,7 @@ func (h *deviceHeader) Bytes() ([]byte, error) {
 type PCI struct {
 	addr    address
 	headers []*deviceHeader
+	// virtioHeader *virtioHeader
 }
 
 const (
@@ -102,21 +165,33 @@ func New() *PCI {
 		},
 		subsystemID: 1,         // network card
 		command:     0x1 | 0x2, // IO_EN, MEM_EN
+		// https://github.com/torvalds/linux/blob/fb3b0673b7d5b477ed104949450cd511337ba3c6/drivers/pci/setup-irq.c#L30-L55
+		interruptPin: 1,
+
+		// https://www.webopedia.com/reference/irqnumbers/
+		interruptLine: 9,
 	})
+	// p.virtioHeader = &virtioHeader{}
 
 	return p
 }
 
 func (p *PCI) VirtioIn(port uint64, values []byte) error {
 	offset := port - IOportStart
-	fmt.Printf("VirtioIn offset:0x%x values:%#v\r\n", offset, values)
+
+	if offset == queueNUM {
+		values[0] = 0x10
+		values[1] = 0x00
+	}
+
+	fmt.Printf("VirtioIn offset:0x%x(%s) values:%#v\r\n", offset, offset2Str(offset), values)
 
 	return nil
 }
 
 func (p *PCI) VirtioOut(port uint64, values []byte) error {
 	offset := port - IOportStart
-	fmt.Printf("VirtioOut offset:0x%x values:%#v\r\n", offset, values)
+	fmt.Printf("VirtioOut offset:0x%x(%s) values:%#v\r\n", offset, offset2Str(offset), values)
 
 	return nil
 }
@@ -152,6 +227,8 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 
 	l := len(values)
 	copy(values[:l], b[offset:offset+l])
+
+	fmt.Printf("PciConfDataIn: port:%#v values:%#v\r\n", port, values)
 
 	return nil
 }
@@ -195,6 +272,8 @@ func (p *PCI) PciConfDataOut(port uint64, values []byte) error {
 			p.headers[slot].bar[bar] = x
 		}
 	}
+
+	fmt.Printf("PciConfDataOut: port:%#v values:%#v\r\n", port, values)
 
 	return nil
 }
