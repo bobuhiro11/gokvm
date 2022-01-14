@@ -193,6 +193,16 @@ func (p *PCI) VirtioOut(port uint64, values []byte) error {
 	offset := port - IOportStart
 	fmt.Printf("VirtioOut offset:0x%x(%s) values:%#v\r\n", offset, offset2Str(offset), values)
 
+	if offset == queuePFN {
+		x := uint32(0)
+		x |= uint32(values[3]) << 24
+		x |= uint32(values[2]) << 16
+		x |= uint32(values[1]) << 8
+		x |= uint32(values[0]) << 0
+		x *= 4096 // 4KB page size
+		fmt.Printf("guest phys mem addr for queue: 0x%x\r\n", x)
+	}
+
 	return nil
 }
 
