@@ -2,6 +2,7 @@ GOLANGCI_LINT_VERSION = v1.35.2
 BUSYBOX_VERSION = 1.33.1
 LINUX_VERSION = 5.14.3
 PCIUTILS_VERSION = 3.7.0
+ETHTOOL_VERSION = 5.15
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 
 gokvm: $(wildcard *.go)
@@ -18,11 +19,17 @@ pciutils.tar.gz:
 	curl --retry 5 https://mirrors.edge.kernel.org/pub/software/utils/pciutils/pciutils-$(PCIUTILS_VERSION).tar.gz \
 		-o pciutils.tar.gz
 
-initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz
+ethtool.tar.gz:
+	curl --retry 5 http://ftp.ntu.edu.tw/pub/software/network/ethtool/ethtool-$(ETHTOOL_VERSION).tar.gz \
+		-o ethtool.tar.gz
+
+initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
 	tar -xf pciutils.tar.gz
 	make -C pciutils-$(PCIUTILS_VERSION) \
 		OPT="-O2 -static -static-libstdc++ -static-libgcc" \
 		LDFLAGS=-static ZLIB=no DNS=no LIBKMOD=no HWDB=no
+	tar -xf ethtool.tar.gz
+	cd ./ethtool-$(ETHTOOL_VERSION) && ./autogen.sh && ./configure LDFLAGS=-static && make
 	tar -xf busybox.tar.bz2
 	cp busybox.config busybox-$(BUSYBOX_VERSION)/.config
 	$(MAKE) -C busybox-$(BUSYBOX_VERSION) install
@@ -33,6 +40,7 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	rm -f busybox-$(BUSYBOX_VERSION)/_install/usr/bin/lspci
 	cp pciutils-$(PCIUTILS_VERSION)/lspci busybox-$(BUSYBOX_VERSION)/_install/usr/bin/lspci
 	cp pciutils-$(PCIUTILS_VERSION)/pci.ids busybox-$(BUSYBOX_VERSION)/_install/usr/local/share/pci.ids
+	cp ethtool-$(ETHTOOL_VERSION)/ethtool busybox-$(BUSYBOX_VERSION)/_install/usr/bin/ethtool
 	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
 	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
 	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
