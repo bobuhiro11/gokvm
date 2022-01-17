@@ -13,6 +13,7 @@ import (
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/pci"
 	"github.com/bobuhiro11/gokvm/serial"
+	"github.com/bobuhiro11/gokvm/virtio"
 )
 
 // InitialRegState GuestPhysAddr                      Binary files [+ offsets in the file]
@@ -147,7 +148,10 @@ func New(nCpus int) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
-	m.pci = pci.New()
+	m.pci = pci.New(
+		pci.NewBridge(),       // 00:00.0 for PCI bridge
+		virtio.NewVirtioNet(), // 00:01.0 for Virtio PCI
+	)
 
 	return m, nil
 }

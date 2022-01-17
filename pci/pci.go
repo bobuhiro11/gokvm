@@ -32,16 +32,27 @@ func (a address) isEnable() bool {
 	return ((uint32(a) >> 31) | 0x1) == 0x1
 }
 
-type deviceHeader struct {
-	vendorID   uint16
-	deviceID   uint16
+// interface for a PCI device.
+type Device interface {
+	GetDeviceHeader() DeviceHeader
+	IOInHandler(port int, bytes []byte) error
+	IOOutHandler(port int, bytes []byte) error
+
+	// IO port range for this PCI device.
+	// This range corresponds to IO Range in BAR.
+	GetIORange() (start int, end int)
+}
+
+type DeviceHeader struct {
+	VendorID   uint16
+	DeviceID   uint16
 	_          uint16   // command
 	_          uint16   // status
 	_          uint8    // revisonID
 	_          [3]uint8 // classCode
 	_          uint8    // cacheLineSize
 	_          uint8    // latencyTimer
-	headerType uint8
+	HeaderType uint8
 	_          uint8     // bist
 	_          [6]uint32 // baseAddressRegister
 	_          uint32    // cardbusCISPointer
@@ -56,7 +67,7 @@ type deviceHeader struct {
 	_          uint8     // maxLat
 }
 
-func (h *deviceHeader) Bytes() ([]byte, error) {
+func (h DeviceHeader) Bytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	if err := binary.Write(buf, binary.LittleEndian, h); err != nil {
@@ -68,27 +79,11 @@ func (h *deviceHeader) Bytes() ([]byte, error) {
 
 type PCI struct {
 	addr    address
-	headers []*deviceHeader
+	devices []Device
 }
 
-func New() *PCI {
-	p := &PCI{}
-
-	// 00:00.0 for PCI bridge
-	p.headers = append(p.headers, &deviceHeader{
-		deviceID:   0x6000,
-		vendorID:   0x8086,
-		headerType: 1,
-	})
-
-	// 00:01.0 for Virtio PCI
-	p.headers = append(p.headers, &deviceHeader{
-		deviceID:   0x1000,
-		vendorID:   0x1AF4,
-		headerType: 0,
-	})
-
-	return p
+func New(devices ...Device) *PCI {
+	return &PCI{devices: devices}
 }
 
 func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
@@ -111,11 +106,11 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 
 	slot := int(p.addr.getDeviceNumber())
 
-	if slot >= len(p.headers) {
+	if slot >= len(p.devices) {
 		return nil
 	}
 
-	b, err := p.headers[slot].Bytes()
+	b, err := p.devices[slot].GetDeviceHeader().Bytes()
 	if err != nil {
 		return err
 	}
