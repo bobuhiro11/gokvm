@@ -21,7 +21,7 @@ script:
   - sudo chmod 666 /dev/kvm
   - make gokvm
   - make test
-  - goveralls -service=travis-ci
+  - goveralls -service=travis-ci -coverprofile c.out
   - make clean
 after_script:
   - ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
