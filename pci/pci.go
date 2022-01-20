@@ -130,10 +130,7 @@ func (p *PCI) PciConfAddrIn(port uint64, values []byte) error {
 		return nil
 	}
 
-	values[3] = uint8((p.addr >> 24) & 0xff)
-	values[2] = uint8((p.addr >> 16) & 0xff)
-	values[1] = uint8((p.addr >> 8) & 0xff)
-	values[0] = uint8((p.addr >> 0) & 0xff)
+	copy(values[:4], NumToBytes(uint32(p.addr)))
 
 	return nil
 }
@@ -143,13 +140,55 @@ func (p *PCI) PciConfAddrOut(port uint64, values []byte) error {
 		return nil
 	}
 
-	x := uint32(0)
-	x |= uint32(values[3]) << 24
-	x |= uint32(values[2]) << 16
-	x |= uint32(values[1]) << 8
-	x |= uint32(values[0]) << 0
-
-	p.addr = address(x)
+	p.addr = address(BytesToNum(values))
 
 	return nil
+}
+
+func SizeToBits(size uint64) uint32 {
+	if size == 0 {
+		return 0
+	}
+
+	return ^uint32(1) - uint32(size-2)
+}
+
+func BytesToNum(bytes []byte) uint64 {
+	res := uint64(0)
+
+	for i, x := range bytes {
+		res |= uint64(x) << (i * 8)
+	}
+
+	return res
+}
+
+func NumToBytes(x interface{}) []byte {
+	res := []byte{}
+	l := 0
+	y := uint64(0)
+
+	switch v := x.(type) {
+	case uint8:
+		l = 1
+		y = uint64(v)
+	case uint16:
+		l = 2
+		y = uint64(v)
+	case uint32:
+		l = 4
+		y = uint64(v)
+	case uint64:
+		l = 8
+		y = v
+	default:
+		return []byte{}
+	}
+
+	for i := 0; i < l; i++ {
+		res = append(res, uint8(y))
+		y >>= 8
+	}
+
+	return res
 }
