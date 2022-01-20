@@ -78,8 +78,9 @@ func (h DeviceHeader) Bytes() ([]byte, error) {
 }
 
 type PCI struct {
-	addr    address
-	Devices []Device
+	addr        address
+	isBAR0Probe bool
+	Devices     []Device
 }
 
 func New(devices ...Device) *PCI {
@@ -110,6 +111,16 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 		return nil
 	}
 
+	// Probing BAR0 Size
+	if bar := offset/4 - 4; bar == 0 && p.isBAR0Probe {
+		start, end := p.Devices[slot].GetIORange()
+		copy(values[:4], NumToBytes(SizeToBits(end-start)))
+
+		p.isBAR0Probe = false
+
+		return nil
+	}
+
 	b, err := p.Devices[slot].GetDeviceHeader().Bytes()
 	if err != nil {
 		return err
@@ -122,6 +133,33 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 }
 
 func (p *PCI) PciConfDataOut(port uint64, values []byte) error {
+	offset := int(p.addr.getRegisterOffset() + uint32(port-0xCFC))
+
+	if !p.addr.isEnable() {
+		return nil
+	}
+
+	if p.addr.getBusNumber() != 0 {
+		return nil
+	}
+
+	if p.addr.getFunctionNumber() != 0 {
+		return nil
+	}
+
+	slot := int(p.addr.getDeviceNumber())
+
+	if slot >= len(p.Devices) {
+		return nil
+	}
+
+	// Probing BAR0 Size
+	if bar := offset/4 - 4; bar == 0 && BytesToNum(values) == 0xffffffff {
+		p.isBAR0Probe = true
+
+		return nil
+	}
+
 	return nil
 }
 

@@ -83,3 +83,23 @@ func TestNumToBytesInvalid(t *testing.T) {
 		t.Fatalf("expected: %v, actual: %v", expected, actual)
 	}
 }
+
+func TestProbingBAR0(t *testing.T) {
+	t.Parallel()
+
+	br := pci.NewBridge()
+	start, end := br.GetIORange()
+	expected := pci.SizeToBits(end - start)
+
+	p := pci.New(br)
+	_ = p.PciConfAddrOut(0x0, pci.NumToBytes(uint32(0x80000010)))   // offset 0x10 for BAR0 with enable bit 0x80
+	_ = p.PciConfDataOut(0xCFC, pci.NumToBytes(uint32(0xffffffff))) // all 1-bits for probing size of BAR0
+
+	bytes := make([]byte, 4)
+	_ = p.PciConfDataIn(0xCFC, bytes)
+	actual := uint32(pci.BytesToNum(bytes))
+
+	if expected != actual {
+		t.Fatalf("expected: 0x%x, actual: 0x%x", expected, actual)
+	}
+}
