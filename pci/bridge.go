@@ -14,15 +14,15 @@ func (br bridge) GetDeviceHeader() DeviceHeader {
 	}
 }
 
-func (br bridge) IOInHandler(port int, bytes []byte) error {
+func (br bridge) IOInHandler(port uint64, bytes []byte) error {
 	return ErrIONotPermit
 }
 
-func (br bridge) IOOutHandler(port int, bytes []byte) error {
+func (br bridge) IOOutHandler(port uint64, bytes []byte) error {
 	return ErrIONotPermit
 }
 
-func (br bridge) GetIORange() (start int, end int) {
+func (br bridge) GetIORange() (start, end uint64) {
 	return 0, 0
 }
 
