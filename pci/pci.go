@@ -44,27 +44,27 @@ type Device interface {
 }
 
 type DeviceHeader struct {
-	VendorID   uint16
-	DeviceID   uint16
-	_          uint16   // command
-	_          uint16   // status
-	_          uint8    // revisonID
-	_          [3]uint8 // classCode
-	_          uint8    // cacheLineSize
-	_          uint8    // latencyTimer
-	HeaderType uint8
-	_          uint8     // bist
-	_          [6]uint32 // baseAddressRegister
-	_          uint32    // cardbusCISPointer
-	_          uint16    // subsystemVendorID
-	_          uint16    // subsystemID
-	_          uint32    // expansionROMBaseAddress
-	_          uint8     // capabilitiesPointer
-	_          [7]uint8  // reserved
-	_          uint8     // interruptLine
-	_          uint8     // interruptPin
-	_          uint8     // minGnt
-	_          uint8     // maxLat
+	VendorID      uint16
+	DeviceID      uint16
+	Command       uint16
+	_             uint16   // status
+	_             uint8    // revisonID
+	_             [3]uint8 // classCode
+	_             uint8    // cacheLineSize
+	_             uint8    // latencyTimer
+	HeaderType    uint8
+	_             uint8 // bist
+	BAR           [6]uint32
+	_             uint32 // cardbusCISPointer
+	_             uint16 // subsystemVendorID
+	SubsystemID   uint16
+	_             uint32   // expansionROMBaseAddress
+	_             uint8    // capabilitiesPointer
+	_             [7]uint8 // reserved
+	InterruptLine uint8
+	InterruptPin  uint8
+	_             uint8 // minGnt
+	_             uint8 // maxLat
 }
 
 func (h DeviceHeader) Bytes() ([]byte, error) {

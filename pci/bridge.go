@@ -8,9 +8,14 @@ type bridge struct{}
 
 func (br bridge) GetDeviceHeader() DeviceHeader {
 	return DeviceHeader{
-		DeviceID:   0x6000,
-		VendorID:   0x8086,
-		HeaderType: 1,
+		DeviceID:      0x6000,
+		VendorID:      0x8086,
+		HeaderType:    1,
+		SubsystemID:   0,
+		InterruptLine: 0,
+		InterruptPin:  0,
+		BAR:           [6]uint32{},
+		Command:       0,
 	}
 }
 
@@ -23,7 +28,7 @@ func (br bridge) IOOutHandler(port uint64, bytes []byte) error {
 }
 
 func (br bridge) GetIORange() (start, end uint64) {
-	return 0, 0
+	return 0, 0x10
 }
 
 func NewBridge() Device {
