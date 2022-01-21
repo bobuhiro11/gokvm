@@ -35,36 +35,36 @@ func (a address) isEnable() bool {
 // interface for a PCI device.
 type Device interface {
 	GetDeviceHeader() DeviceHeader
-	IOInHandler(port int, bytes []byte) error
-	IOOutHandler(port int, bytes []byte) error
+	IOInHandler(port uint64, bytes []byte) error
+	IOOutHandler(port uint64, bytes []byte) error
 
 	// IO port range for this PCI device.
-	// This range corresponds to IO Range in BAR.
-	GetIORange() (start int, end int)
+	// This range corresponds to IO Range in BAR0.
+	GetIORange() (start, end uint64)
 }
 
 type DeviceHeader struct {
-	VendorID   uint16
-	DeviceID   uint16
-	_          uint16   // command
-	_          uint16   // status
-	_          uint8    // revisonID
-	_          [3]uint8 // classCode
-	_          uint8    // cacheLineSize
-	_          uint8    // latencyTimer
-	HeaderType uint8
-	_          uint8     // bist
-	_          [6]uint32 // baseAddressRegister
-	_          uint32    // cardbusCISPointer
-	_          uint16    // subsystemVendorID
-	_          uint16    // subsystemID
-	_          uint32    // expansionROMBaseAddress
-	_          uint8     // capabilitiesPointer
-	_          [7]uint8  // reserved
-	_          uint8     // interruptLine
-	_          uint8     // interruptPin
-	_          uint8     // minGnt
-	_          uint8     // maxLat
+	VendorID      uint16
+	DeviceID      uint16
+	Command       uint16
+	_             uint16   // status
+	_             uint8    // revisonID
+	_             [3]uint8 // classCode
+	_             uint8    // cacheLineSize
+	_             uint8    // latencyTimer
+	HeaderType    uint8
+	_             uint8 // bist
+	BAR           [6]uint32
+	_             uint32 // cardbusCISPointer
+	_             uint16 // subsystemVendorID
+	SubsystemID   uint16
+	_             uint32   // expansionROMBaseAddress
+	_             uint8    // capabilitiesPointer
+	_             [7]uint8 // reserved
+	InterruptLine uint8
+	InterruptPin  uint8
+	_             uint8 // minGnt
+	_             uint8 // maxLat
 }
 
 func (h DeviceHeader) Bytes() ([]byte, error) {
@@ -78,12 +78,13 @@ func (h DeviceHeader) Bytes() ([]byte, error) {
 }
 
 type PCI struct {
-	addr    address
-	devices []Device
+	addr        address
+	isBAR0Probe bool
+	Devices     []Device
 }
 
 func New(devices ...Device) *PCI {
-	return &PCI{devices: devices}
+	return &PCI{Devices: devices}
 }
 
 func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
@@ -106,11 +107,21 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 
 	slot := int(p.addr.getDeviceNumber())
 
-	if slot >= len(p.devices) {
+	if slot >= len(p.Devices) {
 		return nil
 	}
 
-	b, err := p.devices[slot].GetDeviceHeader().Bytes()
+	// Probing BAR0 Size
+	if bar := offset/4 - 4; bar == 0 && p.isBAR0Probe {
+		start, end := p.Devices[slot].GetIORange()
+		copy(values[:4], NumToBytes(SizeToBits(end-start)))
+
+		p.isBAR0Probe = false
+
+		return nil
+	}
+
+	b, err := p.Devices[slot].GetDeviceHeader().Bytes()
 	if err != nil {
 		return err
 	}
@@ -122,6 +133,33 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 }
 
 func (p *PCI) PciConfDataOut(port uint64, values []byte) error {
+	offset := int(p.addr.getRegisterOffset() + uint32(port-0xCFC))
+
+	if !p.addr.isEnable() {
+		return nil
+	}
+
+	if p.addr.getBusNumber() != 0 {
+		return nil
+	}
+
+	if p.addr.getFunctionNumber() != 0 {
+		return nil
+	}
+
+	slot := int(p.addr.getDeviceNumber())
+
+	if slot >= len(p.Devices) {
+		return nil
+	}
+
+	// Probing BAR0 Size
+	if bar := offset/4 - 4; bar == 0 && BytesToNum(values) == 0xffffffff {
+		p.isBAR0Probe = true
+
+		return nil
+	}
+
 	return nil
 }
 
@@ -130,10 +168,7 @@ func (p *PCI) PciConfAddrIn(port uint64, values []byte) error {
 		return nil
 	}
 
-	values[3] = uint8((p.addr >> 24) & 0xff)
-	values[2] = uint8((p.addr >> 16) & 0xff)
-	values[1] = uint8((p.addr >> 8) & 0xff)
-	values[0] = uint8((p.addr >> 0) & 0xff)
+	copy(values[:4], NumToBytes(uint32(p.addr)))
 
 	return nil
 }
@@ -143,13 +178,55 @@ func (p *PCI) PciConfAddrOut(port uint64, values []byte) error {
 		return nil
 	}
 
-	x := uint32(0)
-	x |= uint32(values[3]) << 24
-	x |= uint32(values[2]) << 16
-	x |= uint32(values[1]) << 8
-	x |= uint32(values[0]) << 0
-
-	p.addr = address(x)
+	p.addr = address(BytesToNum(values))
 
 	return nil
+}
+
+func SizeToBits(size uint64) uint32 {
+	if size == 0 {
+		return 0
+	}
+
+	return ^uint32(1) - uint32(size-2)
+}
+
+func BytesToNum(bytes []byte) uint64 {
+	res := uint64(0)
+
+	for i, x := range bytes {
+		res |= uint64(x) << (i * 8)
+	}
+
+	return res
+}
+
+func NumToBytes(x interface{}) []byte {
+	res := []byte{}
+	l := 0
+	y := uint64(0)
+
+	switch v := x.(type) {
+	case uint8:
+		l = 1
+		y = uint64(v)
+	case uint16:
+		l = 2
+		y = uint64(v)
+	case uint32:
+		l = 4
+		y = uint64(v)
+	case uint64:
+		l = 8
+		y = v
+	default:
+		return []byte{}
+	}
+
+	for i := 0; i < l; i++ {
+		res = append(res, uint8(y))
+		y >>= 8
+	}
+
+	return res
 }

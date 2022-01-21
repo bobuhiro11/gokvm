@@ -53,6 +53,8 @@ const (
 	initrdAddr    = 0xf000000
 )
 
+var errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
+
 type Machine struct {
 	kvmFd, vmFd    uintptr
 	vcpuFds        []uintptr
@@ -149,8 +151,8 @@ func New(nCpus int) (*Machine, error) {
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
 	m.pci = pci.New(
-		pci.NewBridge(),       // 00:00.0 for PCI bridge
-		virtio.NewVirtioNet(), // 00:01.0 for Virtio PCI
+		pci.NewBridge(), // 00:00.0 for PCI bridge
+		virtio.NewNet(), // 00:01.0 for Virtio PCI
 	)
 
 	return m, nil
@@ -516,4 +518,35 @@ func (m *Machine) initIOPortHandlers() {
 			return m.pci.PciConfDataOut(port, bytes)
 		}
 	}
+
+	// PCI devices
+	for _, device := range m.pci.Devices {
+		start, end := device.GetIORange()
+		for port := start; port < end; port++ {
+			m.ioportHandlers[port][kvm.EXITIOIN] = pciInFunc
+			m.ioportHandlers[port][kvm.EXITIOOUT] = pciOutFunc
+		}
+	}
+}
+
+func pciInFunc(m *Machine, port uint64, bytes []byte) error {
+	for i := range m.pci.Devices {
+		start, end := m.pci.Devices[i].GetIORange()
+		if start <= port && port < end {
+			return m.pci.Devices[i].IOInHandler(port, bytes)
+		}
+	}
+
+	return errorPCIDeviceNotFoundForPort
+}
+
+func pciOutFunc(m *Machine, port uint64, bytes []byte) error {
+	for i := range m.pci.Devices {
+		start, end := m.pci.Devices[i].GetIORange()
+		if start <= port && port < end {
+			return m.pci.Devices[i].IOOutHandler(port, bytes)
+		}
+	}
+
+	return errorPCIDeviceNotFoundForPort
 }

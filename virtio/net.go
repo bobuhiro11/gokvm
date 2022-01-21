@@ -1,35 +1,114 @@
 package virtio
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
 
 var ErrIONotPermit = errors.New("IO is not permitted for virtio device")
 
-type virtioNet struct{}
+const (
+	IOPortStart = 0x6200
+	IOPortSize  = 0x100
+)
 
-func (br virtioNet) GetDeviceHeader() pci.DeviceHeader {
+type Net struct {
+	commonHeader commonHeader
+	_            netHeader
+
+	QueuesPhysAddr [2]uint32
+}
+
+func (v Net) Bytes() ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
+		return []byte{}, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+type commonHeader struct {
+	_        uint32 // hostFeatures
+	_        uint32 // guestFeatures
+	_        uint32 // queuePFN
+	queueNUM uint16
+	queueSEL uint16
+	_        uint16 // queueNotify
+	_        uint8  // status
+	_        uint8  // isr
+}
+
+type netHeader struct {
+	_ [6]uint8 // mac
+	_ uint16   // netStatus
+	_ uint16   // maxVirtQueuePairs
+}
+
+func (v Net) GetDeviceHeader() pci.DeviceHeader {
 	return pci.DeviceHeader{
-		DeviceID:   0x1000,
-		VendorID:   0x1AF4,
-		HeaderType: 0,
+		DeviceID:    0x1000,
+		VendorID:    0x1AF4,
+		HeaderType:  0,
+		SubsystemID: 1, // Network Card
+		Command:     1, // Enable IO port
+		BAR: [6]uint32{
+			IOPortStart | 0x1,
+		},
+		// https://github.com/torvalds/linux/blob/fb3b0673b7d5b477ed104949450cd511337ba3c6/drivers/pci/setup-irq.c#L30-L55
+		InterruptPin: 1,
+		// https://www.webopedia.com/reference/irqnumbers/
+		InterruptLine: 9,
 	}
 }
 
-func (br virtioNet) IOInHandler(port int, bytes []byte) error {
-	return ErrIONotPermit
+func (v Net) IOInHandler(port uint64, bytes []byte) error {
+	offset := int(port - IOPortStart)
+
+	b, err := v.Bytes()
+	if err != nil {
+		return err
+	}
+
+	l := len(bytes)
+	copy(bytes[:l], b[offset:offset+l])
+
+	return nil
 }
 
-func (br virtioNet) IOOutHandler(port int, bytes []byte) error {
-	return ErrIONotPermit
+func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
+	offset := int(port - IOPortStart)
+
+	switch offset {
+	case 8:
+		// Queue PFN is aligned to page (4096 bytes)
+		v.QueuesPhysAddr[v.commonHeader.queueSEL] = uint32(pci.BytesToNum(bytes) * 4096)
+	case 14:
+		v.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
+	case 16:
+		fmt.Printf("Queue Notify was written!\r\n")
+	case 19:
+		fmt.Printf("ISR was written!\r\n")
+	default:
+	}
+
+	return nil
 }
 
-func (br virtioNet) GetIORange() (start int, end int) {
-	return 0, 0
+func (v Net) GetIORange() (start, end uint64) {
+	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewVirtioNet() pci.Device {
-	return &virtioNet{}
+func NewNet() pci.Device {
+	return &Net{
+		commonHeader: commonHeader{
+			queueNUM: 0x1000,
+		},
+		QueuesPhysAddr: [2]uint32{},
+	}
 }
