@@ -34,7 +34,7 @@ func TestGetIORange(t *testing.T) {
 func TestIOInHandler(t *testing.T) {
 	t.Parallel()
 
-	expected := []byte{0x00, 0x10}
+	expected := []byte{0x08, 0x00}
 	v := virtio.NewNet()
 	actual := make([]byte, 2)
 	_ = v.IOInHandler(virtio.IOPortStart+12, actual)

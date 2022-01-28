@@ -14,6 +14,8 @@ var ErrIONotPermit = errors.New("IO is not permitted for virtio device")
 const (
 	IOPortStart = 0x6200
 	IOPortSize  = 0x100
+
+	QueueSize = 8
 )
 
 type Hdr struct {
@@ -112,9 +114,39 @@ func NewNet() pci.Device {
 	return &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
-				queueNUM: 0x1000,
+				queueNUM: QueueSize,
 			},
 		},
 		QueuesPhysAddr: [2]uint32{},
+	}
+}
+
+// refs: https://wiki.osdev.org/Virtio#Virtual_Queue_Descriptor
+type VirtQueue struct {
+	DescTable [QueueSize]struct {
+		Addr  uint64
+		Len   uint32
+		Flags uint16
+		Next  uint16
+	}
+
+	AvailRing struct {
+		Flags     uint16
+		Idx       uint16
+		Ring      [QueueSize]uint16
+		UsedEvent uint16
+	}
+
+	// padding for 4096 byte alignment
+	_ [4096 - ((16*QueueSize + 6 + 2*QueueSize) % 4096)]uint8
+
+	UsedRing struct {
+		Flags uint16
+		Idx   uint16
+		Ring  [QueueSize]struct {
+			Idx uint32
+			Len uint32
+		}
+		availEvent uint16
 	}
 }
