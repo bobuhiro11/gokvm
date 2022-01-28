@@ -3,6 +3,7 @@ package virtio_test
 import (
 	"bytes"
 	"testing"
+	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/virtio"
 )
@@ -10,7 +11,7 @@ import (
 func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
-	v := virtio.NewNet()
+	v := virtio.NewNet([]byte{})
 	expected := uint16(0x1000)
 	actual := v.GetDeviceHeader().DeviceID
 
@@ -23,7 +24,7 @@ func TestGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.IOPortSize)
-	s, e := virtio.NewNet().GetIORange()
+	s, e := virtio.NewNet([]byte{}).GetIORange()
 	actual := e - s
 
 	if actual != expected {
@@ -34,8 +35,8 @@ func TestGetIORange(t *testing.T) {
 func TestIOInHandler(t *testing.T) {
 	t.Parallel()
 
-	expected := []byte{0x00, 0x10}
-	v := virtio.NewNet()
+	expected := []byte{0x08, 0x00}
+	v := virtio.NewNet([]byte{})
 	actual := make([]byte, 2)
 	_ = v.IOInHandler(virtio.IOPortStart+12, actual)
 
@@ -47,21 +48,29 @@ func TestIOInHandler(t *testing.T) {
 func TestSetQueuePhysAddr(t *testing.T) {
 	t.Parallel()
 
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(mem)
+	base := uint32(uintptr(unsafe.Pointer(&(v.(*virtio.Net).Mem[0]))))
+
 	expected := [2]uint32{
-		0x12345000,
-		0x6789a000,
+		base + 0x00345000,
+		base + 0x0089a000,
 	}
 
-	v := virtio.NewNet()
-
 	_ = v.IOOutHandler(virtio.IOPortStart+14, []byte{0x0, 0x0})              // Select Queue #0
-	_ = v.IOOutHandler(virtio.IOPortStart+8, []byte{0x45, 0x23, 0x01, 0x00}) // Set Phys Address
+	_ = v.IOOutHandler(virtio.IOPortStart+8, []byte{0x45, 0x03, 0x00, 0x00}) // Set Phys Address
 
 	_ = v.IOOutHandler(virtio.IOPortStart+14, []byte{0x1, 0x0})              // Select Queue #1
-	_ = v.IOOutHandler(virtio.IOPortStart+8, []byte{0x9a, 0x78, 0x06, 0x00}) // Set Phys Address
+	_ = v.IOOutHandler(virtio.IOPortStart+8, []byte{0x9a, 0x08, 0x00, 0x00}) // Set Phys Address
 
-	actual := v.(*virtio.Net).QueuesPhysAddr
-	if expected != actual {
-		t.Fatalf("expected: %v, actual: %v", expected, actual)
+	actual := [2]uint32{
+		uint32(uintptr(unsafe.Pointer(v.(*virtio.Net).VirtQueue[0]))),
+		uint32(uintptr(unsafe.Pointer(v.(*virtio.Net).VirtQueue[1]))),
+	}
+
+	for i := 0; i < 2; i++ {
+		if expected[0] != actual[0] {
+			t.Fatalf("expected[%d]: 0x%x, actual[%d]: 0x%x\n", i, expected[i], i, actual[i])
+		}
 	}
 }
