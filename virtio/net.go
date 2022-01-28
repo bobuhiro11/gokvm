@@ -27,6 +27,7 @@ type Net struct {
 	Hdr Hdr
 
 	QueuesPhysAddr [2]uint32
+	Mem            []byte
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -110,7 +111,7 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewNet() pci.Device {
+func NewNet(mem []byte) pci.Device {
 	return &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
@@ -118,6 +119,7 @@ func NewNet() pci.Device {
 			},
 		},
 		QueuesPhysAddr: [2]uint32{},
+		Mem:            mem,
 	}
 }
 

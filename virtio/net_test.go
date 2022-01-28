@@ -10,7 +10,7 @@ import (
 func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
-	v := virtio.NewNet()
+	v := virtio.NewNet([]byte{})
 	expected := uint16(0x1000)
 	actual := v.GetDeviceHeader().DeviceID
 
@@ -23,7 +23,7 @@ func TestGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.IOPortSize)
-	s, e := virtio.NewNet().GetIORange()
+	s, e := virtio.NewNet([]byte{}).GetIORange()
 	actual := e - s
 
 	if actual != expected {
@@ -35,7 +35,7 @@ func TestIOInHandler(t *testing.T) {
 	t.Parallel()
 
 	expected := []byte{0x08, 0x00}
-	v := virtio.NewNet()
+	v := virtio.NewNet([]byte{})
 	actual := make([]byte, 2)
 	_ = v.IOInHandler(virtio.IOPortStart+12, actual)
 
@@ -52,7 +52,8 @@ func TestSetQueuePhysAddr(t *testing.T) {
 		0x6789a000,
 	}
 
-	v := virtio.NewNet()
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(mem)
 
 	_ = v.IOOutHandler(virtio.IOPortStart+14, []byte{0x0, 0x0})              // Select Queue #0
 	_ = v.IOOutHandler(virtio.IOPortStart+8, []byte{0x45, 0x23, 0x01, 0x00}) // Set Phys Address
