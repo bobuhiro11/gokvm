@@ -16,17 +16,21 @@ const (
 	IOPortSize  = 0x100
 )
 
-type Net struct {
+type Hdr struct {
 	commonHeader commonHeader
 	_            netHeader
+}
+
+type Net struct {
+	Hdr Hdr
 
 	QueuesPhysAddr [2]uint32
 }
 
-func (v Net) Bytes() ([]byte, error) {
+func (h Hdr) Bytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
+	if err := binary.Write(buf, binary.LittleEndian, h); err != nil {
 		return []byte{}, err
 	}
 
@@ -70,7 +74,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 func (v Net) IOInHandler(port uint64, bytes []byte) error {
 	offset := int(port - IOPortStart)
 
-	b, err := v.Bytes()
+	b, err := v.Hdr.Bytes()
 	if err != nil {
 		return err
 	}
@@ -87,9 +91,9 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 	switch offset {
 	case 8:
 		// Queue PFN is aligned to page (4096 bytes)
-		v.QueuesPhysAddr[v.commonHeader.queueSEL] = uint32(pci.BytesToNum(bytes) * 4096)
+		v.QueuesPhysAddr[v.Hdr.commonHeader.queueSEL] = uint32(pci.BytesToNum(bytes) * 4096)
 	case 14:
-		v.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
+		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		fmt.Printf("Queue Notify was written!\r\n")
 	case 19:
@@ -106,8 +110,10 @@ func (v Net) GetIORange() (start, end uint64) {
 
 func NewNet() pci.Device {
 	return &Net{
-		commonHeader: commonHeader{
-			queueNUM: 0x1000,
+		Hdr: Hdr{
+			commonHeader: commonHeader{
+				queueNUM: 0x1000,
+			},
 		},
 		QueuesPhysAddr: [2]uint32{},
 	}
