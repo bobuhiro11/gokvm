@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
@@ -26,8 +27,8 @@ type Hdr struct {
 type Net struct {
 	Hdr Hdr
 
-	QueuesPhysAddr [2]uint32
-	Mem            []byte
+	VirtQueue [2]*VirtQueue
+	Mem       []byte
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -94,11 +95,13 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 	switch offset {
 	case 8:
 		// Queue PFN is aligned to page (4096 bytes)
-		v.QueuesPhysAddr[v.Hdr.commonHeader.queueSEL] = uint32(pci.BytesToNum(bytes) * 4096)
+		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
+		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		fmt.Printf("Queue Notify was written!\r\n")
+		fmt.Printf("virt queue[%d]: %#v\n", v.Hdr.commonHeader.queueSEL, v.VirtQueue[v.Hdr.commonHeader.queueSEL].DescTable)
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -118,8 +121,8 @@ func NewNet(mem []byte) pci.Device {
 				queueNUM: QueueSize,
 			},
 		},
-		QueuesPhysAddr: [2]uint32{},
-		Mem:            mem,
+		Mem:       mem,
+		VirtQueue: [2]*VirtQueue{},
 	}
 }
 
