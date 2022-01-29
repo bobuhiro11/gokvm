@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
@@ -14,19 +15,26 @@ var ErrIONotPermit = errors.New("IO is not permitted for virtio device")
 const (
 	IOPortStart = 0x6200
 	IOPortSize  = 0x100
+
+	QueueSize = 8
 )
 
-type Net struct {
+type Hdr struct {
 	commonHeader commonHeader
 	_            netHeader
-
-	QueuesPhysAddr [2]uint32
 }
 
-func (v Net) Bytes() ([]byte, error) {
+type Net struct {
+	Hdr Hdr
+
+	VirtQueue [2]*VirtQueue
+	Mem       []byte
+}
+
+func (h Hdr) Bytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
+	if err := binary.Write(buf, binary.LittleEndian, h); err != nil {
 		return []byte{}, err
 	}
 
@@ -70,7 +78,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 func (v Net) IOInHandler(port uint64, bytes []byte) error {
 	offset := int(port - IOPortStart)
 
-	b, err := v.Bytes()
+	b, err := v.Hdr.Bytes()
 	if err != nil {
 		return err
 	}
@@ -87,11 +95,13 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 	switch offset {
 	case 8:
 		// Queue PFN is aligned to page (4096 bytes)
-		v.QueuesPhysAddr[v.commonHeader.queueSEL] = uint32(pci.BytesToNum(bytes) * 4096)
+		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
+		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
-		v.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
+		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		fmt.Printf("Queue Notify was written!\r\n")
+		fmt.Printf("virt queue[%d]: %#v\n", v.Hdr.commonHeader.queueSEL, v.VirtQueue[v.Hdr.commonHeader.queueSEL].DescTable)
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -104,11 +114,44 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewNet() pci.Device {
+func NewNet(mem []byte) pci.Device {
 	return &Net{
-		commonHeader: commonHeader{
-			queueNUM: 0x1000,
+		Hdr: Hdr{
+			commonHeader: commonHeader{
+				queueNUM: QueueSize,
+			},
 		},
-		QueuesPhysAddr: [2]uint32{},
+		Mem:       mem,
+		VirtQueue: [2]*VirtQueue{},
+	}
+}
+
+// refs: https://wiki.osdev.org/Virtio#Virtual_Queue_Descriptor
+type VirtQueue struct {
+	DescTable [QueueSize]struct {
+		Addr  uint64
+		Len   uint32
+		Flags uint16
+		Next  uint16
+	}
+
+	AvailRing struct {
+		Flags     uint16
+		Idx       uint16
+		Ring      [QueueSize]uint16
+		UsedEvent uint16
+	}
+
+	// padding for 4096 byte alignment
+	_ [4096 - ((16*QueueSize + 6 + 2*QueueSize) % 4096)]uint8
+
+	UsedRing struct {
+		Flags uint16
+		Idx   uint16
+		Ring  [QueueSize]struct {
+			Idx uint32
+			Len uint32
+		}
+		availEvent uint16
 	}
 }
