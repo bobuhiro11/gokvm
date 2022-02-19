@@ -29,6 +29,7 @@ type Net struct {
 
 	VirtQueue [2]*VirtQueue
 	Mem       []byte
+	LastAvailIdx [2]uint16
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -101,7 +102,20 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		fmt.Printf("Queue Notify was written!\r\n")
-		fmt.Printf("virt queue[%d]: %#v\n", v.Hdr.commonHeader.queueSEL, v.VirtQueue[v.Hdr.commonHeader.queueSEL].DescTable)
+		sel := v.Hdr.commonHeader.queueSEL
+		v.dumpDesc(sel)
+		// fmt.Printf("virt queue[%d]: %#v\n", sel, v.VirtQueue[sel].DescTable)
+		// for v.LastAvailIdx[sel] < v.VirtQueue[sel].AvailRing.Idx {
+		// 	descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]]
+		// 	desc := v.VirtQueue[sel].DescTable[descID]
+		// 	if desc.Flags & 0x4 != 0 {
+		// 		fmt.Printf("Indirect Descriptor is not suported")
+		// 	}
+		// 	buf := make([]byte, desc.Len)
+		// 	copy(buf, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
+		// 	v.LastAvailIdx[sel]++
+		// 	fmt.Printf("data for desc[%d]: %v\n", descID, buf)
+		// }
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -114,6 +128,19 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
+func (v Net) dumpDesc(sel uint16) {
+	fmt.Printf("descriptor for queue%d\r\n", sel)
+	fmt.Printf("Addr       Len    Flags   Next Data\r\n")
+	fmt.Printf("-----------------------------------\r\n")
+	for j:=0; j<QueueSize; j++ {
+		desc := v.VirtQueue[sel].DescTable[j]
+		buf := make([]byte, desc.Len)
+		copy(buf, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
+		fmt.Printf("0x%08x 0x%04x 0x%05x %04d 0x%x\r\n",
+		desc.Addr, desc.Len, desc.Flags, desc.Next, buf)
+	}
+}
+
 func NewNet(mem []byte) pci.Device {
 	return &Net{
 		Hdr: Hdr{
@@ -123,6 +150,9 @@ func NewNet(mem []byte) pci.Device {
 		},
 		Mem:       mem,
 		VirtQueue: [2]*VirtQueue{},
+		
+		// 最後に処理したAvailable Ring上のエントリの番号の次
+		LastAvailIdx: [2]uint16{0, 0},
 	}
 }
 
