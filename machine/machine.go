@@ -150,9 +150,15 @@ func New(nCpus int) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
+	virtioIRQCallback := func(irq, level uint32) {
+		if err := kvm.IRQLine(m.vmFd, irq, level); err != nil {
+			panic(err)
+		}
+	}
+
 	m.pci = pci.New(
 		pci.NewBridge(),      // 00:00.0 for PCI bridge
-		virtio.NewNet(m.mem), // 00:01.0 for Virtio PCI
+		virtio.NewNet(virtioIRQCallback, m.mem), // 00:01.0 for Virtio PCI
 	)
 
 	return m, nil

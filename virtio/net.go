@@ -30,6 +30,9 @@ type Net struct {
 	VirtQueue [2]*VirtQueue
 	Mem       []byte
 	LastAvailIdx [2]uint16
+
+	// This callback is called when virtio request IRQ.
+	irqCallback func(irq, level uint32)
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -57,6 +60,11 @@ type netHeader struct {
 	_ [6]uint8 // mac
 	_ uint16   // netStatus
 	_ uint16   // maxVirtQueuePairs
+}
+
+func (v *Net) InjectIRQ() {
+	v.irqCallback(9, 0)
+	v.irqCallback(9, 1)
 }
 
 func (v Net) GetDeviceHeader() pci.DeviceHeader {
@@ -135,6 +143,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 			fmt.Printf("packet data: 0x%x\n", buf)
 			v.LastAvailIdx[sel]++
 		}
+		v.InjectIRQ()
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -160,13 +169,14 @@ func (v Net) dumpDesc(sel uint16) {
 	}
 }
 
-func NewNet(mem []byte) pci.Device {
+func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
 	return &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
 			},
 		},
+		irqCallback: irqCallBack,
 		Mem:       mem,
 		VirtQueue: [2]*VirtQueue{},
 		
