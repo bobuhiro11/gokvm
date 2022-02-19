@@ -157,7 +157,7 @@ func (v Net) GetIORange() (start, end uint64) {
 }
 
 func (v Net) dumpDesc(sel uint16) {
-	fmt.Printf("descriptor for queue%d\r\n", sel)
+	fmt.Printf("[descriptor for queue%d]\r\n", sel)
 	fmt.Printf("Addr       Len    Flags   Next Data\r\n")
 	fmt.Printf("-----------------------------------\r\n")
 	for j:=0; j<QueueSize; j++ {
@@ -166,6 +166,28 @@ func (v Net) dumpDesc(sel uint16) {
 		copy(buf, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
 		fmt.Printf("0x%08x 0x%04x 0x%05x %04d 0x%x\r\n",
 		desc.Addr, desc.Len, desc.Flags, desc.Next, buf)
+	}
+
+	fmt.Printf("[avail ring for queue%d: flags=0x%x, idx=%d, used_event=%d]\r\n", sel,
+	v.VirtQueue[sel].AvailRing.Flags,
+	v.VirtQueue[sel].AvailRing.Idx,
+	v.VirtQueue[sel].AvailRing.UsedEvent)
+	fmt.Printf("Ring\r\n")
+	fmt.Printf("----\r\n")
+	for j:=0; j<QueueSize; j++ {
+		fmt.Printf("%04d\r\n", v.VirtQueue[sel].AvailRing.Ring[j])
+	}
+
+	fmt.Printf("[used ring for queue%d: flags=0x%x, idx=%d, avail_event=%d]\r\n", sel,
+	v.VirtQueue[sel].UsedRing.Flags,
+	v.VirtQueue[sel].UsedRing.Idx,
+	v.VirtQueue[sel].UsedRing.AvailEvent)
+	fmt.Printf("DescID Len\r\n")
+	fmt.Printf("----------\r\n")
+	for j:=0; j<QueueSize; j++ {
+		fmt.Printf("0x%04x 0x%1x\r\n",
+		v.VirtQueue[sel].UsedRing.Ring[j].Idx,
+		v.VirtQueue[sel].UsedRing.Ring[j].Len)
 	}
 }
 
@@ -211,6 +233,6 @@ type VirtQueue struct {
 			Idx uint32
 			Len uint32
 		}
-		availEvent uint16
+		AvailEvent uint16
 	}
 }
