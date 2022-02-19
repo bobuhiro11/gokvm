@@ -104,18 +104,37 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 		fmt.Printf("Queue Notify was written!\r\n")
 		sel := v.Hdr.commonHeader.queueSEL
 		v.dumpDesc(sel)
-		// fmt.Printf("virt queue[%d]: %#v\n", sel, v.VirtQueue[sel].DescTable)
-		// for v.LastAvailIdx[sel] < v.VirtQueue[sel].AvailRing.Idx {
-		// 	descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]]
-		// 	desc := v.VirtQueue[sel].DescTable[descID]
-		// 	if desc.Flags & 0x4 != 0 {
-		// 		fmt.Printf("Indirect Descriptor is not suported")
-		// 	}
-		// 	buf := make([]byte, desc.Len)
-		// 	copy(buf, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
-		// 	v.LastAvailIdx[sel]++
-		// 	fmt.Printf("data for desc[%d]: %v\n", descID, buf)
-		// }
+		for v.LastAvailIdx[sel] < v.VirtQueue[sel].AvailRing.Idx {
+			buf := []byte{}
+			descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]]
+
+			for {
+				desc := v.VirtQueue[sel].DescTable[descID]
+				if desc.Flags & 0x4 != 0 {
+					fmt.Printf("Indirect descriptor is not suported yet")
+				}
+				if desc.Flags & 0x2 != 0 {
+					fmt.Printf("Readonly descriptor is not suported yet")
+				}
+				b := make([]byte, desc.Len)
+				copy(b, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
+				buf = append(buf, b...)
+
+				if desc.Flags & 0x1 != 0 {
+					descID = desc.Next
+				} else {
+					break
+				}
+
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 1
+				v.VirtQueue[sel].UsedRing.Idx++
+			}
+
+			buf = buf[10:] // skip struct virtio_net_hdr
+			fmt.Printf("packet data: 0x%x\n", buf)
+			v.LastAvailIdx[sel]++
+		}
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
