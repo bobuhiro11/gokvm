@@ -128,19 +128,20 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 				copy(b, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
 				buf = append(buf, b...)
 
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 1
+				v.VirtQueue[sel].UsedRing.Idx++
+
 				if desc.Flags & 0x1 != 0 {
 					descID = desc.Next
 				} else {
 					break
 				}
-
-				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
-				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 1
-				v.VirtQueue[sel].UsedRing.Idx++
 			}
 
 			buf = buf[10:] // skip struct virtio_net_hdr
-			fmt.Printf("packet data: 0x%x\n", buf)
+			fmt.Printf("packet data: 0x%x\r\n", buf)
+			v.dumpDesc(sel)
 			v.LastAvailIdx[sel]++
 		}
 		v.InjectIRQ()
