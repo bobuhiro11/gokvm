@@ -53,7 +53,7 @@ type commonHeader struct {
 	queueSEL uint16
 	_        uint16 // queueNotify
 	_        uint8  // status
-	_        uint8  // isr
+	isr      uint8
 }
 
 type netHeader struct {
@@ -197,6 +197,7 @@ func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
 		Hdr: Hdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
+				isr: 0x1,
 			},
 		},
 		irqCallback: irqCallBack,
