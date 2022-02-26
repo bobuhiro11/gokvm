@@ -115,6 +115,8 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 		for v.LastAvailIdx[sel] < v.VirtQueue[sel].AvailRing.Idx {
 			buf := []byte{}
 			descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]]
+			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
+			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 0
 
 			for {
 				desc := v.VirtQueue[sel].DescTable[descID]
@@ -128,9 +130,14 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 				copy(b, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
 				buf = append(buf, b...)
 
-				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
-				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 1
-				v.VirtQueue[sel].UsedRing.Idx++
+				// The used ring is where the device returns buffers once
+				// it is done with them: it is only written to by the device,
+				// and read by the driver. Each entry in the ring is a pair:
+				// id indicates the head entry of the descriptor chain describing
+				// the buffer (this matches an entry placed in the available ring
+				// by the guest earlier), and len the total of bytes written into
+				// the buffer. 
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len += desc.Len
 
 				if desc.Flags & 0x1 != 0 {
 					descID = desc.Next
@@ -141,8 +148,9 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 
 			buf = buf[10:] // skip struct virtio_net_hdr
 			fmt.Printf("packet data: 0x%x\r\n", buf)
-			v.dumpDesc(sel)
+			v.VirtQueue[sel].UsedRing.Idx++
 			v.LastAvailIdx[sel]++
+			v.dumpDesc(sel)
 		}
 		v.InjectIRQ()
 	case 19:
