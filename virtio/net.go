@@ -65,6 +65,7 @@ type netHeader struct {
 func (v *Net) InjectIRQ() {
 	v.irqCallback(9, 0)
 	v.irqCallback(9, 1)
+	v.Hdr.commonHeader.isr = 0x1
 }
 
 func (v Net) GetDeviceHeader() pci.DeviceHeader {
@@ -84,7 +85,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Net) IOInHandler(port uint64, bytes []byte) error {
+func (v *Net) IOInHandler(port uint64, bytes []byte) error {
 	offset := int(port - IOPortStart)
 
 	b, err := v.Hdr.Bytes()
@@ -94,6 +95,15 @@ func (v Net) IOInHandler(port uint64, bytes []byte) error {
 
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
+
+	if offset == 19 {
+		// disable ISR
+		v.Hdr.commonHeader.isr = 0x0
+		b, _ = v.Hdr.Bytes()
+		fmt.Printf("disable ISR %d\r\n", b[19])
+	}
+
+	fmt.Printf("IOInHandler called. offset %d, bytes %v\r\n", offset, bytes)
 
 	return nil
 }
@@ -112,10 +122,12 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 		fmt.Printf("Queue Notify was written!\r\n")
 		sel := v.Hdr.commonHeader.queueSEL
 		v.dumpDesc(sel)
-		for v.LastAvailIdx[sel] < v.VirtQueue[sel].AvailRing.Idx {
+		for v.LastAvailIdx[sel] != v.VirtQueue[sel].AvailRing.Idx {
 			buf := []byte{}
 			descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]]
 			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
+			// This structure is holding both the index of the descriptor chain and the
+			// number of bytes that were written to the memory as part of serving the request.
 			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 0
 
 			for {
@@ -137,7 +149,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 				// the buffer (this matches an entry placed in the available ring
 				// by the guest earlier), and len the total of bytes written into
 				// the buffer. 
-				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len += desc.Len
+				// v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len ++
 
 				if desc.Flags & 0x1 != 0 {
 					descID = desc.Next
@@ -149,7 +161,9 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 			buf = buf[10:] // skip struct virtio_net_hdr
 			fmt.Printf("packet data: 0x%x\r\n", buf)
 			v.VirtQueue[sel].UsedRing.Idx++
+			v.VirtQueue[sel].UsedRing.Idx %= QueueSize
 			v.LastAvailIdx[sel]++
+			v.LastAvailIdx[sel] %= QueueSize
 			v.dumpDesc(sel)
 		}
 		v.InjectIRQ()
@@ -205,7 +219,7 @@ func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
 		Hdr: Hdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
-				isr: 0x1,
+				isr: 0x0,
 			},
 		},
 		irqCallback: irqCallBack,

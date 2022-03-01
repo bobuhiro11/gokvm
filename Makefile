@@ -61,7 +61,7 @@ bzImage: linux.config linux.tar.xz
 
 .PHONY: run
 run: initrd bzImage
-	go run . -c 4
+	go run . -c 1
 
 .PHONY: run-system-kernel
 run-system-kernel:
