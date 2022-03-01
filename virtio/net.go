@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	// "time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -16,7 +17,7 @@ const (
 	IOPortStart = 0x6200
 	IOPortSize  = 0x100
 
-	QueueSize = 8
+	QueueSize = 32
 )
 
 type Hdr struct {
@@ -149,7 +150,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 				// the buffer (this matches an entry placed in the available ring
 				// by the guest earlier), and len the total of bytes written into
 				// the buffer. 
-				// v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len ++
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len += desc.Len
 
 				if desc.Flags & 0x1 != 0 {
 					descID = desc.Next
@@ -166,7 +167,10 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 			v.LastAvailIdx[sel] %= QueueSize
 			v.dumpDesc(sel)
 		}
-		v.InjectIRQ()
+		const VIRTQ_AVAIL_F_NO_INTERRUPT = 1
+		if v.VirtQueue[sel].AvailRing.Flags & VIRTQ_AVAIL_F_NO_INTERRUPT == 0 {
+			v.InjectIRQ()
+		}
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -215,10 +219,12 @@ func (v Net) dumpDesc(sel uint16) {
 }
 
 func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
-	return &Net{
+	// const VIRTIO_NET_F_CTRL_VQ = 1<<17
+	res := &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
+				// hostFeatures: VIRTIO_NET_F_CTRL_VQ,
 				isr: 0x0,
 			},
 		},
@@ -229,6 +235,15 @@ func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
 		// 最後に処理したAvailable Ring上のエントリの番号の次
 		LastAvailIdx: [2]uint16{0, 0},
 	}
+	// go func() {
+	// 	time.Sleep(10*time.Second)
+	// 	for true {
+	// 		time.Sleep(3*time.Second)
+	// 		res.dumpDesc(1)
+	// 		res.InjectIRQ()
+	// 	}
+	// }()
+	return res
 }
 
 // refs: https://wiki.osdev.org/Virtio#Virtual_Queue_Descriptor
