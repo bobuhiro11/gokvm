@@ -125,11 +125,11 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 		v.dumpDesc(sel)
 		for v.LastAvailIdx[sel] != v.VirtQueue[sel].AvailRing.Idx {
 			buf := []byte{}
-			descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]]
-			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Idx = uint32(descID)
+			descID := v.VirtQueue[sel].AvailRing.Ring[v.LastAvailIdx[sel]%QueueSize]
+			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx%QueueSize].Idx = uint32(descID)
 			// This structure is holding both the index of the descriptor chain and the
 			// number of bytes that were written to the memory as part of serving the request.
-			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len = 0
+			v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx%QueueSize].Len = 0
 
 			for {
 				desc := v.VirtQueue[sel].DescTable[descID]
@@ -150,7 +150,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 				// the buffer (this matches an entry placed in the available ring
 				// by the guest earlier), and len the total of bytes written into
 				// the buffer. 
-				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx].Len += desc.Len
+				v.VirtQueue[sel].UsedRing.Ring[v.VirtQueue[sel].UsedRing.Idx%QueueSize].Len += desc.Len
 
 				if desc.Flags & 0x1 != 0 {
 					descID = desc.Next
@@ -162,9 +162,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 			buf = buf[10:] // skip struct virtio_net_hdr
 			fmt.Printf("packet data: 0x%x\r\n", buf)
 			v.VirtQueue[sel].UsedRing.Idx++
-			v.VirtQueue[sel].UsedRing.Idx %= QueueSize
 			v.LastAvailIdx[sel]++
-			v.LastAvailIdx[sel] %= QueueSize
 			v.dumpDesc(sel)
 		}
 		const VIRTQ_AVAIL_F_NO_INTERRUPT = 1
