@@ -13,18 +13,16 @@ go:
 before_script:
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
   - curl --retry 5 -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
-  - chmod +x ./cc-test-reporter
-  - ./cc-test-reporter before-build
-  - GO111MODULE=off go get github.com/mattn/goveralls
+  - chmod a+x ./cc-test-reporter
+  - sudo -E env "PATH=$PATH" ./cc-test-reporter before-build
+  - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
 script:
-  # HACK: /dev/kvm is root:kvm 0660 by default
-  - sudo chmod 666 /dev/kvm
-  - make gokvm
-  - make test
-  - goveralls -service=travis-ci -coverprofile c.out
-  - make clean
+  - sudo -E env "PATH=$PATH" make gokvm
+  - sudo -E env "PATH=$PATH" make test
+  - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
+  - sudo -E env "PATH=$PATH" make clean
 after_script:
-  - ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
+  - sudo -E env "PATH=$PATH" ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
 deploy:
 - provider: script
   skip_cleanup: true
