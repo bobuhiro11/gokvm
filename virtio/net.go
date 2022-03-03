@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	// "time"
 	"unsafe"
 
@@ -161,6 +162,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 
 			buf = buf[10:] // skip struct virtio_net_hdr
 			fmt.Printf("packet data: 0x%x\r\n", buf)
+			fmt.Printf("packet data: %#v\r\n", buf)
 			v.VirtQueue[sel].UsedRing.Idx++
 			v.LastAvailIdx[sel]++
 			v.dumpDesc(sel)
