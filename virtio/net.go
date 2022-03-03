@@ -55,7 +55,8 @@ type commonHeader struct {
 	queueSEL uint16
 	_        uint16 // queueNotify
 	_        uint8  // status
-	isr      uint8
+	// isr      uint8
+	_      uint8
 }
 
 type netHeader struct {
@@ -67,7 +68,7 @@ type netHeader struct {
 func (v *Net) InjectIRQ() {
 	v.irqCallback(9, 0)
 	v.irqCallback(9, 1)
-	v.Hdr.commonHeader.isr = 0x1
+	// v.Hdr.commonHeader.isr = 0x1
 }
 
 func (v Net) GetDeviceHeader() pci.DeviceHeader {
@@ -98,12 +99,12 @@ func (v *Net) IOInHandler(port uint64, bytes []byte) error {
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
 
-	if offset == 19 {
+	// if offset == 19 {
 		// disable ISR
-		v.Hdr.commonHeader.isr = 0x0
-		b, _ = v.Hdr.Bytes()
-		fmt.Printf("disable ISR %d\r\n", b[19])
-	}
+		// v.Hdr.commonHeader.isr = 0x0
+		// b, _ = v.Hdr.Bytes()
+		// fmt.Printf("disable ISR %d\r\n", b[19])
+	// }
 
 	fmt.Printf("IOInHandler called. offset %d, bytes %v\r\n", offset, bytes)
 
@@ -167,10 +168,10 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 			v.LastAvailIdx[sel]++
 			v.dumpDesc(sel)
 		}
-		const VIRTQ_AVAIL_F_NO_INTERRUPT = 1
-		if v.VirtQueue[sel].AvailRing.Flags & VIRTQ_AVAIL_F_NO_INTERRUPT == 0 {
+		// const VIRTQ_AVAIL_F_NO_INTERRUPT = 1
+		// if v.VirtQueue[sel].AvailRing.Flags & VIRTQ_AVAIL_F_NO_INTERRUPT == 0 {
 			v.InjectIRQ()
-		}
+		// }
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -225,7 +226,7 @@ func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
 				// hostFeatures: VIRTIO_NET_F_CTRL_VQ,
-				isr: 0x0,
+				// isr: 0x0,
 			},
 		},
 		irqCallback: irqCallBack,
