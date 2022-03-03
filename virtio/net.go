@@ -35,6 +35,9 @@ type Net struct {
 
 	// This callback is called when virtio request IRQ.
 	irqCallback func(irq, level uint32)
+
+	// This callback is called when virtio transmit packet.
+	txCallBack func(packet []byte)
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -164,6 +167,7 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 			buf = buf[10:] // skip struct virtio_net_hdr
 			fmt.Printf("packet data: 0x%x\r\n", buf)
 			fmt.Printf("packet data: %#v\r\n", buf)
+			v.txCallBack(buf)
 			v.VirtQueue[sel].UsedRing.Idx++
 			v.LastAvailIdx[sel]++
 			v.dumpDesc(sel)
@@ -219,7 +223,7 @@ func (v Net) dumpDesc(sel uint16) {
 	}
 }
 
-func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
+func NewNet(irqCallBack func(irq, level uint32), txCallBack func (packet []byte), mem []byte) pci.Device {
 	// const VIRTIO_NET_F_CTRL_VQ = 1<<17
 	res := &Net{
 		Hdr: Hdr{
@@ -230,6 +234,7 @@ func NewNet(irqCallBack func(irq, level uint32), mem []byte) pci.Device {
 			},
 		},
 		irqCallback: irqCallBack,
+		txCallBack: txCallBack,
 		Mem:       mem,
 		VirtQueue: [2]*VirtQueue{},
 		
