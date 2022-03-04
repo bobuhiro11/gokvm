@@ -63,7 +63,7 @@ type commonHeader struct {
 	queueSEL uint16
 	_        uint16 // queueNotify
 	_        uint8  // status
-	_        uint8  // isr
+	isr        uint8
 }
 
 type netHeader struct {
@@ -73,6 +73,7 @@ type netHeader struct {
 }
 
 func (v *Net) InjectIRQ() {
+	v.Hdr.commonHeader.isr = 0x1
 	v.irqCallback(interruptLine, 0)
 	v.irqCallback(interruptLine, 1)
 }
@@ -108,8 +109,84 @@ func (v Net) IOInHandler(port uint64, bytes []byte) error {
 	return nil
 }
 
+func (v *Net) Rx(packet []byte) {
+	sel := 0
+	// v.dumpDesc(0)
+
+	availRing := &v.VirtQueue[sel].AvailRing
+	usedRing := &v.VirtQueue[sel].UsedRing
+
+	if v.LastAvailIdx[sel] == availRing.Idx {
+		fmt.Printf("no buffer found for rx\r\n")
+		return
+	}
+
+	packet = append(make([]byte,10), packet...)
+	const NONE = uint16(256)
+	headDescID := NONE
+	prevDescID := NONE
+
+	for len(packet) > 0 { // for chain
+		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
+
+		// decide head of vring chain for rx
+		if headDescID == NONE {
+			headDescID = descID
+
+			// This structure is holding both the index of the descriptor chain and the
+			// number of bytes that were written to the memory as part of serving the request.
+			usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(headDescID)
+			usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
+		}
+
+		for { // for entry of chain
+			desc := &v.VirtQueue[sel].DescTable[descID]
+			l := uint32(len(packet))
+			if l > desc.Len {
+				l = desc.Len
+			}
+
+			copy(v.Mem[desc.Addr:desc.Addr+uint64(l)], packet[:l])
+			packet = packet[l:]
+			desc.Len = l
+			fmt.Printf("write packet to desc[%d], desc.Len = %d packet=%#v\r\n", descID, desc.Len, packet)
+
+			usedRing.Ring[usedRing.Idx%QueueSize].Len += l
+
+			if prevDescID != NONE {
+				v.VirtQueue[sel].DescTable[prevDescID].Flags |= 0x1
+				v.VirtQueue[sel].DescTable[prevDescID].Next = descID
+			}
+			prevDescID = descID
+
+			if len(packet) == 0 {
+				desc.Next = 0
+				desc.Flags = 0x2
+				break
+			}
+
+			if desc.Flags&0x1 != 0 {
+				descID = desc.Next
+			} else {
+				break
+			}
+		}
+
+		v.LastAvailIdx[sel]++
+	}
+	usedRing.Idx++
+	// v.Hdr.commonHeader.queueSEL = uint16(sel)
+	v.InjectIRQ()
+}
+
 func (v *Net) QueueNotifyHandler() {
+	v.Hdr.commonHeader.isr = 0x0
+
 	sel := v.Hdr.commonHeader.queueSEL
+	if sel == 0 {
+		return
+	}
+
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
@@ -179,6 +256,7 @@ func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte),
 		Hdr: Hdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
+				isr: 0x0,
 			},
 		},
 		irqCallback:  irqCallBack,
@@ -218,5 +296,40 @@ type VirtQueue struct {
 			Len uint32
 		}
 		availEvent uint16
+	}
+}
+
+func (v Net) dumpDesc(sel uint16) {
+	fmt.Printf("[descriptor for queue%d]\r\n", sel)
+	fmt.Printf("Addr       Len    Flags   Next Data\r\n")
+	fmt.Printf("-----------------------------------\r\n")
+	for j:=0; j<QueueSize; j++ {
+		desc := v.VirtQueue[sel].DescTable[j]
+		buf := make([]byte, desc.Len)
+		copy(buf, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
+		fmt.Printf("0x%08x 0x%04x 0x%05x %04d 0x%x\r\n",
+		desc.Addr, desc.Len, desc.Flags, desc.Next, buf)
+	}
+
+	fmt.Printf("[avail ring for queue%d: flags=0x%x, idx=%d, used_event=%d]\r\n", sel,
+	v.VirtQueue[sel].AvailRing.Flags,
+	v.VirtQueue[sel].AvailRing.Idx,
+	v.VirtQueue[sel].AvailRing.UsedEvent)
+	fmt.Printf("Ring\r\n")
+	fmt.Printf("----\r\n")
+	for j:=0; j<QueueSize; j++ {
+		fmt.Printf("%04d\r\n", v.VirtQueue[sel].AvailRing.Ring[j])
+	}
+
+	fmt.Printf("[used ring for queue%d: flags=0x%x, idx=%d, avail_event=%d]\r\n", sel,
+	v.VirtQueue[sel].UsedRing.Flags,
+	v.VirtQueue[sel].UsedRing.Idx,
+	v.VirtQueue[sel].UsedRing.availEvent)
+	fmt.Printf("DescID Len\r\n")
+	fmt.Printf("----------\r\n")
+	for j:=0; j<QueueSize; j++ {
+		fmt.Printf("0x%04x 0x%1x\r\n",
+		v.VirtQueue[sel].UsedRing.Ring[j].Idx,
+		v.VirtQueue[sel].UsedRing.Ring[j].Len)
 	}
 }
