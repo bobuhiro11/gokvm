@@ -61,7 +61,7 @@ bzImage: linux.config linux.tar.xz
 
 .PHONY: run
 run: initrd bzImage
-	(sleep 1s; ip link set tap up) &
+	(sleep 1s; ip link set tap up; ip addr add 192.168.1.2/24 dev tap) &
 	go run . -c 4
 
 .PHONY: run-system-kernel

@@ -63,3 +63,14 @@ func (t Tap) Tx(bytes []byte) error {
 
 	return nil
 }
+
+func (t Tap) Rx() ([]byte,error) {
+	buf := make([]byte, 4096)
+	n, err := syscall.Read(t.fd, buf)
+
+	if err != nil {
+		return buf, err
+	}
+
+	return buf[:n], nil
+}
