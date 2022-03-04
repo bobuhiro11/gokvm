@@ -44,6 +44,7 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
 	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
 	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
+	echo '[guest on gokvm] Hello, world!' > busybox-$(BUSYBOX_VERSION)/_install/index.html
 	cd busybox-$(BUSYBOX_VERSION)/_install && find . | cpio -o --format=newc > ../../initrd
 	rm -rf busybox-$(BUSYBOX_VERSION)
 

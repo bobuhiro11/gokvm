@@ -9,6 +9,7 @@ const ifNameSize = 0x10
 
 type Tap struct {
 	fd int
+	rxKick chan<- []byte
 }
 
 type ifReq struct {
@@ -29,10 +30,12 @@ func ioctl(fd, op, arg uintptr) (uintptr, error) {
 	return res, err
 }
 
-func New(name string) (*Tap, error) {
+func New(name string, rxKick chan<- []byte) (*Tap, error) {
 	var err error
 
-	t := &Tap{}
+	t := &Tap{
+		rxKick: rxKick,
+	}
 
 	if t.fd, err = syscall.Open("/dev/net/tun", syscall.O_RDWR, 0); err != nil {
 		return t, err
@@ -64,13 +67,18 @@ func (t Tap) Tx(bytes []byte) error {
 	return nil
 }
 
-func (t Tap) Rx() ([]byte,error) {
+func (t *Tap) RxThreadEntry() {
 	buf := make([]byte, 4096)
-	n, err := syscall.Read(t.fd, buf)
 
-	if err != nil {
-		return buf, err
+	for {
+		n, err := syscall.Read(t.fd, buf)
+
+		if err != nil {
+			panic(err)
+		}
+
+		if n > 0 {
+			t.rxKick <- buf[:n]
+		}
 	}
-
-	return buf[:n], nil
 }

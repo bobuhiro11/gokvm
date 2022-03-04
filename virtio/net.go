@@ -38,6 +38,9 @@ type Net struct {
 	Mem          []byte
 	LastAvailIdx [2]uint16
 
+	rxKick <-chan []byte
+	txKick chan interface{}
+
 	// This callback is called when virtio request IRQ.
 	irqCallback func(irq, level uint32)
 
@@ -63,7 +66,7 @@ type commonHeader struct {
 	queueSEL uint16
 	_        uint16 // queueNotify
 	_        uint8  // status
-	isr        uint8
+	isr      uint8
 }
 
 type netHeader struct {
@@ -112,6 +115,11 @@ func (v Net) IOInHandler(port uint64, bytes []byte) error {
 func (v *Net) Rx(packet []byte) {
 	sel := 0
 	// v.dumpDesc(0)
+
+	if v.VirtQueue[sel] == nil {
+		fmt.Printf("vq not initialized for rx\r\n")
+		return
+	}
 
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
@@ -179,9 +187,18 @@ func (v *Net) Rx(packet []byte) {
 	v.InjectIRQ()
 }
 
-func (v *Net) QueueNotifyHandler() {
-	v.Hdr.commonHeader.isr = 0x0
+func (v *Net) NetThreadEntry() {
+	for {
+		select {
+		case <-v.txKick:
+			v.Tx()
+		case pkt := <-v.rxKick:
+			v.Rx(pkt)
+		}
+	}
+}
 
+func (v *Net) Tx() {
 	sel := v.Hdr.commonHeader.queueSEL
 	if sel == 0 {
 		return
@@ -223,7 +240,6 @@ func (v *Net) QueueNotifyHandler() {
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
 	}
-
 	v.InjectIRQ()
 }
 
@@ -238,7 +254,8 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
-		v.QueueNotifyHandler()
+		v.Hdr.commonHeader.isr = 0x0
+		v.txKick <- true
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -251,7 +268,7 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte), mem []byte) pci.Device {
+func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte), rxKick <-chan []byte, txKick chan interface{}, mem []byte) pci.Device {
 	res := &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
@@ -259,6 +276,8 @@ func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte),
 				isr: 0x0,
 			},
 		},
+		rxKick: rxKick,
+		txKick: txKick,
 		irqCallback:  irqCallBack,
 		txCallBack:   txCallBack,
 		Mem:          mem,
