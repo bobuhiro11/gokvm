@@ -11,7 +11,7 @@ import (
 func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
-	v := virtio.NewNet([]byte{})
+	v := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, []byte{})
 	expected := uint16(0x1000)
 	actual := v.GetDeviceHeader().DeviceID
 
@@ -24,7 +24,7 @@ func TestGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.IOPortSize)
-	s, e := virtio.NewNet([]byte{}).GetIORange()
+	s, e := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, []byte{}).GetIORange()
 	actual := e - s
 
 	if actual != expected {
@@ -35,8 +35,8 @@ func TestGetIORange(t *testing.T) {
 func TestIOInHandler(t *testing.T) {
 	t.Parallel()
 
-	expected := []byte{0x08, 0x00}
-	v := virtio.NewNet([]byte{})
+	expected := []byte{0x20, 0x00}
+	v := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, []byte{})
 	actual := make([]byte, 2)
 	_ = v.IOInHandler(virtio.IOPortStart+12, actual)
 
@@ -49,7 +49,7 @@ func TestSetQueuePhysAddr(t *testing.T) {
 	t.Parallel()
 
 	mem := make([]byte, 0x1000000)
-	v := virtio.NewNet(mem)
+	v := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, mem)
 	base := uint32(uintptr(unsafe.Pointer(&(v.(*virtio.Net).Mem[0]))))
 
 	expected := [2]uint32{
@@ -72,5 +72,57 @@ func TestSetQueuePhysAddr(t *testing.T) {
 		if expected[0] != actual[0] {
 			t.Fatalf("expected[%d]: 0x%x, actual[%d]: 0x%x\n", i, expected[i], i, actual[i])
 		}
+	}
+}
+
+func TestQueueNotifyHandler(t *testing.T) {
+	t.Parallel()
+
+	irqInjected := false
+	irqCallback := func(_, _ uint32) {
+		irqInjected = true
+	}
+
+	expected := []byte{0xaa, 0xbb, 0xcc, 0xdd}
+	actual := []byte{}
+	txCallback := func(bytes []byte) {
+		actual = append(actual, bytes...)
+	}
+
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(irqCallback, txCallback, mem).(*virtio.Net)
+
+	// Size of struct virtio_net_hdr
+	const K = 10
+
+	copy(mem[0x100+K:0x100+K+2], []byte{0xaa, 0xbb})
+	copy(mem[0x200:0x200+2], []byte{0xcc, 0xdd})
+
+	// Select Queue #1
+	sel := byte(1)
+	_ = v.IOOutHandler(virtio.IOPortStart+14, []byte{sel, 0x0})
+
+	// Init virt queue
+	vq := virtio.VirtQueue{}
+
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = K + 2
+	vq.DescTable[0].Flags = 0x1
+	vq.DescTable[0].Next = 0x1
+
+	vq.DescTable[1].Addr = 0x200
+	vq.DescTable[1].Len = 2
+
+	vq.AvailRing.Idx = 1
+	v.VirtQueue[sel] = &vq
+
+	v.QueueNotifyHandler()
+
+	if !irqInjected {
+		t.Fatalf("irqInjected = false\n")
+	}
+
+	if !bytes.Equal(expected, actual) {
+		t.Fatalf("expected: %v, actual: %v", expected, actual)
 	}
 }

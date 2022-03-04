@@ -13,6 +13,7 @@ import (
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/pci"
 	"github.com/bobuhiro11/gokvm/serial"
+	"github.com/bobuhiro11/gokvm/tap"
 	"github.com/bobuhiro11/gokvm/virtio"
 )
 
@@ -150,9 +151,26 @@ func New(nCpus int) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
+	t, err := tap.New("tap")
+	if err != nil {
+		panic(err)
+	}
+
+	virtioIRQCallback := func(irq, level uint32) {
+		if err := kvm.IRQLine(m.vmFd, irq, level); err != nil {
+			panic(err)
+		}
+	}
+
+	virtioTxCallback := func(packet []byte) {
+		if err := t.Tx(packet); err != nil {
+			panic(err)
+		}
+	}
+
 	m.pci = pci.New(
-		pci.NewBridge(),      // 00:00.0 for PCI bridge
-		virtio.NewNet(m.mem), // 00:01.0 for Virtio PCI
+		pci.NewBridge(), // 00:00.0 for PCI bridge
+		virtio.NewNet(virtioIRQCallback, virtioTxCallback, m.mem), // 00:01.0 for Virtio PCI
 	)
 
 	return m, nil
