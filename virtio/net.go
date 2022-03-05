@@ -6,6 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"unsafe"
+	"syscall"
+	"io"
+	"os"
+	"os/signal"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
@@ -38,14 +42,13 @@ type Net struct {
 	Mem          []byte
 	LastAvailIdx [2]uint16
 
-	rxKick <-chan []byte
+	tap io.ReadWriter
+
+	rxKick <-chan os.Signal
 	txKick chan interface{}
 
 	// This callback is called when virtio request IRQ.
 	irqCallback func(irq, level uint32)
-
-	// This callback is called when virtio transmit packet.
-	txCallBack func(packet []byte)
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -112,21 +115,26 @@ func (v Net) IOInHandler(port uint64, bytes []byte) error {
 	return nil
 }
 
-func (v *Net) Rx(packet []byte) {
+func (v *Net) Rx() error {
+	packet := make([]byte, 4096)
+	n, err := v.tap.Read(packet)
+	if err != nil {
+		return fmt.Errorf("packet not found in tap\r\n")
+	}
+	packet = packet[:n]
+
 	sel := 0
 	// v.dumpDesc(0)
 
 	if v.VirtQueue[sel] == nil {
-		fmt.Printf("vq not initialized for rx\r\n")
-		return
+		return fmt.Errorf("vq not initialized for rx\r\n")
 	}
 
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
 	if v.LastAvailIdx[sel] == availRing.Idx {
-		fmt.Printf("no buffer found for rx\r\n")
-		return
+		return fmt.Errorf("no buffer found for rx\r\n")
 	}
 
 	packet = append(make([]byte,10), packet...)
@@ -157,7 +165,7 @@ func (v *Net) Rx(packet []byte) {
 			copy(v.Mem[desc.Addr:desc.Addr+uint64(l)], packet[:l])
 			packet = packet[l:]
 			desc.Len = l
-			fmt.Printf("write packet to desc[%d], desc.Len = %d packet=%#v\r\n", descID, desc.Len, packet)
+			// fmt.Printf("write packet to desc[%d], desc.Len = %d packet=%#v\r\n", descID, desc.Len, packet)
 
 			usedRing.Ring[usedRing.Idx%QueueSize].Len += l
 
@@ -185,27 +193,36 @@ func (v *Net) Rx(packet []byte) {
 	usedRing.Idx++
 	// v.Hdr.commonHeader.queueSEL = uint16(sel)
 	v.InjectIRQ()
+
+	return nil
 }
 
-func (v *Net) NetThreadEntry() {
-	for {
-		select {
-		case <-v.txKick:
-			v.Tx()
-		case pkt := <-v.rxKick:
-			v.Rx(pkt)
+func (v *Net) RxThreadEntry() {
+	for _ = range v.rxKick {
+		for v.Rx() == nil {
 		}
 	}
 }
 
-func (v *Net) Tx() {
+func (v *Net) TxThreadEntry() {
+	for _ = range v.txKick {
+		for v.Tx() == nil {
+		}
+	}
+}
+
+func (v *Net) Tx() error {
 	sel := v.Hdr.commonHeader.queueSEL
 	if sel == 0 {
-		return
+		return fmt.Errorf("queue sel is invalid")
 	}
 
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
+
+	if v.LastAvailIdx[sel] == availRing.Idx {
+		return fmt.Errorf("no packet for tx")
+	}
 
 	for v.LastAvailIdx[sel] != availRing.Idx {
 		buf := []byte{}
@@ -236,11 +253,15 @@ func (v *Net) Tx() {
 		// refs https://github.com/torvalds/linux/blob/38f80f42/include/uapi/linux/virtio_net.h#L178-L191
 		buf = buf[10:]
 
-		v.txCallBack(buf)
+		if _, err := v.tap.Write(buf); err != nil {
+			return err
+		}
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
 	}
 	v.InjectIRQ()
+
+	return nil
 }
 
 func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
@@ -268,7 +289,13 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte), rxKick <-chan []byte, txKick chan interface{}, mem []byte) pci.Device {
+func NewNet(irqCallBack func(irq, level uint32), tap io.ReadWriter, mem []byte) pci.Device {
+
+	rxKick := make(chan os.Signal)
+	txKick := make(chan interface{})
+
+	signal.Notify(rxKick, syscall.SIGIO)
+
 	res := &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
@@ -276,10 +303,10 @@ func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte),
 				isr: 0x0,
 			},
 		},
+		irqCallback: irqCallBack,
 		rxKick: rxKick,
 		txKick: txKick,
-		irqCallback:  irqCallBack,
-		txCallBack:   txCallBack,
+		tap: tap,
 		Mem:          mem,
 		VirtQueue:    [2]*VirtQueue{},
 		LastAvailIdx: [2]uint16{0, 0},

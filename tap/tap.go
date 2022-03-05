@@ -1,6 +1,7 @@
 package tap
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 )
@@ -9,7 +10,6 @@ const ifNameSize = 0x10
 
 type Tap struct {
 	fd int
-	rxKick chan<- []byte
 }
 
 type ifReq struct {
@@ -30,12 +30,22 @@ func ioctl(fd, op, arg uintptr) (uintptr, error) {
 	return res, err
 }
 
-func New(name string, rxKick chan<- []byte) (*Tap, error) {
+func fcntl(fd, op, arg uintptr) (uintptr, error) {
+	res, _, errno := syscall.Syscall(
+		syscall.SYS_FCNTL, fd, op, arg)
+
+	var err error = nil
+	if errno != 0 {
+		err = errno
+	}
+
+	return res, err
+}
+
+func New(name string) (*Tap, error) {
 	var err error
 
-	t := &Tap{
-		rxKick: rxKick,
-	}
+	t := &Tap{}
 
 	if t.fd, err = syscall.Open("/dev/net/tun", syscall.O_RDWR, 0); err != nil {
 		return t, err
@@ -52,6 +62,31 @@ func New(name string, rxKick chan<- []byte) (*Tap, error) {
 		return t, err
 	}
 
+	// issue SIGIO if tap interface is accessed.
+	if _, err = fcntl(uintptr(t.fd), syscall.F_SETSIG, 0); err != nil {
+		fmt.Printf("syscall.F_SETSIG failed\r\n")
+		return t, err
+	}
+
+	// const DN_ACCESS = 0x00000001
+	// const DN_MODIFY = 0x00000002
+	// if _, err = fcntl(uintptr(t.fd), syscall.F_NOTIFY, DN_MODIFY); err != nil {
+	// 	fmt.Printf("syscall.F_NOTIFY failed\r\n")
+	// 	return t, err
+	// }
+
+	// enable non-blocing IO for tap interface
+	var flags uintptr
+	if flags, err = fcntl(uintptr(t.fd), syscall.F_GETFL, 0); err != nil {
+		fmt.Printf("syscall.F_GETFL failed\r\n")
+		return t, err
+	}
+
+	if _, err = fcntl(uintptr(t.fd), syscall.F_SETFL, flags | syscall.O_NONBLOCK | syscall.O_ASYNC); err != nil {
+		fmt.Printf("syscall.F_SETFL failed\r\n")
+		return t, err
+	}
+
 	return t, nil
 }
 
@@ -59,26 +94,12 @@ func (t *Tap) Close() error {
 	return syscall.Close(t.fd)
 }
 
-func (t Tap) Tx(bytes []byte) error {
-	if _, err := syscall.Write(t.fd, bytes); err != nil {
-		return err
-	}
-
-	return nil
+func (t Tap) Write(buf []byte) (n int, err error) {
+	fmt.Printf("tap.Write called\r\n")
+	return syscall.Write(t.fd, buf)
 }
 
-func (t *Tap) RxThreadEntry() {
-	buf := make([]byte, 4096)
-
-	for {
-		n, err := syscall.Read(t.fd, buf)
-
-		if err != nil {
-			panic(err)
-		}
-
-		if n > 0 {
-			t.rxKick <- buf[:n]
-		}
-	}
+func (t Tap) Read(buf []byte) (n int, err error) {
+	fmt.Printf("tap.Read called\r\n")
+	return syscall.Read(t.fd, buf)
 }

@@ -151,11 +151,7 @@ func New(nCpus int) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
-	rxKick := make(chan []byte)
-	txKick := make(chan interface{})
-
-	t, err := tap.New("tap", rxKick)
-	go t.RxThreadEntry()
+	t, err := tap.New("tap")
 
 	if err != nil {
 		panic(err)
@@ -167,14 +163,9 @@ func New(nCpus int) (*Machine, error) {
 		}
 	}
 
-	virtioTxCallback := func(packet []byte) {
-		if err := t.Tx(packet); err != nil {
-			panic(err)
-		}
-	}
-
-	v := virtio.NewNet(virtioIRQCallback, virtioTxCallback, rxKick, txKick, m.mem).(*virtio.Net)
-	go v.NetThreadEntry()
+	v := virtio.NewNet(virtioIRQCallback, t, m.mem).(*virtio.Net)
+	go v.TxThreadEntry()
+	go v.RxThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
