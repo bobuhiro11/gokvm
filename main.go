@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 
 	"github.com/bobuhiro11/gokvm/flag"
@@ -34,7 +35,8 @@ func main() {
 
 	restoreMode, err := term.SetRawMode()
 	if err != nil {
-		panic(err)
+		fmt.Printf("set raw mode failed: %#v", err)
+		select{}
 	}
 
 	defer restoreMode()

@@ -73,6 +73,14 @@ run-system-kernel:
 		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
+.PHONY: stest
+stest:
+	$(MAKE) run >/dev/null 2>&1 &
+	sleep 2s
+	ping -c 10 -i 0.1 192.168.1.1 | grep '0% packet loss'
+	curl -s 192.168.1.1 | grep '\[guest on gokvm] Hello, world!'
+	pkill -9 gokvm
+
 .PHONY: test
 test: golangci-lint initrd bzImage
 	./golangci-lint run --enable-all \

@@ -18,6 +18,7 @@ before_script:
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
 script:
   - sudo -E env "PATH=$PATH" make gokvm
+  - sudo -E env "PATH=$PATH" make stest
   - sudo -E env "PATH=$PATH" make test
   - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
   - sudo -E env "PATH=$PATH" make clean
