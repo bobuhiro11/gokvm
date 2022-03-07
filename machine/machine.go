@@ -163,7 +163,7 @@ func New(nCpus int) (*Machine, error) {
 	}
 
 	virtioTxCallback := func(packet []byte) {
-		if err := t.Tx(packet); err != nil {
+		if _, err := t.Write(packet); err != nil {
 			panic(err)
 		}
 	}
