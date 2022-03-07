@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"unsafe"
-	"syscall"
 	"io"
 	"os"
 	"os/signal"
+	"syscall"
+	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
@@ -137,7 +137,9 @@ func (v *Net) Rx() error {
 		return fmt.Errorf("no buffer found for rx\r\n")
 	}
 
+	// Append struct virtio_net_hdr
 	packet = append(make([]byte,10), packet...)
+
 	const NONE = uint16(256)
 	headDescID := NONE
 	prevDescID := NONE
@@ -155,39 +157,24 @@ func (v *Net) Rx() error {
 			usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
 		}
 
-		for { // for entry of chain
-			desc := &v.VirtQueue[sel].DescTable[descID]
-			l := uint32(len(packet))
-			if l > desc.Len {
-				l = desc.Len
-			}
-
-			copy(v.Mem[desc.Addr:desc.Addr+uint64(l)], packet[:l])
-			packet = packet[l:]
-			desc.Len = l
-			// fmt.Printf("write packet to desc[%d], desc.Len = %d packet=%#v\r\n", descID, desc.Len, packet)
-
-			usedRing.Ring[usedRing.Idx%QueueSize].Len += l
-
-			if prevDescID != NONE {
-				v.VirtQueue[sel].DescTable[prevDescID].Flags |= 0x1
-				v.VirtQueue[sel].DescTable[prevDescID].Next = descID
-			}
-			prevDescID = descID
-
-			if len(packet) == 0 {
-				desc.Next = 0
-				desc.Flags = 0x2
-				break
-			}
-
-			if desc.Flags&0x1 != 0 {
-				descID = desc.Next
-			} else {
-				break
-			}
+		desc := &v.VirtQueue[sel].DescTable[descID]
+		l := uint32(len(packet))
+		if l > desc.Len {
+			l = desc.Len
 		}
 
+		copy(v.Mem[desc.Addr:desc.Addr+uint64(l)], packet[:l])
+		packet = packet[l:]
+		desc.Len = l
+		// fmt.Printf("write packet to desc[%d], desc.Len = %d packet=%#v\r\n", descID, desc.Len, packet)
+
+		usedRing.Ring[usedRing.Idx%QueueSize].Len += l
+
+		if prevDescID != NONE {
+			v.VirtQueue[sel].DescTable[prevDescID].Flags |= 0x1
+			v.VirtQueue[sel].DescTable[prevDescID].Next = descID
+		}
+		prevDescID = descID
 		v.LastAvailIdx[sel]++
 	}
 	usedRing.Idx++
