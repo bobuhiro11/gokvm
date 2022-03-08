@@ -164,6 +164,7 @@ func New(nCpus int) (*Machine, error) {
 
 	v := virtio.NewNet(virtioIRQCallback, t, m.mem).(*virtio.Net)
 	go v.TxThreadEntry()
+	go v.RxThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
