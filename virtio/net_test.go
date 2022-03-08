@@ -11,7 +11,7 @@ import (
 func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
-	v := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, []byte{})
+	v := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), []byte{})
 	expected := uint16(0x1000)
 	actual := v.GetDeviceHeader().DeviceID
 
@@ -24,7 +24,7 @@ func TestGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.IOPortSize)
-	s, e := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, []byte{}).GetIORange()
+	s, e := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), []byte{}).GetIORange()
 	actual := e - s
 
 	if actual != expected {
@@ -36,7 +36,7 @@ func TestIOInHandler(t *testing.T) {
 	t.Parallel()
 
 	expected := []byte{0x20, 0x00}
-	v := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, []byte{})
+	v := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), []byte{})
 	actual := make([]byte, 2)
 	_ = v.IOInHandler(virtio.IOPortStart+12, actual)
 
@@ -49,7 +49,7 @@ func TestSetQueuePhysAddr(t *testing.T) {
 	t.Parallel()
 
 	mem := make([]byte, 0x1000000)
-	v := virtio.NewNet(func(_, _ uint32) {}, func(_ []byte) {}, mem)
+	v := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), mem)
 	base := uint32(uintptr(unsafe.Pointer(&(v.(*virtio.Net).Mem[0]))))
 
 	expected := [2]uint32{
@@ -84,13 +84,10 @@ func TestQueueNotifyHandler(t *testing.T) {
 	}
 
 	expected := []byte{0xaa, 0xbb, 0xcc, 0xdd}
-	actual := []byte{}
-	txCallback := func(bytes []byte) {
-		actual = append(actual, bytes...)
-	}
+	b := bytes.NewBuffer([]byte{})
 
 	mem := make([]byte, 0x1000000)
-	v := virtio.NewNet(irqCallback, txCallback, mem).(*virtio.Net)
+	v := virtio.NewNet(irqCallback, b, mem).(*virtio.Net)
 
 	// Size of struct virtio_net_hdr
 	const K = 10
@@ -116,13 +113,15 @@ func TestQueueNotifyHandler(t *testing.T) {
 	vq.AvailRing.Idx = 1
 	v.VirtQueue[sel] = &vq
 
-	v.QueueNotifyHandler()
+	if err := v.Tx(); err != nil {
+		t.Fatalf("err: %v\n", err)
+	}
 
 	if !irqInjected {
 		t.Fatalf("irqInjected = false\n")
 	}
 
-	if !bytes.Equal(expected, actual) {
-		t.Fatalf("expected: %v, actual: %v", expected, actual)
+	if !bytes.Equal(expected, b.Bytes()) {
+		t.Fatalf("expected: %v, actual: %v", expected, b.Bytes())
 	}
 }

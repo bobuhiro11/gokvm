@@ -162,15 +162,12 @@ func New(nCpus int) (*Machine, error) {
 		}
 	}
 
-	virtioTxCallback := func(packet []byte) {
-		if _, err := t.Write(packet); err != nil {
-			panic(err)
-		}
-	}
+	v := virtio.NewNet(virtioIRQCallback, t, m.mem).(*virtio.Net)
+	go v.TxThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
-		virtio.NewNet(virtioIRQCallback, virtioTxCallback, m.mem), // 00:01.0 for Virtio PCI
+		v,               // 00:01.0 for Virtio PCI
 	)
 
 	return m, nil

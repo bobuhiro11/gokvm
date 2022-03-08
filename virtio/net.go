@@ -5,12 +5,17 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
 
-var ErrIONotPermit = errors.New("IO is not permitted for virtio device")
+var (
+	ErrInvalidSel  = errors.New("queue sel is invalid")
+	ErrIONotPermit = errors.New("IO is not permitted for virtio device")
+	ErrNoTxPacket  = errors.New("no packet for tx")
+)
 
 const (
 	IOPortStart = 0x6200
@@ -38,11 +43,12 @@ type Net struct {
 	Mem          []byte
 	LastAvailIdx [2]uint16
 
+	tap io.ReadWriter
+
+	txKick chan interface{}
+
 	// This callback is called when virtio request IRQ.
 	irqCallback func(irq, level uint32)
-
-	// This callback is called when virtio transmit packet.
-	txCallBack func(packet []byte)
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -63,7 +69,7 @@ type commonHeader struct {
 	queueSEL uint16
 	_        uint16 // queueNotify
 	_        uint8  // status
-	_        uint8  // isr
+	isr      uint8
 }
 
 type netHeader struct {
@@ -108,10 +114,25 @@ func (v Net) IOInHandler(port uint64, bytes []byte) error {
 	return nil
 }
 
-func (v *Net) QueueNotifyHandler() {
+func (v *Net) TxThreadEntry() {
+	for range v.txKick {
+		for v.Tx() == nil {
+		}
+	}
+}
+
+func (v *Net) Tx() error {
 	sel := v.Hdr.commonHeader.queueSEL
+	if sel == 0 {
+		return ErrInvalidSel
+	}
+
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
+
+	if v.LastAvailIdx[sel] == availRing.Idx {
+		return ErrNoTxPacket
+	}
 
 	for v.LastAvailIdx[sel] != availRing.Idx {
 		buf := []byte{}
@@ -142,12 +163,15 @@ func (v *Net) QueueNotifyHandler() {
 		// refs https://github.com/torvalds/linux/blob/38f80f42/include/uapi/linux/virtio_net.h#L178-L191
 		buf = buf[10:]
 
-		v.txCallBack(buf)
+		if _, err := v.tap.Write(buf); err != nil {
+			return err
+		}
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
 	}
-
 	v.InjectIRQ()
+
+	return nil
 }
 
 func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
@@ -161,7 +185,8 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
-		v.QueueNotifyHandler()
+		v.Hdr.commonHeader.isr = 0x0
+		v.txKick <- true
 	case 19:
 		fmt.Printf("ISR was written!\r\n")
 	default:
@@ -174,15 +199,17 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewNet(irqCallBack func(irq, level uint32), txCallBack func(packet []byte), mem []byte) pci.Device {
+func NewNet(irqCallBack func(irq, level uint32), tap io.ReadWriter, mem []byte) pci.Device {
 	res := &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
+				isr:      0x0,
 			},
 		},
 		irqCallback:  irqCallBack,
-		txCallBack:   txCallBack,
+		txKick:       make(chan interface{}),
+		tap:          tap,
 		Mem:          mem,
 		VirtQueue:    [2]*VirtQueue{},
 		LastAvailIdx: [2]uint16{0, 0},
