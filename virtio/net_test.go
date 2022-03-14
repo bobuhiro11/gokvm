@@ -125,3 +125,39 @@ func TestQueueNotifyHandler(t *testing.T) {
 		t.Fatalf("expected: %v, actual: %v", expected, b.Bytes())
 	}
 }
+
+func TestRx(t *testing.T) {
+	t.Parallel()
+
+	irqInjected := false
+	irqCallback := func(_, _ uint32) {
+		irqInjected = true
+	}
+
+	expected := []byte{0xaa, 0xbb}
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(irqCallback, bytes.NewBuffer(expected), mem).(*virtio.Net)
+
+	// Init virt queue
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = 0x200
+	v.VirtQueue[0] = &vq
+
+	// Size of struct virtio_net_hdr
+	const K = 10
+
+	if err := v.Rx(); err != nil {
+		t.Fatalf("err: %v\n", err)
+	}
+
+	if !irqInjected {
+		t.Fatalf("irqInjected = false\n")
+	}
+
+	actual := mem[0x100+K : 0x100+K+2]
+	if !bytes.Equal(expected, actual) {
+		t.Fatalf("expected: %v, actual: %v", expected, actual)
+	}
+}

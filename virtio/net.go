@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -15,6 +18,9 @@ var (
 	ErrInvalidSel  = errors.New("queue sel is invalid")
 	ErrIONotPermit = errors.New("IO is not permitted for virtio device")
 	ErrNoTxPacket  = errors.New("no packet for tx")
+	ErrNoRxPacket  = errors.New("no packet for rx")
+	ErrVQNotInit   = errors.New("vq not initialized")
+	ErrNoRxBuf     = errors.New("no buffer found for rx")
 )
 
 const (
@@ -46,6 +52,7 @@ type Net struct {
 	tap io.ReadWriter
 
 	txKick chan interface{}
+	rxKick chan os.Signal
 
 	// This callback is called when virtio request IRQ.
 	irqCallback func(irq, level uint32)
@@ -79,6 +86,7 @@ type netHeader struct {
 }
 
 func (v *Net) InjectIRQ() {
+	v.Hdr.commonHeader.isr = 0x1
 	v.irqCallback(interruptLine, 0)
 	v.irqCallback(interruptLine, 1)
 }
@@ -110,6 +118,86 @@ func (v Net) IOInHandler(port uint64, bytes []byte) error {
 
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
+
+	return nil
+}
+
+func (v *Net) RxThreadEntry() {
+	for range v.rxKick {
+		for v.Rx() == nil {
+		}
+	}
+}
+
+func (v *Net) Rx() error {
+	// read raw packet from tap device
+	packet := make([]byte, 4096)
+
+	n, err := v.tap.Read(packet)
+	if err != nil {
+		return ErrNoRxPacket
+	}
+
+	packet = packet[:n]
+
+	// append struct virtio_net_hdr
+	packet = append(make([]byte, 10), packet...)
+
+	sel := 0
+
+	if v.VirtQueue[sel] == nil {
+		return ErrVQNotInit
+	}
+
+	availRing := &v.VirtQueue[sel].AvailRing
+	usedRing := &v.VirtQueue[sel].UsedRing
+
+	if v.LastAvailIdx[sel] == availRing.Idx {
+		return ErrNoRxBuf
+	}
+
+	const NONE = uint16(256)
+	headDescID := NONE
+	prevDescID := NONE
+
+	for len(packet) > 0 {
+		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
+
+		// head of vring chain
+		if headDescID == NONE {
+			headDescID = descID
+
+			// This structure is holding both the index of the descriptor chain and the
+			// number of bytes that were written to the memory as part of serving the request.
+			usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(headDescID)
+			usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
+		}
+
+		desc := &v.VirtQueue[sel].DescTable[descID]
+		l := uint32(len(packet))
+
+		if l > desc.Len {
+			l = desc.Len
+		}
+
+		copy(v.Mem[desc.Addr:desc.Addr+uint64(l)], packet[:l])
+		packet = packet[l:]
+		desc.Len = l
+
+		usedRing.Ring[usedRing.Idx%QueueSize].Len += l
+
+		if prevDescID != NONE {
+			v.VirtQueue[sel].DescTable[prevDescID].Flags |= 0x1
+			v.VirtQueue[sel].DescTable[prevDescID].Next = descID
+		}
+
+		prevDescID = descID
+		v.LastAvailIdx[sel]++
+	}
+
+	usedRing.Idx++
+
+	v.InjectIRQ()
 
 	return nil
 }
@@ -209,11 +297,14 @@ func NewNet(irqCallBack func(irq, level uint32), tap io.ReadWriter, mem []byte) 
 		},
 		irqCallback:  irqCallBack,
 		txKick:       make(chan interface{}),
+		rxKick:       make(chan os.Signal),
 		tap:          tap,
 		Mem:          mem,
 		VirtQueue:    [2]*VirtQueue{},
 		LastAvailIdx: [2]uint16{0, 0},
 	}
+
+	signal.Notify(res.rxKick, syscall.SIGIO)
 
 	return res
 }
