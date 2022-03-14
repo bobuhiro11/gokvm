@@ -4,6 +4,8 @@ LINUX_VERSION = 5.14.3
 PCIUTILS_VERSION = 3.7.0
 ETHTOOL_VERSION = 5.15
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
+GUEST_IPV4_ADDR = 192.168.10.1/24
+HOST_IPV4_ADDR = 192.168.10.2/24
 
 gokvm: $(wildcard *.go)
 	go build .
@@ -44,6 +46,7 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
 	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
 	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
+	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
 	cd busybox-$(BUSYBOX_VERSION)/_install && find . | cpio -o --format=newc > ../../initrd
 	rm -rf busybox-$(BUSYBOX_VERSION)
 
