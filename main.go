@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 
 	"github.com/bobuhiro11/gokvm/flag"
@@ -30,6 +31,11 @@ func main() {
 				panic(err)
 			}
 		}(i)
+	}
+
+	if !term.IsTerminal() {
+		fmt.Fprintln(os.Stderr, "this is not terminal and does not accept input")
+		select {}
 	}
 
 	restoreMode, err := term.SetRawMode()
