@@ -9,7 +9,7 @@ import (
 func TestNewAndLoadLinux(t *testing.T) {
 	t.Parallel()
 
-	m, err := machine.New(1)
+	m, err := machine.New(1, "tap")
 	if err != nil {
 		t.Fatal(err)
 	}

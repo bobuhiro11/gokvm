@@ -17,11 +17,13 @@ func TestParseArg(t *testing.T) {
 		"kernel_path",
 		"-p",
 		"params",
+		"-t",
+		"tap_if_name",
 		"-c",
 		"2",
 	}
 
-	kernel, initrd, params, nCpus, err := flag.ParseArgs(args)
+	kernel, initrd, params, tapIfName, nCpus, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +38,10 @@ func TestParseArg(t *testing.T) {
 
 	if params != "params" {
 		t.Fatal("invalid kernel command-line parameters")
+	}
+
+	if tapIfName != "tap_if_name" {
+		t.Fatal("invalid name of tap interface")
 	}
 
 	if nCpus != 2 {

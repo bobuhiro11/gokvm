@@ -66,7 +66,7 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
 
-func New(nCpus int) (*Machine, error) {
+func New(nCpus int, tapIfName string) (*Machine, error) {
 	m := &Machine{}
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -151,7 +151,7 @@ func New(nCpus int) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
-	t, err := tap.New("tap")
+	t, err := tap.New(tapIfName)
 	if err != nil {
 		panic(err)
 	}
