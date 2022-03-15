@@ -16,13 +16,14 @@ before_script:
   - chmod a+x ./cc-test-reporter
   - sudo -E env "PATH=$PATH" ./cc-test-reporter before-build
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
+  - sudo -E env "PATH=$PATH" make golangci-lint initrd bzImage
 script:
   - sudo -E env "PATH=$PATH" make gokvm
   - sudo -E env "PATH=$PATH" make test
-  - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
-  - sudo -E env "PATH=$PATH" make clean
 after_script:
+  - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
   - sudo -E env "PATH=$PATH" ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
+  - sudo -E env "PATH=$PATH" make clean
 deploy:
 - provider: script
   skip_cleanup: true
