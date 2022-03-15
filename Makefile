@@ -76,6 +76,7 @@ run-system-kernel:
 
 .PHONY: test
 test: golangci-lint initrd bzImage
+	-pkill -f gokvm
 	./golangci-lint run --enable-all \
 		--disable gomnd \
 		--disable wrapcheck \
@@ -84,6 +85,12 @@ test: golangci-lint initrd bzImage
 		--disable funlen \
 		$(shell find . -type f -name "*.go" | xargs dirname | sort)
 	go test -v -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
+	# launch the executable & check ping
+	$(MAKE) run > output.log 2>&1 &
+	sleep 1s && ip link set tap up && ip addr add $(HOST_IPV4_ADDR) dev tap
+	sleep 5s && cat output.log
+	ping $(shell echo $(GUEST_IPV4_ADDR) | sed -e 's|/.*$$||g') -c 3
+	-pkill -f gokvm
 
 .PHONY: clean
 clean:
