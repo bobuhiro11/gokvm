@@ -10,12 +10,12 @@ import (
 )
 
 func main() {
-	kernelPath, initrdPath, params, nCpus, err := flag.ParseArgs(os.Args)
+	kernelPath, initrdPath, params, tapIfName, nCpus, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		panic(err)
 	}
 
-	m, err := machine.New(nCpus)
+	m, err := machine.New(nCpus, tapIfName)
 	if err != nil {
 		panic(err)
 	}

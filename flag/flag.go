@@ -4,10 +4,11 @@ import (
 	"flag"
 )
 
-func ParseArgs(args []string) (string, string, string, int, error) {
+func ParseArgs(args []string) (string, string, string, string, int, error) {
 	kernel := flag.String("k", "./bzImage", "kernel image path")
 	initrd := flag.String("i", "./initrd", "initrd path")
 	nCpus := flag.Int("c", 1, "number of cpus")
+	tapIfName := flag.String("t", "tap", "name of tap interface")
 
 	//  refs: commit 1621292e73770aabbc146e72036de5e26f901e86 in kvmtool
 	params := flag.String("p", `console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
@@ -18,8 +19,8 @@ func ParseArgs(args []string) (string, string, string, int, error) {
 	flag.Parse()
 
 	if err := flag.CommandLine.Parse(args[1:]); err != nil {
-		return "", "", "", 0, err
+		return "", "", "", "", 0, err
 	}
 
-	return *kernel, *initrd, *params, *nCpus, nil
+	return *kernel, *initrd, *params, *tapIfName, *nCpus, nil
 }
