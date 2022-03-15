@@ -12,7 +12,7 @@ func ParseArgs(args []string) (string, string, string, string, int, error) {
 
 	//  refs: commit 1621292e73770aabbc146e72036de5e26f901e86 in kvmtool
 	params := flag.String("p", `console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
-		`debug apic=debug show_lapic=all mitigations=off lapic `+
+		`debug apic=debug show_lapic=all mitigations=off lapic tsc_early_khz=2000 `+
 		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" pci=realloc=off `+
 		`virtio_pci.force_legacy=1`, "kernel command-line parameters")
 
