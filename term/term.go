@@ -45,6 +45,12 @@ func write(fd int, t termios) error {
 	return err
 }
 
+func IsTerminal() bool {
+	_, err := read(0)
+
+	return err == nil
+}
+
 func SetRawMode() (func(), error) {
 	t, err := read(0)
 	if err != nil {

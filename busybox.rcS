@@ -1,3 +1,5 @@
 #!/bin/sh
 mount -t proc none /proc
 mount -t sysfs none /sys
+ip link set eth0 up
+ip addr add {{ GUEST_IPV4_ADDR }} dev eth0

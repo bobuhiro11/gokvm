@@ -4,6 +4,8 @@ LINUX_VERSION = 5.14.3
 PCIUTILS_VERSION = 3.7.0
 ETHTOOL_VERSION = 5.15
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
+GUEST_IPV4_ADDR = 192.168.10.1/24
+HOST_IPV4_ADDR = 192.168.10.2/24
 
 gokvm: $(wildcard *.go)
 	go build .
@@ -44,6 +46,7 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
 	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
 	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
+	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
 	cd busybox-$(BUSYBOX_VERSION)/_install && find . | cpio -o --format=newc > ../../initrd
 	rm -rf busybox-$(BUSYBOX_VERSION)
 
@@ -73,6 +76,7 @@ run-system-kernel:
 
 .PHONY: test
 test: golangci-lint initrd bzImage
+	-pkill -f gokvm
 	./golangci-lint run --enable-all \
 		--disable gomnd \
 		--disable wrapcheck \
@@ -81,6 +85,12 @@ test: golangci-lint initrd bzImage
 		--disable funlen \
 		$(shell find . -type f -name "*.go" | xargs dirname | sort)
 	go test -v -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
+	# launch the executable & check ping
+	$(MAKE) run > output.log 2>&1 &
+	sleep 1s && ip link set tap up && ip addr add $(HOST_IPV4_ADDR) dev tap
+	sleep 5s && cat output.log
+	ping $(shell echo $(GUEST_IPV4_ADDR) | sed -e 's|/.*$$||g') -c 3
+	-pkill -f gokvm
 
 .PHONY: clean
 clean:
