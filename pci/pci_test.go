@@ -103,3 +103,27 @@ func TestProbingBAR0(t *testing.T) {
 		t.Fatalf("expected: 0x%x, actual: 0x%x", expected, actual)
 	}
 }
+
+func TestBytes(t *testing.T) {
+	t.Parallel()
+
+	dh := pci.DeviceHeader{
+		DeviceID:      1,
+		VendorID:      1,
+		HeaderType:    1,
+		SubsystemID:   1,
+		Command:       1,
+		BAR:           [6]uint32{},
+		InterruptPin:  1,
+		InterruptLine: 1,
+	}
+
+	b, err := dh.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if b[0] != byte(dh.VendorID) {
+		t.Fatalf("invalid vendor id")
+	}
+}
