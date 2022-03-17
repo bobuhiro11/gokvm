@@ -4,8 +4,7 @@ LINUX_VERSION = 5.14.3
 PCIUTILS_VERSION = 3.7.0
 ETHTOOL_VERSION = 5.15
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
-GUEST_IPV4_ADDR = 192.168.10.1/24
-HOST_IPV4_ADDR = 192.168.10.2/24
+GUEST_IPV4_ADDR = 192.168.20.1/24
 
 gokvm: $(wildcard *.go)
 	go build .
@@ -76,7 +75,6 @@ run-system-kernel:
 
 .PHONY: test
 test: golangci-lint initrd bzImage
-	-pkill -f gokvm
 	./golangci-lint run --enable-all \
 		--disable gomnd \
 		--disable wrapcheck \
@@ -84,12 +82,7 @@ test: golangci-lint initrd bzImage
 		--disable forbidigo \
 		--disable funlen \
 		$(shell find . -type f -name "*.go" | xargs dirname | sort)
-	go test -v -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
-	# launch the executable & check ping
-	$(MAKE) run > /dev/null 2>&1 &
-	sleep 1s && ip link set tap up && ip addr add $(HOST_IPV4_ADDR) dev tap && sleep 5s
-	ping $(shell echo $(GUEST_IPV4_ADDR) | sed -e 's|/.*$$||g') -c 3
-	-pkill -f gokvm
+	go test -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
 
 .PHONY: clean
 clean:
