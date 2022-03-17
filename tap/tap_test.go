@@ -9,9 +9,7 @@ import (
 	"github.com/bobuhiro11/gokvm/tap"
 )
 
-func TestNew(t *testing.T) {
-	t.Parallel()
-
+func TestNew(t *testing.T) { // nolint:paralleltest
 	tap, err := tap.New("test_tap")
 	if err != nil {
 		t.Fatal(err)
@@ -23,9 +21,7 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestWrite(t *testing.T) {
-	t.Parallel()
-
+func TestWrite(t *testing.T) { // nolint:paralleltest
 	tap, err := tap.New("test_write")
 	if err != nil {
 		t.Fatal(err)
@@ -42,9 +38,7 @@ func TestWrite(t *testing.T) {
 	_ = tap.Close()
 }
 
-func TestRead(t *testing.T) {
-	t.Parallel()
-
+func TestRead(t *testing.T) { // nolint:paralleltest
 	tap, err := tap.New("test_read")
 	if err != nil {
 		t.Fatal(err)
