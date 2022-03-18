@@ -86,7 +86,8 @@ test: golangci-lint initrd bzImage
 
 .PHONY: clean
 clean:
-	rm -rf ./gokvm ./golangci-lint .busybox-$(BUSYBOX_VERSION) initrd bzImage linux-$(LINUX_VERSION)
+	rm -rf ./gokvm ./golangci-lint .busybox-$(BUSYBOX_VERSION) initrd bzImage linux-$(LINUX_VERSION) \
+		ethtool-$(ETHTOOL_VERSION) ethtool.tar.gz pciutils-$(PCIUTILS_VERSION) pciutils.tar.gz
 
 .PHONY: qemu
 qemu: initrd bzImage
