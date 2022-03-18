@@ -12,6 +12,8 @@ initrd
 bzImage
 linux-*.tar.xz
 linux.tar.xz
+ethtool.tar.gz
+pciutils.tar.gz
 cc-test-reporter
 
 # Test binary, built with `go test -c`
@@ -24,3 +26,5 @@ cc-test-reporter
 # vendor/
 busybox-*/
 linux-*/
+ethtool-*/
+pciutils-*/
