@@ -8,10 +8,18 @@ import (
 	"github.com/bobuhiro11/gokvm/virtio"
 )
 
+type mockInjector struct {
+	called bool
+}
+
+func (m *mockInjector) InjectVirtioNetIRQ() {
+	m.called = true
+}
+
 func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
-	v := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), []byte{})
+	v := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{})
 	expected := uint16(0x1000)
 	actual := v.GetDeviceHeader().DeviceID
 
@@ -24,7 +32,7 @@ func TestGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.IOPortSize)
-	s, e := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), []byte{}).GetIORange()
+	s, e := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{}).GetIORange()
 	actual := e - s
 
 	if actual != expected {
@@ -36,7 +44,7 @@ func TestIOInHandler(t *testing.T) {
 	t.Parallel()
 
 	expected := []byte{0x20, 0x00}
-	v := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), []byte{})
+	v := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{})
 	actual := make([]byte, 2)
 	_ = v.IOInHandler(virtio.IOPortStart+12, actual)
 
@@ -49,8 +57,8 @@ func TestSetQueuePhysAddr(t *testing.T) {
 	t.Parallel()
 
 	mem := make([]byte, 0x1000000)
-	v := virtio.NewNet(func(_, _ uint32) {}, bytes.NewBuffer([]byte{}), mem)
-	base := uint32(uintptr(unsafe.Pointer(&(v.(*virtio.Net).Mem[0]))))
+	v := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), mem)
+	base := uint32(uintptr(unsafe.Pointer(&(v.Mem[0]))))
 
 	expected := [2]uint32{
 		base + 0x00345000,
@@ -64,8 +72,8 @@ func TestSetQueuePhysAddr(t *testing.T) {
 	_ = v.IOOutHandler(virtio.IOPortStart+8, []byte{0x9a, 0x08, 0x00, 0x00}) // Set Phys Address
 
 	actual := [2]uint32{
-		uint32(uintptr(unsafe.Pointer(v.(*virtio.Net).VirtQueue[0]))),
-		uint32(uintptr(unsafe.Pointer(v.(*virtio.Net).VirtQueue[1]))),
+		uint32(uintptr(unsafe.Pointer(v.VirtQueue[0]))),
+		uint32(uintptr(unsafe.Pointer(v.VirtQueue[1]))),
 	}
 
 	for i := 0; i < 2; i++ {
@@ -78,16 +86,11 @@ func TestSetQueuePhysAddr(t *testing.T) {
 func TestQueueNotifyHandler(t *testing.T) {
 	t.Parallel()
 
-	irqInjected := false
-	irqCallback := func(_, _ uint32) {
-		irqInjected = true
-	}
-
 	expected := []byte{0xaa, 0xbb, 0xcc, 0xdd}
 	b := bytes.NewBuffer([]byte{})
 
 	mem := make([]byte, 0x1000000)
-	v := virtio.NewNet(irqCallback, b, mem).(*virtio.Net)
+	v := virtio.NewNet(9, &mockInjector{}, b, mem)
 
 	// Size of struct virtio_net_hdr
 	const K = 10
@@ -117,7 +120,7 @@ func TestQueueNotifyHandler(t *testing.T) {
 		t.Fatalf("err: %v\n", err)
 	}
 
-	if !irqInjected {
+	if !v.IRQInjector.(*mockInjector).called {
 		t.Fatalf("irqInjected = false\n")
 	}
 
@@ -129,14 +132,9 @@ func TestQueueNotifyHandler(t *testing.T) {
 func TestRx(t *testing.T) {
 	t.Parallel()
 
-	irqInjected := false
-	irqCallback := func(_, _ uint32) {
-		irqInjected = true
-	}
-
 	expected := []byte{0xaa, 0xbb}
 	mem := make([]byte, 0x1000000)
-	v := virtio.NewNet(irqCallback, bytes.NewBuffer(expected), mem).(*virtio.Net)
+	v := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer(expected), mem)
 
 	// Init virt queue
 	vq := virtio.VirtQueue{}
@@ -152,7 +150,7 @@ func TestRx(t *testing.T) {
 		t.Fatalf("err: %v\n", err)
 	}
 
-	if !irqInjected {
+	if !v.IRQInjector.(*mockInjector).called {
 		t.Fatalf("irqInjected = false\n")
 	}
 

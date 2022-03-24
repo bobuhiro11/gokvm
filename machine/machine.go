@@ -52,6 +52,9 @@ const (
 	cmdlineAddr   = 0x20000
 	kernelAddr    = 0x100000
 	initrdAddr    = 0xf000000
+
+	serialIRQ    = 4
+	virtioNetIRQ = 9
 )
 
 var errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
@@ -156,13 +159,7 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 		panic(err)
 	}
 
-	virtioIRQCallback := func(irq, level uint32) {
-		if err := kvm.IRQLine(m.vmFd, irq, level); err != nil {
-			panic(err)
-		}
-	}
-
-	v := virtio.NewNet(virtioIRQCallback, t, m.mem).(*virtio.Net)
+	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 
@@ -265,13 +262,7 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 
 	m.initIOPortHandlers()
 
-	serialIRQCallback := func(irq, level uint32) {
-		if err := kvm.IRQLine(m.vmFd, irq, level); err != nil {
-			panic(err)
-		}
-	}
-
-	if m.serial, err = serial.New(serialIRQCallback); err != nil {
+	if m.serial, err = serial.New(m); err != nil {
 		return err
 	}
 
@@ -280,10 +271,6 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 
 func (m *Machine) GetInputChan() chan<- byte {
 	return m.serial.GetInputChan()
-}
-
-func (m *Machine) InjectSerialIRQ() {
-	m.serial.InjectIRQ()
 }
 
 func (m *Machine) initRegs(i int) error {
@@ -565,4 +552,24 @@ func pciOutFunc(m *Machine, port uint64, bytes []byte) error {
 	}
 
 	return errorPCIDeviceNotFoundForPort
+}
+
+func (m *Machine) InjectSerialIRQ() {
+	if err := kvm.IRQLine(m.vmFd, serialIRQ, 0); err != nil {
+		panic(err)
+	}
+
+	if err := kvm.IRQLine(m.vmFd, serialIRQ, 1); err != nil {
+		panic(err)
+	}
+}
+
+func (m *Machine) InjectVirtioNetIRQ() {
+	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 0); err != nil {
+		panic(err)
+	}
+
+	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 1); err != nil {
+		panic(err)
+	}
 }
