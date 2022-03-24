@@ -6,13 +6,16 @@ import (
 	"github.com/bobuhiro11/gokvm/serial"
 )
 
+type mockInjector struct{}
+
+func (m *mockInjector) InjectSerialIRQ() {
+}
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	callback := func(irq, level uint32) {}
-	s, err := serial.New(callback)
+	s, err := serial.New(&mockInjector{})
 	s.GetInputChan()
-	s.InjectIRQ()
 
 	if err != nil {
 		t.Fatal(err)
@@ -22,9 +25,7 @@ func TestNew(t *testing.T) {
 func TestIn(t *testing.T) {
 	t.Parallel()
 
-	callback := func(irq, level uint32) {}
-
-	s, err := serial.New(callback)
+	s, err := serial.New(&mockInjector{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +42,7 @@ func TestIn(t *testing.T) {
 func TestOut(t *testing.T) {
 	t.Parallel()
 
-	callback := func(irq, level uint32) {}
-
-	s, err := serial.New(callback)
+	s, err := serial.New(&mockInjector{})
 	if err != nil {
 		t.Fatal(err)
 	}

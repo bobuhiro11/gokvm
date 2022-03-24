@@ -8,21 +8,24 @@ const (
 	COM1Addr = 0x03f8
 )
 
+type IRQInjector interface {
+	InjectSerialIRQ()
+}
+
 type Serial struct {
 	IER byte
 	LCR byte
 
 	inputChan chan byte
 
-	// This callback is called when serial request IRQ.
-	irqCallback func(irq, level uint32)
+	irqInjector IRQInjector
 }
 
-func New(irqCallBack func(irq, level uint32)) (*Serial, error) {
+func New(irqInjector IRQInjector) (*Serial, error) {
 	s := &Serial{
 		IER: 0, LCR: 0,
 		inputChan:   make(chan byte, 10000),
-		irqCallback: irqCallBack,
+		irqInjector: irqInjector,
 	}
 
 	return s, nil
@@ -34,11 +37,6 @@ func (s *Serial) GetInputChan() chan<- byte {
 
 func (s *Serial) dlab() bool {
 	return s.LCR&0x80 != 0
-}
-
-func (s *Serial) InjectIRQ() {
-	s.irqCallback(4, 0)
-	s.irqCallback(4, 1)
 }
 
 func (s *Serial) In(port uint64, values []byte) error {
@@ -94,7 +92,7 @@ func (s *Serial) Out(port uint64, values []byte) error {
 		// IER
 		s.IER = values[0]
 		if s.IER != 0 {
-			s.InjectIRQ()
+			s.irqInjector.InjectSerialIRQ()
 		}
 	case port == 1 && s.dlab():
 		// DLM

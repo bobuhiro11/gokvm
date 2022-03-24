@@ -33,9 +33,11 @@ const (
 	//
 	// refs https://github.com/torvalds/linux/blob/5859a2b/drivers/net/virtio_net.c#L1754
 	QueueSize = 32
-
-	interruptLine = 9
 )
+
+type IRQInjector interface {
+	InjectVirtioNetIRQ()
+}
 
 type Hdr struct {
 	commonHeader commonHeader
@@ -54,8 +56,8 @@ type Net struct {
 	txKick chan interface{}
 	rxKick chan os.Signal
 
-	// This callback is called when virtio request IRQ.
-	irqCallback func(irq, level uint32)
+	irq         uint8
+	IRQInjector IRQInjector
 }
 
 func (h Hdr) Bytes() ([]byte, error) {
@@ -85,12 +87,6 @@ type netHeader struct {
 	_ uint16   // maxVirtQueuePairs
 }
 
-func (v *Net) InjectIRQ() {
-	v.Hdr.commonHeader.isr = 0x1
-	v.irqCallback(interruptLine, 0)
-	v.irqCallback(interruptLine, 1)
-}
-
 func (v Net) GetDeviceHeader() pci.DeviceHeader {
 	return pci.DeviceHeader{
 		DeviceID:    0x1000,
@@ -104,7 +100,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 		// https://github.com/torvalds/linux/blob/fb3b0673b7d5b477ed104949450cd511337ba3c6/drivers/pci/setup-irq.c#L30-L55
 		InterruptPin: 1,
 		// https://www.webopedia.com/reference/irqnumbers/
-		InterruptLine: interruptLine,
+		InterruptLine: v.irq,
 	}
 }
 
@@ -197,7 +193,8 @@ func (v *Net) Rx() error {
 
 	usedRing.Idx++
 
-	v.InjectIRQ()
+	v.Hdr.commonHeader.isr = 0x1
+	v.IRQInjector.InjectVirtioNetIRQ()
 
 	return nil
 }
@@ -257,7 +254,9 @@ func (v *Net) Tx() error {
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
 	}
-	v.InjectIRQ()
+
+	v.Hdr.commonHeader.isr = 0x1
+	v.IRQInjector.InjectVirtioNetIRQ()
 
 	return nil
 }
@@ -287,7 +286,7 @@ func (v Net) GetIORange() (start, end uint64) {
 	return IOPortStart, IOPortStart + IOPortSize
 }
 
-func NewNet(irqCallBack func(irq, level uint32), tap io.ReadWriter, mem []byte) pci.Device {
+func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *Net {
 	res := &Net{
 		Hdr: Hdr{
 			commonHeader: commonHeader{
@@ -295,7 +294,8 @@ func NewNet(irqCallBack func(irq, level uint32), tap io.ReadWriter, mem []byte) 
 				isr:      0x0,
 			},
 		},
-		irqCallback:  irqCallBack,
+		irq:          irq,
+		IRQInjector:  irqInjector,
 		txKick:       make(chan interface{}),
 		rxKick:       make(chan os.Signal),
 		tap:          tap,
