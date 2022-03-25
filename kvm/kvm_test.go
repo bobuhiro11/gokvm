@@ -10,9 +10,13 @@ import (
 )
 
 func TestGetAPIVersion(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,9 +30,13 @@ func TestGetAPIVersion(t *testing.T) {
 }
 
 func TestCreateVM(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,11 +46,11 @@ func TestCreateVM(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = kvm.SetTSSAddr(vmFd); err != nil {
+	if err := kvm.SetTSSAddr(vmFd); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = kvm.SetIdentityMapAddr(vmFd); err != nil {
+	if err := kvm.SetIdentityMapAddr(vmFd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -54,7 +62,7 @@ func TestCreateVM(t *testing.T) {
 	CPUID := kvm.CPUID{}
 	CPUID.Nent = 100
 
-	if err = kvm.GetSupportedCPUID(devKVM.Fd(), &CPUID); err != nil {
+	if err := kvm.GetSupportedCPUID(devKVM.Fd(), &CPUID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,15 +73,19 @@ func TestCreateVM(t *testing.T) {
 		CPUID.Entries[i].Edx = 0x4d       // M
 	}
 
-	if err = kvm.SetCPUID2(vcpuFd, &CPUID); err != nil {
+	if err := kvm.SetCPUID2(vcpuFd, &CPUID); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCPUID(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +99,13 @@ func TestCPUID(t *testing.T) {
 }
 
 func TestCreateVCPU(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,9 +154,13 @@ func TestCreateVCPU(t *testing.T) {
 }
 
 func TestGetVCPUMMapSize(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,9 +174,13 @@ func TestGetVCPUMMapSize(t *testing.T) {
 }
 
 func TestCreateVCPUWithNoVmFd(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,45 +193,84 @@ func TestCreateVCPUWithNoVmFd(t *testing.T) {
 
 // mirror from https://lwn.net/Articles/658512/
 func TestAddNum(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, _ := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defer devKVM.Close()
 
-	vmFd, _ := kvm.CreateVM(devKVM.Fd())
-	mem, _ := syscall.Mmap(-1, 0, 0x1000, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mem, err := syscall.Mmap(-1, 0, 0x1000, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	code := []byte{0xba, 0xf8, 0x03, 0x00, 0xd8, 0x04, '0', 0xee, 0xb0, '\n', 0xee, 0xf4}
 	for i := 0; i < len(code); i++ {
 		mem[i] = code[i]
 	}
 
-	_ = kvm.SetUserMemoryRegion(vmFd, &kvm.UserspaceMemoryRegion{
+	if err = kvm.SetUserMemoryRegion(vmFd, &kvm.UserspaceMemoryRegion{
 		Slot:          0,
 		Flags:         0,
 		GuestPhysAddr: 0x1000,
 		MemorySize:    0x1000,
 		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&mem[0]))),
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	vcpuFd, _ := kvm.CreateVCPU(vmFd, 0)
-	mmapSize, _ := kvm.GetVCPUMMmapSize(devKVM.Fd())
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	r, _ := syscall.Mmap(int(vcpuFd), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	mmapSize, err := kvm.GetVCPUMMmapSize(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := syscall.Mmap(int(vcpuFd), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	run := (*kvm.RunData)(unsafe.Pointer(&r[0]))
 
-	sregs, _ := kvm.GetSregs(vcpuFd)
+	sregs, err := kvm.GetSregs(vcpuFd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sregs.CS.Base, sregs.CS.Selector = 0, 0
-	_ = kvm.SetSregs(vcpuFd, sregs)
-	_ = kvm.SetRegs(vcpuFd, kvm.Regs{
+
+	if err = kvm.SetSregs(vcpuFd, sregs); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = kvm.SetRegs(vcpuFd, kvm.Regs{
 		RIP: 0x1000, RAX: 2, RBX: 2, RFLAGS: 0x2, RCX: 0, RDX: 0, RSI: 0,
 		RDI: 0, RSP: 0, RBP: 0, R8: 0, R9: 0, R10: 0, R11: 0, R12: 0,
 		R13: 0, R14: 0, R15: 0,
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	for {
-		_ = kvm.Run(vcpuFd)
+		if err = kvm.Run(vcpuFd); err != nil {
+			t.Logf("kvm.Run(%d) returns with %v", vcpuFd, err)
+		}
 
 		switch run.ExitReason {
 		case kvm.EXITHLT:
@@ -232,6 +295,10 @@ func TestAddNum(t *testing.T) {
 }
 
 func TestSetMemLogDirtyPages(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	u := kvm.UserspaceMemoryRegion{}
@@ -244,10 +311,21 @@ func TestSetMemLogDirtyPages(t *testing.T) {
 }
 
 func TestIRQLine(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
-	devKVM, _ := os.OpenFile("/dev/kvm", os.O_RDWR, 0644)
-	vmFd, _ := kvm.CreateVM(devKVM.Fd())
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := kvm.CreateIRQChip(vmFd); err != nil {
 		t.Fatal(err)
