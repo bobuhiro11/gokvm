@@ -55,6 +55,7 @@ const (
 
 	serialIRQ    = 4
 	virtioNetIRQ = 9
+	virtioBlkIRQ = 10
 )
 
 var errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
@@ -163,9 +164,12 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 
+	vblk := virtio.NewBlk(virtioNetIRQ, m, m.mem)
+
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
-		v,               // 00:01.0 for Virtio PCI
+		v,               // 00:01.0 for Virtio net
+		vblk,           // 00:02.0 for Virtio blk
 	)
 
 	return m, nil
@@ -570,6 +574,16 @@ func (m *Machine) InjectVirtioNetIRQ() {
 	}
 
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 1); err != nil {
+		panic(err)
+	}
+}
+
+func (m *Machine) InjectVirtioBlkIRQ() {
+	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 0); err != nil {
+		panic(err)
+	}
+
+	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 1); err != nil {
 		panic(err)
 	}
 }

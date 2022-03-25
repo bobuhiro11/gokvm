@@ -37,6 +37,7 @@ const (
 
 type IRQInjector interface {
 	InjectVirtioNetIRQ()
+	InjectVirtioBlkIRQ()
 }
 
 type Hdr struct {
