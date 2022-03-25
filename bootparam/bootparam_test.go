@@ -3,6 +3,7 @@ package bootparam_test
 import (
 	"bytes"
 	"encoding/binary"
+	"os"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
@@ -10,6 +11,12 @@ import (
 
 func TestNew(t *testing.T) {
 	t.Parallel()
+
+	// Do a test open for the bzimage. If it fails for any reason,
+	// just skip this test.
+	if _, err := os.Open("../bzImage"); err != nil {
+		t.Skipf("Skipping this test: %v", err)
+	}
 
 	if _, err := bootparam.New("../bzImage"); err != nil {
 		t.Fatal(err)
