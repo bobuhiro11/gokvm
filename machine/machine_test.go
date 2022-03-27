@@ -1,6 +1,7 @@
 package machine_test
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -9,6 +10,10 @@ import (
 )
 
 func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	m, err := machine.New(1, "tap")
 	if err != nil {
 		t.Fatal(err)

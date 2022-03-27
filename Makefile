@@ -73,15 +73,21 @@ run-system-kernel:
 		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
-.PHONY: test
-test: golangci-lint initrd bzImage
+# N.B. the golangci-lint recommends you not enable --enable-all (which begs the
+# question of why it's there in the first place) as upgrades to golangci-lint
+# can break your CI!
+.PHONY: golangci
+golangci: golangci-lint
 	./golangci-lint run --enable-all \
 		--disable gomnd \
 		--disable wrapcheck \
 		--disable maligned \
 		--disable forbidigo \
 		--disable funlen \
+		--disable gocognit \
 		$(shell find . -type f -name "*.go" | xargs dirname | sort)
+
+test: golangci initrd bzImage
 	go test -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
 
 .PHONY: clean
