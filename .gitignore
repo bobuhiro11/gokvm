@@ -24,7 +24,7 @@ cc-test-reporter
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-busybox-*/
-linux-*/
-ethtool-*/
-pciutils-*/
+_busybox/
+_linux/
+_ethtool/
+_pciutils/
