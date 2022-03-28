@@ -25,41 +25,41 @@ ethtool.tar.gz:
 		-o ethtool.tar.gz
 
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
-	tar -xf pciutils.tar.gz
-	make -C pciutils-$(PCIUTILS_VERSION) \
+	tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
+	$(MAKE) -C _pciutils \
 		OPT="-O2 -static -static-libstdc++ -static-libgcc" \
 		LDFLAGS=-static ZLIB=no DNS=no LIBKMOD=no HWDB=no
-	tar -xf ethtool.tar.gz
-	cd ./ethtool-$(ETHTOOL_VERSION) && ./autogen.sh && ./configure LDFLAGS=-static && make
-	tar -xf busybox.tar.bz2
-	cp busybox.config busybox-$(BUSYBOX_VERSION)/.config
-	$(MAKE) -C busybox-$(BUSYBOX_VERSION) install
-	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/usr/local/share
-	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/etc/init.d
-	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/proc
-	mkdir -p busybox-$(BUSYBOX_VERSION)/_install/sys
-	rm -f busybox-$(BUSYBOX_VERSION)/_install/usr/bin/lspci
-	cp pciutils-$(PCIUTILS_VERSION)/lspci busybox-$(BUSYBOX_VERSION)/_install/usr/bin/lspci
-	cp pciutils-$(PCIUTILS_VERSION)/pci.ids busybox-$(BUSYBOX_VERSION)/_install/usr/local/share/pci.ids
-	cp ethtool-$(ETHTOOL_VERSION)/ethtool busybox-$(BUSYBOX_VERSION)/_install/usr/bin/ethtool
-	cp busybox.inittab busybox-$(BUSYBOX_VERSION)/_install/etc/inittab
-	cp busybox.passwd  busybox-$(BUSYBOX_VERSION)/_install/etc/passwd
-	cp busybox.rcS     busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
-	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' busybox-$(BUSYBOX_VERSION)/_install/etc/init.d/rcS
-	cd busybox-$(BUSYBOX_VERSION)/_install && find . | cpio -o --format=newc > ../../initrd
-	rm -rf busybox-$(BUSYBOX_VERSION)
+	tar -xf ethtool.tar.gz --one-top-level=_ethtool --strip-components 1
+	cd _ethtool && ./autogen.sh && ./configure LDFLAGS=-static && $(MAKE)
+	tar -xf busybox.tar.bz2 --one-top-level=_busybox --strip-components 1
+	cp busybox.config _busybox/.config
+	$(MAKE) -C _busybox install
+	mkdir -p _busybox/_install/usr/local/share
+	mkdir -p _busybox/_install/etc/init.d
+	mkdir -p _busybox/_install/proc
+	mkdir -p _busybox/_install/sys
+	rm -f _busybox/_install/usr/bin/lspci
+	cp _pciutils/lspci _busybox/_install/usr/bin/lspci
+	cp _pciutils/pci.ids _busybox/_install/usr/local/share/pci.ids
+	cp _ethtool/ethtool _busybox/_install/usr/bin/ethtool
+	cp busybox.inittab _busybox/_install/etc/inittab
+	cp busybox.passwd  _busybox/_install/etc/passwd
+	cp busybox.rcS     _busybox/_install/etc/init.d/rcS
+	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' _busybox/_install/etc/init.d/rcS
+	cd _busybox/_install && find . | cpio -o --format=newc > ../../initrd
+	rm -rf _busybox
 
 linux.tar.xz:
 	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
 		-o linux.tar.xz
 
 bzImage: linux.config linux.tar.xz
-	if ! test -f linux-$(LINUX_VERSION)/.config; then \
-		tar Jxf ./linux.tar.xz; \
-		cp linux.config linux-$(LINUX_VERSION)/.config; \
+	if ! test -f _linux/.config; then \
+		tar Jxf ./linux.tar.xz --one-top-level=_linux --strip-components 1; \
+		cp linux.config _linux/.config; \
 	fi
-	$(MAKE) -C linux-$(LINUX_VERSION)
-	cp linux-$(LINUX_VERSION)/arch/x86/boot/bzImage .
+	$(MAKE) -C _linux
+	cp _linux/arch/x86/boot/bzImage .
 
 .PHONY: run
 run: initrd bzImage
@@ -85,15 +85,15 @@ golangci: golangci-lint
 		--disable forbidigo \
 		--disable funlen \
 		--disable gocognit \
-		$(shell find . -type f -name "*.go" | xargs dirname | sort)
+		./...
 
 test: golangci initrd bzImage
-	go test -coverprofile c.out $(shell find . -type f -name "*.go" | xargs dirname | sort)
+	go test -coverprofile c.out ./...
 
 .PHONY: clean
 clean:
-	rm -rf ./gokvm ./golangci-lint .busybox-$(BUSYBOX_VERSION) initrd bzImage linux-$(LINUX_VERSION) \
-		ethtool-$(ETHTOOL_VERSION) ethtool.tar.gz pciutils-$(PCIUTILS_VERSION) pciutils.tar.gz
+	rm -rf ./gokvm ./golangci-lint ._busybox initrd bzImage _linux \
+		_ethtool ethtool.tar.gz _pciutils pciutils.tar.gz
 
 .PHONY: qemu
 qemu: initrd bzImage
