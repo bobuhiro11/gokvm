@@ -86,6 +86,7 @@ func (v *Blk) IOThreadEntry() {
 }
 
 func (v *Blk) IO() error {
+	fmt.Printf("no io blk")
 	return errors.New("no io")
 }
 
@@ -94,12 +95,15 @@ func (v *Blk) IOOutHandler(port uint64, bytes []byte) error {
 
 	switch offset {
 	case 8:
+		fmt.Printf("pfn written!\r\n")
 		// Queue PFN is aligned to page (4096 bytes)
 		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
 		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
+		fmt.Printf("sel written!\r\n")
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
+		fmt.Printf("kick written!\r\n")
 		v.Hdr.commonHeader.isr = 0x0
 		v.kick <- true
 	case 19:

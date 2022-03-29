@@ -165,6 +165,7 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 	go v.RxThreadEntry()
 
 	vblk := virtio.NewBlk(virtioNetIRQ, m, m.mem)
+	go vblk.IOThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
