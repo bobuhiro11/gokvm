@@ -164,7 +164,7 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 
-	vblk := virtio.NewBlk(virtioNetIRQ, m, m.mem)
+	vblk := virtio.NewBlk(virtioBlkIRQ, m, m.mem)
 	go vblk.IOThreadEntry()
 
 	m.pci = pci.New(
