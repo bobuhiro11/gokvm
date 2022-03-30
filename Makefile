@@ -47,7 +47,6 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	cp busybox.rcS     _busybox/_install/etc/init.d/rcS
 	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' _busybox/_install/etc/init.d/rcS
 	cd _busybox/_install && find . | cpio -o --format=newc > ../../initrd
-	rm -rf _busybox
 
 linux.tar.xz:
 	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
