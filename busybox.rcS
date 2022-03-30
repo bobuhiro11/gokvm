@@ -1,5 +1,17 @@
 #!/bin/sh
 mount -t proc none /proc
 mount -t sysfs none /sys
+
+mknod /dev/vda b 254 0
+
 ip link set eth0 up
 ip addr add {{ GUEST_IPV4_ADDR }} dev eth0
+
+# Forcing /linuxrc to stop processing here and start /bin/sh. Without it,
+# kernel will try to mount the disk provided by virtio-blk as rootfs and
+# finally panic.
+#
+# [  559.258478][    T1] Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
+# [  559.258478][    T1] Kernel Offset: disabled
+# [  559.258478][    T1] ---[ end Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0) ]---
+exec /bin/sh
