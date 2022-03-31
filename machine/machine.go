@@ -74,16 +74,15 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
-		return m, err
+		return m, fmt.Errorf(`/dev/kvm: %w`, err)
 	}
 
 	m.kvmFd = devKVM.Fd()
-	m.vmFd, err = kvm.CreateVM(m.kvmFd)
 	m.vcpuFds = make([]uintptr, nCpus)
 	m.runs = make([]*kvm.RunData, nCpus)
 
-	if err != nil {
-		return m, err
+	if m.vmFd, err = kvm.CreateVM(m.kvmFd); err != nil {
+		return m, fmt.Errorf("CreateVM: %w", err)
 	}
 
 	if err := kvm.SetTSSAddr(m.vmFd); err != nil {
@@ -156,7 +155,7 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 
 	t, err := tap.New(tapIfName)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
@@ -554,22 +553,26 @@ func pciOutFunc(m *Machine, port uint64, bytes []byte) error {
 	return errorPCIDeviceNotFoundForPort
 }
 
-func (m *Machine) InjectSerialIRQ() {
+func (m *Machine) InjectSerialIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, serialIRQ, 0); err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := kvm.IRQLine(m.vmFd, serialIRQ, 1); err != nil {
-		panic(err)
+		return err
 	}
+
+	return nil
 }
 
-func (m *Machine) InjectVirtioNetIRQ() {
+func (m *Machine) InjectVirtioNetIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 0); err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 1); err != nil {
-		panic(err)
+		return err
 	}
+
+	return nil
 }

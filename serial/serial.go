@@ -8,8 +8,11 @@ const (
 	COM1Addr = 0x03f8
 )
 
+// Note that this identical interface is defined across
+// multiple packages. It should be defined by the machine.
+
 type IRQInjector interface {
-	InjectSerialIRQ()
+	InjectSerialIRQ() error
 }
 
 type Serial struct {
@@ -82,6 +85,8 @@ func (s *Serial) In(port uint64, values []byte) error {
 func (s *Serial) Out(port uint64, values []byte) error {
 	port -= COM1Addr
 
+	var err error
+
 	switch {
 	case port == 0 && !s.dlab():
 		// THR
@@ -92,7 +97,7 @@ func (s *Serial) Out(port uint64, values []byte) error {
 		// IER
 		s.IER = values[0]
 		if s.IER != 0 {
-			s.irqInjector.InjectSerialIRQ()
+			err = s.irqInjector.InjectSerialIRQ()
 		}
 	case port == 1 && s.dlab():
 		// DLM
@@ -108,5 +113,5 @@ func (s *Serial) Out(port uint64, values []byte) error {
 		break
 	}
 
-	return nil
+	return err
 }

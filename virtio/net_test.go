@@ -12,8 +12,10 @@ type mockInjector struct {
 	called bool
 }
 
-func (m *mockInjector) InjectVirtioNetIRQ() {
+func (m *mockInjector) InjectVirtioNetIRQ() error {
 	m.called = true
+
+	return nil
 }
 
 func TestGetDeviceHeader(t *testing.T) {

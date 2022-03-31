@@ -27,7 +27,11 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 	}
 
 	m.GetInputChan()
-	m.InjectSerialIRQ()
+
+	if err := m.InjectSerialIRQ(); err != nil {
+		t.Errorf("m.InjectSerialIRQ: %v != nil", err)
+	}
+
 	m.RunData()
 
 	go func() {

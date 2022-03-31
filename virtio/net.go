@@ -36,7 +36,7 @@ const (
 )
 
 type IRQInjector interface {
-	InjectVirtioNetIRQ()
+	InjectVirtioNetIRQ() error
 }
 
 type Hdr struct {
@@ -194,9 +194,8 @@ func (v *Net) Rx() error {
 	usedRing.Idx++
 
 	v.Hdr.commonHeader.isr = 0x1
-	v.IRQInjector.InjectVirtioNetIRQ()
 
-	return nil
+	return v.IRQInjector.InjectVirtioNetIRQ()
 }
 
 func (v *Net) TxThreadEntry() {
@@ -256,9 +255,8 @@ func (v *Net) Tx() error {
 	}
 
 	v.Hdr.commonHeader.isr = 0x1
-	v.IRQInjector.InjectVirtioNetIRQ()
 
-	return nil
+	return v.IRQInjector.InjectVirtioNetIRQ()
 }
 
 func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
