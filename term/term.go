@@ -24,12 +24,11 @@ func read(fd int) (termios, error) {
 		syscall.SYS_IOCTL, uintptr(fd), 0x5401,
 		uintptr(unsafe.Pointer(&t)))
 
-	var err error = nil
 	if errno != 0 {
-		err = errno
+		return t, errno
 	}
 
-	return t, err
+	return t, nil
 }
 
 func write(fd int, t termios) error {
@@ -37,12 +36,11 @@ func write(fd int, t termios) error {
 		syscall.SYS_IOCTL, uintptr(fd), 0x5402,
 		uintptr(unsafe.Pointer(&t)))
 
-	var err error = nil
 	if errno != 0 {
-		err = errno
+		return errno
 	}
 
-	return err
+	return nil
 }
 
 func IsTerminal() bool {

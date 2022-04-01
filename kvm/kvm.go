@@ -161,13 +161,11 @@ func (r *UserspaceMemoryRegion) SetMemReadonly() {
 func ioctl(fd, op, arg uintptr) (uintptr, error) {
 	res, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL, fd, op, arg)
-
-	var err error = nil
 	if errno != 0 {
-		err = errno
+		return res, errno
 	}
 
-	return res, err
+	return res, nil
 }
 
 func GetAPIVersion(kvmFd uintptr) (uintptr, error) {
