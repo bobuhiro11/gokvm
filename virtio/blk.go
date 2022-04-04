@@ -84,9 +84,15 @@ func (v *Blk) IOThreadEntry() {
 	}
 }
 
+type blkReq struct {
+	typ uint32
+	_ uint32
+	sector uint64
+}
+
 func (v *Blk) IO() error {
 	sel := uint16(0)
-	v.dumpDesc(sel)
+	// v.dumpDesc(sel)
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
@@ -95,7 +101,6 @@ func (v *Blk) IO() error {
 	}
 
 	for v.LastAvailIdx[sel] != availRing.Idx {
-		buf := []byte{}
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
 		// This structure is holding both the index of the descriptor chain and the
@@ -103,33 +108,24 @@ func (v *Blk) IO() error {
 		usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(descID)
 		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
 
-		// 1st desc
-		// uint32_t Type;              // 0: Read; 1: Write; 4: Flush; 11: Discard; 13: Write zeroes
-		// uint32_t Reserved;
-		// uint64_t Sector;
-		desc := v.VirtQueue[sel].DescTable[descID]
-		buf = make([]byte, desc.Len)
-		copy(buf, v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)])
-		usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
-		fmt.Printf("1st: len=%d\n", len(buf))
+		var buf [3][]byte
+		for i:=0; i<3; i++ {
+			desc := v.VirtQueue[sel].DescTable[descID]
+			buf[i] = make([]byte, desc.Len)
+			copy(buf[i], v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)])
 
-		// 2nd desc
-		// uint8_t Data[];             // Data's size must be a multiple of 512
-		descID = desc.Next
-		desc = v.VirtQueue[sel].DescTable[descID]
-		buf = make([]byte, desc.Len)
-		copy(buf, v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)])
-		usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
-		fmt.Printf("2nd: len=%d\n", len(buf))
+			usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
+			descID = desc.Next
+		}
 
-		// 3rd desc
-		// uint8_t Status;             // 0: OK; 1: Error; 2: Unsupported
-		descID = desc.Next
-		desc = v.VirtQueue[sel].DescTable[descID]
-		buf = make([]byte, desc.Len)
-		copy(buf, v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)])
-		usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
-		fmt.Printf("3rd: len=%d\n", len(buf))
+		// buf[0] contains type, reserved, and sector fields.
+		// buf[1] contains raw io data.
+		// buf[2] contains a status field.
+		//
+		// refs https://wiki.osdev.org/Virtio#Block_Device_Packets
+		blkReq := *((*blkReq)(unsafe.Pointer(&buf[0][0])))
+		data := buf[1]
+		fmt.Printf("blkReq: %v, data len: %v\r\n", blkReq, len(data))
 
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
