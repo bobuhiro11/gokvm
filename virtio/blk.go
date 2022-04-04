@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"unsafe"
+	"os"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
@@ -15,6 +16,7 @@ const (
 )
 
 type Blk struct {
+	file *os.File
 	Hdr blkHdr
 
 	VirtQueue    [1]*VirtQueue
@@ -111,8 +113,7 @@ func (v *Blk) IO() error {
 		var buf [3][]byte
 		for i:=0; i<3; i++ {
 			desc := v.VirtQueue[sel].DescTable[descID]
-			buf[i] = make([]byte, desc.Len)
-			copy(buf[i], v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)])
+			buf[i] = v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)]
 
 			usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
 			descID = desc.Next
@@ -125,7 +126,14 @@ func (v *Blk) IO() error {
 		// refs https://wiki.osdev.org/Virtio#Block_Device_Packets
 		blkReq := *((*blkReq)(unsafe.Pointer(&buf[0][0])))
 		data := buf[1]
-		fmt.Printf("blkReq: %v, data len: %v\r\n", blkReq, len(data))
+		// fmt.Printf("blkReq: %v, data len: %v\r\n", blkReq, len(data))
+
+		if blkReq.typ & 0x1 == 0x1 { // write to file
+			_, _ = v.file.WriteAt(data, int64(blkReq.sector * 512))
+		} else { // read from file
+			_, _ = v.file.ReadAt(data, int64(blkReq.sector * 512))
+			// fmt.Printf("data: %v\r\n", data[:16])
+		}
 
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
@@ -166,6 +174,13 @@ func (v Blk) GetIORange() (start, end uint64) {
 }
 
 func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) *Blk {
+	file, err := os.Open("./binary.dat")
+
+	if err != nil {
+		// FIXME: don't panic
+		panic(err)
+	}
+
 	res := &Blk{
 		Hdr: blkHdr{
 			commonHeader: commonHeader{
@@ -176,6 +191,7 @@ func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) *Blk {
 				capacity: 0x100,
 			},
 		},
+		file: file,
 		irq:          irq,
 		IRQInjector:  irqInjector,
 		kick:         make(chan interface{}),
