@@ -130,9 +130,11 @@ func (v *Blk) IO() error {
 
 		if blkReq.typ & 0x1 == 0x1 { // write to file
 			_, _ = v.file.WriteAt(data, int64(blkReq.sector * 512))
+			v.file.Sync()
+			fmt.Printf("write sector: %d, data: %v\r\n", blkReq.sector, data[:16])
 		} else { // read from file
 			_, _ = v.file.ReadAt(data, int64(blkReq.sector * 512))
-			// fmt.Printf("data: %v\r\n", data[:16])
+			fmt.Printf("read sector: %d, data: %v\r\n", blkReq.sector, data[:16])
 		}
 
 		usedRing.Idx++
@@ -174,7 +176,7 @@ func (v Blk) GetIORange() (start, end uint64) {
 }
 
 func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) *Blk {
-	file, err := os.Open("./binary.dat")
+	file, err := os.OpenFile("./binary.dat", os.O_RDWR, 0755)
 
 	if err != nil {
 		// FIXME: don't panic
