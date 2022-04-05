@@ -36,8 +36,8 @@ const (
 )
 
 type IRQInjector interface {
-	InjectVirtioNetIRQ()
-	InjectVirtioBlkIRQ()
+	InjectVirtioNetIRQ() error
+	InjectVirtioBlkIRQ() error
 }
 
 type Hdr struct {
@@ -195,7 +195,10 @@ func (v *Net) Rx() error {
 	usedRing.Idx++
 
 	v.Hdr.commonHeader.isr = 0x1
-	v.IRQInjector.InjectVirtioNetIRQ()
+
+	if err := v.IRQInjector.InjectVirtioNetIRQ(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -257,7 +260,10 @@ func (v *Net) Tx() error {
 	}
 
 	v.Hdr.commonHeader.isr = 0x1
-	v.IRQInjector.InjectVirtioNetIRQ()
+
+	if err := v.IRQInjector.InjectVirtioNetIRQ(); err != nil {
+		return err
+	}
 
 	return nil
 }

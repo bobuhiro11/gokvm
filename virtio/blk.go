@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"unsafe"
 	"os"
+	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
@@ -17,7 +17,7 @@ const (
 
 type Blk struct {
 	file *os.File
-	Hdr blkHdr
+	Hdr  blkHdr
 
 	VirtQueue    [1]*VirtQueue
 	Mem          []byte
@@ -87,8 +87,8 @@ func (v *Blk) IOThreadEntry() {
 }
 
 type blkReq struct {
-	typ uint32
-	_ uint32
+	typ    uint32
+	_      uint32
 	sector uint64
 }
 
@@ -111,9 +111,10 @@ func (v *Blk) IO() error {
 		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
 
 		var buf [3][]byte
-		for i:=0; i<3; i++ {
+
+		for i := 0; i < 3; i++ {
 			desc := v.VirtQueue[sel].DescTable[descID]
-			buf[i] = v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)]
+			buf[i] = v.Mem[desc.Addr : desc.Addr+uint64(desc.Len)]
 
 			usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
 			descID = desc.Next
@@ -128,13 +129,21 @@ func (v *Blk) IO() error {
 		data := buf[1]
 		// fmt.Printf("blkReq: %v, data len: %v\r\n", blkReq, len(data))
 
-		if blkReq.typ & 0x1 == 0x1 { // write to file
-			_, _ = v.file.WriteAt(data, int64(blkReq.sector * 512))
-			v.file.Sync()
+		var err error
+		if blkReq.typ&0x1 == 0x1 { // write to file
+			_, err = v.file.WriteAt(data, int64(blkReq.sector*512))
 			fmt.Printf("write sector: %d, data: %v\r\n", blkReq.sector, data[:16])
 		} else { // read from file
-			_, _ = v.file.ReadAt(data, int64(blkReq.sector * 512))
+			_, err = v.file.ReadAt(data, int64(blkReq.sector*512))
 			fmt.Printf("read sector: %d, data: %v\r\n", blkReq.sector, data[:16])
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if err = v.file.Sync(); err != nil {
+			return err
 		}
 
 		usedRing.Idx++
@@ -142,7 +151,9 @@ func (v *Blk) IO() error {
 	}
 
 	v.Hdr.commonHeader.isr = 0x1
-	v.IRQInjector.InjectVirtioBlkIRQ()
+	if err := v.IRQInjector.InjectVirtioBlkIRQ(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -158,9 +169,11 @@ func (v *Blk) IOOutHandler(port uint64, bytes []byte) error {
 		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
 		fmt.Printf("sel written!\r\n")
+
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		fmt.Printf("kick written!\r\n")
+
 		v.Hdr.commonHeader.isr = 0x0
 		v.kick <- true
 	case 19:
@@ -175,12 +188,10 @@ func (v Blk) GetIORange() (start, end uint64) {
 	return BlkIOPortStart, BlkIOPortStart + BlkIOPortSize
 }
 
-func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) *Blk {
-	file, err := os.OpenFile("./binary.dat", os.O_RDWR, 0755)
-
+func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {
+	file, err := os.OpenFile("/tmp/binary.dat", os.O_RDWR, 0o755)
 	if err != nil {
-		// FIXME: don't panic
-		panic(err)
+		return nil, err
 	}
 
 	res := &Blk{
@@ -189,11 +200,11 @@ func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) *Blk {
 				queueNUM: QueueSize,
 				isr:      0x0,
 			},
-			blkHeader: blkHeader {
+			blkHeader: blkHeader{
 				capacity: 0x100,
 			},
 		},
-		file: file,
+		file:         file,
 		irq:          irq,
 		IRQInjector:  irqInjector,
 		kick:         make(chan interface{}),
@@ -202,40 +213,5 @@ func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) *Blk {
 		LastAvailIdx: [1]uint16{0},
 	}
 
-	return res
-}
-
-func (v Blk) dumpDesc(sel uint16) {
-	fmt.Printf("[descriptor for queue%d]\r\n", sel)
-	fmt.Printf("Addr       Len    Flags   Next Data\r\n")
-	fmt.Printf("-----------------------------------\r\n")
-	for j:=0; j<QueueSize; j++ {
-		desc := v.VirtQueue[sel].DescTable[j]
-		buf := make([]byte, desc.Len)
-		copy(buf, v.Mem[desc.Addr: desc.Addr+uint64(desc.Len)])
-		fmt.Printf("0x%08x 0x%04x 0x%05x %04d 0x%x\r\n",
-		desc.Addr, desc.Len, desc.Flags, desc.Next, buf)
-	}
-
-	fmt.Printf("[avail ring for queue%d: flags=0x%x, idx=%d, used_event=%d]\r\n", sel,
-	v.VirtQueue[sel].AvailRing.Flags,
-	v.VirtQueue[sel].AvailRing.Idx,
-	v.VirtQueue[sel].AvailRing.UsedEvent)
-	fmt.Printf("Ring\r\n")
-	fmt.Printf("----\r\n")
-	for j:=0; j<QueueSize; j++ {
-		fmt.Printf("%04d\r\n", v.VirtQueue[sel].AvailRing.Ring[j])
-	}
-
-	fmt.Printf("[used ring for queue%d: flags=0x%x, idx=%d, avail_event=%d]\r\n", sel,
-	v.VirtQueue[sel].UsedRing.Flags,
-	v.VirtQueue[sel].UsedRing.Idx,
-	v.VirtQueue[sel].UsedRing.availEvent)
-	fmt.Printf("DescID Len\r\n")
-	fmt.Printf("----------\r\n")
-	for j:=0; j<QueueSize; j++ {
-		fmt.Printf("0x%04x 0x%1x\r\n",
-		v.VirtQueue[sel].UsedRing.Ring[j].Idx,
-		v.VirtQueue[sel].UsedRing.Ring[j].Len)
-	}
+	return res, nil
 }

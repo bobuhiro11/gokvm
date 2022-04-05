@@ -160,17 +160,21 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 		panic(err)
 	}
 
-	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
-	go v.TxThreadEntry()
-	go v.RxThreadEntry()
+	virtioNet := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+	go virtioNet.TxThreadEntry()
+	go virtioNet.RxThreadEntry()
 
-	vblk := virtio.NewBlk(virtioBlkIRQ, m, m.mem)
-	go vblk.IOThreadEntry()
+	virtioBlk, err := virtio.NewBlk(virtioBlkIRQ, m, m.mem)
+	if err != nil {
+		return nil, err
+	}
+
+	go virtioBlk.IOThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
-		v,               // 00:01.0 for Virtio net
-		vblk,           // 00:02.0 for Virtio blk
+		virtioNet,       // 00:01.0 for Virtio net
+		virtioBlk,       // 00:02.0 for Virtio blk
 	)
 
 	return m, nil
@@ -569,22 +573,26 @@ func (m *Machine) InjectSerialIRQ() {
 	}
 }
 
-func (m *Machine) InjectVirtioNetIRQ() {
+func (m *Machine) InjectVirtioNetIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 0); err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 1); err != nil {
-		panic(err)
+		return err
 	}
+
+	return nil
 }
 
-func (m *Machine) InjectVirtioBlkIRQ() {
+func (m *Machine) InjectVirtioBlkIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 0); err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 1); err != nil {
-		panic(err)
+		return err
 	}
+
+	return nil
 }
