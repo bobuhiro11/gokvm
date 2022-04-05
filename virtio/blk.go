@@ -13,6 +13,8 @@ import (
 const (
 	BlkIOPortStart = 0x6300
 	BlkIOPortSize  = 0x100
+
+	SIZ = 0x100 * 512
 )
 
 type Blk struct {
@@ -188,8 +190,35 @@ func (v Blk) GetIORange() (start, end uint64) {
 	return BlkIOPortStart, BlkIOPortStart + BlkIOPortSize
 }
 
+func createFile(path string) error {
+	_, err := os.Stat(path)
+	if os.IsExist(err) {
+		return nil
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	err = f.Truncate(SIZ)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {
-	file, err := os.OpenFile("/tmp/binary.dat", os.O_RDWR, 0o755)
+	const path = "/tmp/binary.dat"
+
+	if err := createFile(path); err != nil {
+		return nil, err
+	}
+
+	file, err := os.OpenFile("/tmp/binary.dat", os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +230,7 @@ func NewBlk(irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {
 				isr:      0x0,
 			},
 			blkHeader: blkHeader{
-				capacity: 0x100,
+				capacity: SIZ / 512,
 			},
 		},
 		file:         file,
