@@ -1,6 +1,7 @@
 package tap
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 )
@@ -20,25 +21,22 @@ type ifReq struct {
 func ioctl(fd, op, arg uintptr) (uintptr, error) {
 	res, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL, fd, op, arg)
-
-	var err error = nil
 	if errno != 0 {
-		err = errno
+		return res, errno
 	}
 
-	return res, err
+	return res, nil
 }
 
 func fcntl(fd, op, arg uintptr) (uintptr, error) {
 	res, _, errno := syscall.Syscall(
 		syscall.SYS_FCNTL, fd, op, arg)
 
-	var err error = nil
 	if errno != 0 {
-		err = errno
+		return res, errno
 	}
 
-	return res, err
+	return res, nil
 }
 
 func New(name string) (*Tap, error) {
@@ -47,7 +45,7 @@ func New(name string) (*Tap, error) {
 	t := &Tap{}
 
 	if t.fd, err = syscall.Open("/dev/net/tun", syscall.O_RDWR, 0); err != nil {
-		return t, err
+		return t, fmt.Errorf("/dev/net/tun: %w", err)
 	}
 
 	ifr := ifReq{
@@ -58,24 +56,24 @@ func New(name string) (*Tap, error) {
 
 	ifrPtr := uintptr(unsafe.Pointer(&ifr))
 	if _, err = ioctl(uintptr(t.fd), syscall.TUNSETIFF, ifrPtr); err != nil {
-		return t, err
+		return t, fmt.Errorf("TUN TUNSETIFF: %w", err)
 	}
 
 	// issue SIGIO if this tap interface receive packets
 	if _, err = fcntl(uintptr(t.fd), syscall.F_SETSIG, 0); err != nil {
-		return t, err
+		return t, fmt.Errorf("tun SETSIG: %w", err)
 	}
 
 	var flags uintptr
 
 	// enable non-blocking IO for tap interface
 	if flags, err = fcntl(uintptr(t.fd), syscall.F_GETFL, 0); err != nil {
-		return t, err
+		return t, fmt.Errorf("TUN GETFL: %w", err)
 	}
 
 	flags |= syscall.O_NONBLOCK | syscall.O_ASYNC
 	if _, err = fcntl(uintptr(t.fd), syscall.F_SETFL, flags); err != nil {
-		return t, err
+		return t, fmt.Errorf("TUN SETFL NONBLOCK|ASYNC: %w", err)
 	}
 
 	return t, nil

@@ -196,11 +196,7 @@ func (v *Net) Rx() error {
 
 	v.Hdr.commonHeader.isr = 0x1
 
-	if err := v.IRQInjector.InjectVirtioNetIRQ(); err != nil {
-		return err
-	}
-
-	return nil
+	return v.IRQInjector.InjectVirtioNetIRQ()
 }
 
 func (v *Net) TxThreadEntry() {
@@ -261,11 +257,7 @@ func (v *Net) Tx() error {
 
 	v.Hdr.commonHeader.isr = 0x1
 
-	if err := v.IRQInjector.InjectVirtioNetIRQ(); err != nil {
-		return err
-	}
-
-	return nil
+	return v.IRQInjector.InjectVirtioNetIRQ()
 }
 
 func (v *Net) IOOutHandler(port uint64, bytes []byte) error {

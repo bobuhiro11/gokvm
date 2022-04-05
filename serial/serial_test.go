@@ -8,7 +8,8 @@ import (
 
 type mockInjector struct{}
 
-func (m *mockInjector) InjectSerialIRQ() {
+func (m *mockInjector) InjectSerialIRQ() error {
+	return nil
 }
 
 func TestNew(t *testing.T) {
