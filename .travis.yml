@@ -9,6 +9,12 @@ addons:
 language: go
 go:
   - 1.15.x
+cache:
+  directories:
+    - _linux
+    - _busybox
+    - _pciutils
+    - _ethtool
 
 before_script:
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
@@ -23,7 +29,6 @@ script:
 after_script:
   - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
   - sudo -E env "PATH=$PATH" ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
-  - sudo -E env "PATH=$PATH" make clean
 deploy:
 - provider: script
   skip_cleanup: true

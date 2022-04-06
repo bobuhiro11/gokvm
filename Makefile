@@ -25,13 +25,13 @@ ethtool.tar.gz:
 		-o ethtool.tar.gz
 
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
-	tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
+	[ -f _pciutils/README ] || tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
 	$(MAKE) -C _pciutils \
 		OPT="-O2 -static -static-libstdc++ -static-libgcc" \
 		LDFLAGS=-static ZLIB=no DNS=no LIBKMOD=no HWDB=no
-	tar -xf ethtool.tar.gz --one-top-level=_ethtool --strip-components 1
+	[ -f _ethtool/README ] || tar -xf ethtool.tar.gz --one-top-level=_ethtool --strip-components 1
 	cd _ethtool && ./autogen.sh && ./configure LDFLAGS=-static && $(MAKE)
-	tar -xf busybox.tar.bz2 --one-top-level=_busybox --strip-components 1
+	[ -f _busybox/README ] || tar -xf busybox.tar.bz2 --one-top-level=_busybox --strip-components 1
 	cp busybox.config _busybox/.config
 	$(MAKE) -C _busybox install
 	mkdir -p _busybox/_install/usr/local/share
@@ -47,17 +47,14 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	cp busybox.rcS     _busybox/_install/etc/init.d/rcS
 	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' _busybox/_install/etc/init.d/rcS
 	cd _busybox/_install && find . | cpio -o --format=newc > ../../initrd
-	rm -rf _busybox
 
 linux.tar.xz:
 	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
 		-o linux.tar.xz
 
 bzImage: linux.config linux.tar.xz
-	if ! test -f _linux/.config; then \
-		tar Jxf ./linux.tar.xz --one-top-level=_linux --strip-components 1; \
-		cp linux.config _linux/.config; \
-	fi
+	[ -f _linux/README ] || tar Jxf ./linux.tar.xz --one-top-level=_linux --strip-components 1
+	cp linux.config _linux/.config
 	$(MAKE) -C _linux
 	cp _linux/arch/x86/boot/bzImage .
 
