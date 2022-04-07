@@ -20,7 +20,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 	}
 
 	param := `console=ttyS0 earlyprintk=serial noapic noacpi notsc ` +
-		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1`
+		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 rdinit=/linuxrc`
 
 	if err = m.LoadLinux("../bzImage", "../initrd", param); err != nil {
 		t.Fatal(err)
