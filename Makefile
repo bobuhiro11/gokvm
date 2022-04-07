@@ -25,6 +25,8 @@ ethtool.tar.gz:
 		-o ethtool.tar.gz
 
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
+	#debug code
+	find -maxdepth 1 | xargs ls -la
 	[ -f _pciutils/README ] || tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
 	$(MAKE) -C _pciutils \
 		OPT="-O2 -static -static-libstdc++ -static-libgcc" \
