@@ -38,6 +38,10 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	mkdir -p _busybox/_install/etc/init.d
 	mkdir -p _busybox/_install/proc
 	mkdir -p _busybox/_install/sys
+	mkdir -p _busybox/_install/dev
+	[ -e _busybox/_install/dev/null ] || mknod _busybox/_install/dev/null c   1 3
+	[ -e _busybox/_install/dev/zero ] || mknod _busybox/_install/dev/zero c   1 5
+	[ -e _busybox/_install/dev/vda  ] || mknod _busybox/_install/dev/vda  b 254 0
 	rm -f _busybox/_install/usr/bin/lspci
 	cp _pciutils/lspci _busybox/_install/usr/bin/lspci
 	cp _pciutils/pci.ids _busybox/_install/usr/local/share/pci.ids
@@ -47,7 +51,6 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	cp busybox.rcS     _busybox/_install/etc/init.d/rcS
 	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' _busybox/_install/etc/init.d/rcS
 	cd _busybox/_install && find . | cpio -o --format=newc > ../../initrd
-	rm -rf _busybox
 
 linux.tar.xz:
 	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
