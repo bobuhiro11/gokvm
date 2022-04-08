@@ -158,13 +158,13 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 		return nil, err
 	}
 
-	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
-	go v.TxThreadEntry()
-	go v.RxThreadEntry()
+	virtioNet := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+	go virtioNet.TxThreadEntry()
+	go virtioNet.RxThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
-		v,               // 00:01.0 for Virtio PCI
+		virtioNet,       // 00:01.0 for Virtio net
 	)
 
 	return m, nil
