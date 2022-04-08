@@ -21,9 +21,11 @@ func TestParseArg(t *testing.T) {
 		"tap_if_name",
 		"-c",
 		"2",
+		"-d",
+		"disk_path",
 	}
 
-	kernel, initrd, params, tapIfName, nCpus, err := flag.ParseArgs(args)
+	kernel, initrd, params, tapIfName, disk, nCpus, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +44,10 @@ func TestParseArg(t *testing.T) {
 
 	if tapIfName != "tap_if_name" {
 		t.Fatal("invalid name of tap interface")
+	}
+
+	if disk != "disk_path" {
+		t.Fatal("invalid path of disk file")
 	}
 
 	if nCpus != 2 {

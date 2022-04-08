@@ -12,12 +12,12 @@ import (
 )
 
 func main() {
-	kernelPath, initrdPath, params, tapIfName, nCpus, err := flag.ParseArgs(os.Args)
+	kernelPath, initrdPath, params, tapIfName, diskPath, nCpus, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatalf("ParseArgs: %v", err)
 	}
 
-	m, err := machine.New(nCpus, tapIfName)
+	m, err := machine.New(nCpus, tapIfName, diskPath)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

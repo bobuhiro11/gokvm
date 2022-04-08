@@ -18,6 +18,12 @@ func (m *mockInjector) InjectVirtioNetIRQ() error {
 	return nil
 }
 
+func (m *mockInjector) InjectVirtioBlkIRQ() error {
+	m.called = true
+
+	return nil
+}
+
 func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 

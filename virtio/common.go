@@ -11,6 +11,7 @@ const (
 
 type IRQInjector interface {
 	InjectVirtioNetIRQ() error
+	InjectVirtioBlkIRQ() error
 }
 
 type commonHeader struct {
