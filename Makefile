@@ -24,6 +24,16 @@ ethtool.tar.gz:
 	curl --retry 5 http://ftp.ntu.edu.tw/pub/software/network/ethtool/ethtool-$(ETHTOOL_VERSION).tar.gz \
 		-o ethtool.tar.gz
 
+vda.img:
+	dd if=/dev/zero of=$@ bs=1024k count=10
+	mkfs.ext2 $@
+	mkdir -p mnt_test
+	mount -o loop -t ext2 $@ mnt_test
+	echo "index.html: this message is from /dev/vda in guest" > mnt_test/index.html
+	ls -la mnt_test
+	umount mnt_test
+	file $@
+
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
 	tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
 	$(MAKE) -C _pciutils \
@@ -39,6 +49,7 @@ initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rc
 	mkdir -p _busybox/_install/proc
 	mkdir -p _busybox/_install/sys
 	mkdir -p _busybox/_install/dev
+	mkdir -p _busybox/_install/mnt/dev_vda
 	[ -e _busybox/_install/dev/null ] || mknod _busybox/_install/dev/null c   1 3
 	[ -e _busybox/_install/dev/zero ] || mknod _busybox/_install/dev/zero c   1 5
 	[ -e _busybox/_install/dev/vda  ] || mknod _busybox/_install/dev/vda  b 254 0
@@ -65,7 +76,7 @@ bzImage: linux.config linux.tar.xz
 	cp _linux/arch/x86/boot/bzImage .
 
 .PHONY: run
-run: initrd bzImage
+run: initrd bzImage vda.img
 	go run . -c 4
 
 .PHONY: run-system-kernel
@@ -90,7 +101,7 @@ golangci: golangci-lint
 		--disable gocognit \
 		./...
 
-test: golangci initrd bzImage
+test: golangci initrd bzImage vda.img
 	go test -coverprofile c.out ./...
 
 .PHONY: clean

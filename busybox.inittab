@@ -61,6 +61,7 @@
 # This is run first except when booting in single-user mode.
 #
 ::sysinit:/etc/init.d/rcS
+::sysinit:/usr/sbin/httpd
 
 # /bin/sh invocations on selected ttys
 #

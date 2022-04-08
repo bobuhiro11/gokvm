@@ -15,6 +15,7 @@ linux.tar.xz
 ethtool.tar.gz
 pciutils.tar.gz
 cc-test-reporter
+vda.img
 
 # Test binary, built with `go test -c`
 *.test
