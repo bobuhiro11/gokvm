@@ -55,6 +55,7 @@ const (
 
 	serialIRQ    = 4
 	virtioNetIRQ = 9
+	virtioBlkIRQ = 10
 )
 
 var errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
@@ -69,7 +70,7 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
 }
 
-func New(nCpus int, tapIfName string) (*Machine, error) {
+func New(nCpus int, tapIfName string, diskPath string) (*Machine, error) {
 	m := &Machine{}
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -158,13 +159,21 @@ func New(nCpus int, tapIfName string) (*Machine, error) {
 		return nil, err
 	}
 
-	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
-	go v.TxThreadEntry()
-	go v.RxThreadEntry()
+	virtioNet := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+	go virtioNet.TxThreadEntry()
+	go virtioNet.RxThreadEntry()
+
+	virtioBlk, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem)
+	if err != nil {
+		return nil, err
+	}
+
+	go virtioBlk.IOThreadEntry()
 
 	m.pci = pci.New(
 		pci.NewBridge(), // 00:00.0 for PCI bridge
-		v,               // 00:01.0 for Virtio PCI
+		virtioNet,       // 00:01.0 for Virtio net
+		virtioBlk,       // 00:02.0 for Virtio blk
 	)
 
 	return m, nil
@@ -571,6 +580,18 @@ func (m *Machine) InjectVirtioNetIRQ() error {
 	}
 
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 1); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *Machine) InjectVirtioBlkIRQ() error {
+	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 0); err != nil {
+		return err
+	}
+
+	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 1); err != nil {
 		return err
 	}
 

@@ -8,3 +8,8 @@ mount --bind /dev/pts /dev/pts
 
 ip link set eth0 up
 ip addr add {{ GUEST_IPV4_ADDR }} dev eth0
+
+# mount as read-only to avoid inadvertent fs corruption.
+# If you want to write, please remount.
+mount -o ro /dev/vda /mnt/dev_vda
+ls -la /mnt/dev_vda

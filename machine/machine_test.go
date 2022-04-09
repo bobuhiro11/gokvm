@@ -14,7 +14,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	m, err := machine.New(1, "tap")
+	m, err := machine.New(1, "tap", "../vda.img")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,12 +48,23 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
-	time.Sleep(7 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	output, err := exec.Command("ping", "192.168.20.1", "-c", "3", "-i", "0.1").Output()
 	t.Logf("ping output: %s\n", output)
 
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	output, err = exec.Command("curl", "--retry", "5", "192.168.20.1/mnt/dev_vda/index.html").Output()
+	t.Logf("curl output: %s\n", output)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(output) != "index.html: this message is from /dev/vda in guest\n" {
+		t.Fatal(string(output))
 	}
 }

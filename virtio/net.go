@@ -24,28 +24,17 @@ var (
 )
 
 const (
-	IOPortStart = 0x6200
-	IOPortSize  = 0x100
-
-	// The number of free descriptors in virt queue must exceed
-	// MAX_SKB_FRAGS (16). Otherwise, packet transmission from
-	// the guest to the host will be stopped.
-	//
-	// refs https://github.com/torvalds/linux/blob/5859a2b/drivers/net/virtio_net.c#L1754
-	QueueSize = 32
+	NetIOPortStart = 0x6200
+	NetIOPortSize  = 0x100
 )
 
-type IRQInjector interface {
-	InjectVirtioNetIRQ() error
-}
-
-type Hdr struct {
+type netHdr struct {
 	commonHeader commonHeader
 	_            netHeader
 }
 
 type Net struct {
-	Hdr Hdr
+	Hdr netHdr
 
 	VirtQueue    [2]*VirtQueue
 	Mem          []byte
@@ -60,7 +49,7 @@ type Net struct {
 	IRQInjector IRQInjector
 }
 
-func (h Hdr) Bytes() ([]byte, error) {
+func (h netHdr) Bytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	if err := binary.Write(buf, binary.LittleEndian, h); err != nil {
@@ -68,17 +57,6 @@ func (h Hdr) Bytes() ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
-}
-
-type commonHeader struct {
-	_        uint32 // hostFeatures
-	_        uint32 // guestFeatures
-	_        uint32 // queuePFN
-	queueNUM uint16
-	queueSEL uint16
-	_        uint16 // queueNotify
-	_        uint8  // status
-	isr      uint8
 }
 
 type netHeader struct {
@@ -95,7 +73,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 		SubsystemID: 1, // Network Card
 		Command:     1, // Enable IO port
 		BAR: [6]uint32{
-			IOPortStart | 0x1,
+			NetIOPortStart | 0x1,
 		},
 		// https://github.com/torvalds/linux/blob/fb3b0673b7d5b477ed104949450cd511337ba3c6/drivers/pci/setup-irq.c#L30-L55
 		InterruptPin: 1,
@@ -105,7 +83,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 }
 
 func (v Net) IOInHandler(port uint64, bytes []byte) error {
-	offset := int(port - IOPortStart)
+	offset := int(port - NetIOPortStart)
 
 	b, err := v.Hdr.Bytes()
 	if err != nil {
@@ -260,7 +238,7 @@ func (v *Net) Tx() error {
 }
 
 func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
-	offset := int(port - IOPortStart)
+	offset := int(port - NetIOPortStart)
 
 	switch offset {
 	case 8:
@@ -281,12 +259,12 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 }
 
 func (v Net) GetIORange() (start, end uint64) {
-	return IOPortStart, IOPortStart + IOPortSize
+	return NetIOPortStart, NetIOPortStart + NetIOPortSize
 }
 
 func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *Net {
 	res := &Net{
-		Hdr: Hdr{
+		Hdr: netHdr{
 			commonHeader: commonHeader{
 				queueNUM: QueueSize,
 				isr:      0x0,
@@ -305,34 +283,4 @@ func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *
 	signal.Notify(res.rxKick, syscall.SIGIO)
 
 	return res
-}
-
-// refs: https://wiki.osdev.org/Virtio#Virtual_Queue_Descriptor
-type VirtQueue struct {
-	DescTable [QueueSize]struct {
-		Addr  uint64
-		Len   uint32
-		Flags uint16
-		Next  uint16
-	}
-
-	AvailRing struct {
-		Flags     uint16
-		Idx       uint16
-		Ring      [QueueSize]uint16
-		UsedEvent uint16
-	}
-
-	// padding for 4096 byte alignment
-	_ [4096 - ((16*QueueSize + 6 + 2*QueueSize) % 4096)]uint8
-
-	UsedRing struct {
-		Flags uint16
-		Idx   uint16
-		Ring  [QueueSize]struct {
-			Idx uint32
-			Len uint32
-		}
-		availEvent uint16
-	}
 }
