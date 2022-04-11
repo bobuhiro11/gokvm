@@ -76,7 +76,7 @@ bzImage: linux.config linux.tar.xz
 	cp _linux/arch/x86/boot/bzImage .
 
 .PHONY: run
-run: initrd bzImage vda.img
+run: initrd bzImage
 	go run . -c 4
 
 .PHONY: run-system-kernel
