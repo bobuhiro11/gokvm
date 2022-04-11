@@ -3,10 +3,18 @@
 
 gokvm is a hypervisor that uses KVM as an acceleration.
 It is implemented completely in the Go language and has no dependencies other than the standard library.
-With **only 1.5k lines of code**, it can **boot Linux 5.10**, the latest version at the time, without any modifications.
-It includes a naive and simple device emulation for serial consoles, but does not support networking, disks, etc.
+With **only 1.5k lines of code**, it can **boot Linux 5.10**, the latest version at the time, without any modifications
+(see [v0.0.1](https://github.com/bobuhiro11/gokvm/releases/tag/v0.0.1)).
+It includes naive and simple device emulation for serial console, virtio-net, and virtio-blk.
 The execution environment is limited to the x86-64 Linux environment.
 This should be useful for those who are interested in how to use KVM from userland.
+The latest version supports the following features:
+
+- [x] kvm acceleration
+- [x] multi processors
+- [x] serial console
+- [x] virtio-net
+- [x] virtio-blk
 
 **This is an experimental project, so please do not use it in production.**
 
