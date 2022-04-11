@@ -9,7 +9,7 @@ func ParseArgs(args []string) (string, string, string, string, string, int, erro
 	initrd := flag.String("i", "./initrd", "initrd path")
 	nCpus := flag.Int("c", 1, "number of cpus")
 	tapIfName := flag.String("t", "tap", "name of tap interface")
-	disk := flag.String("d", "./vda.img", "path of disk file (for /dev/vda)")
+	disk := flag.String("d", "/dev/zero", "path of disk file (for /dev/vda)")
 
 	//  refs: commit 1621292e73770aabbc146e72036de5e26f901e86 in kvmtool
 	params := flag.String("p", `console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
