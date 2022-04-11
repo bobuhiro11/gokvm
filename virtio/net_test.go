@@ -24,7 +24,7 @@ func (m *mockInjector) InjectVirtioBlkIRQ() error {
 	return nil
 }
 
-func TestGetDeviceHeader(t *testing.T) {
+func TestNetGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
 	v := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{})
@@ -36,7 +36,7 @@ func TestGetDeviceHeader(t *testing.T) {
 	}
 }
 
-func TestGetIORange(t *testing.T) {
+func TestNetGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.NetIOPortSize)
@@ -48,7 +48,7 @@ func TestGetIORange(t *testing.T) {
 	}
 }
 
-func TestIOInHandler(t *testing.T) {
+func TestNetIOInHandler(t *testing.T) {
 	t.Parallel()
 
 	expected := []byte{0x20, 0x00}

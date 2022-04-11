@@ -87,10 +87,10 @@ func (v *Blk) IOThreadEntry() {
 	}
 }
 
-type blkReq struct {
-	typ    uint32
+type BlkReq struct {
+	Type   uint32
 	_      uint32
-	sector uint64
+	Sector uint64
 }
 
 func (v *Blk) IO() error {
@@ -126,16 +126,16 @@ func (v *Blk) IO() error {
 		// buf[2] contains a status field.
 		//
 		// refs https://wiki.osdev.org/Virtio#Block_Device_Packets
-		blkReq := *((*blkReq)(unsafe.Pointer(&buf[0][0])))
+		blkReq := *((*BlkReq)(unsafe.Pointer(&buf[0][0])))
 		data := buf[1]
 
 		var err error
-		if blkReq.typ&0x1 == 0x1 {
+		if blkReq.Type&0x1 == 0x1 {
 			// write to file
-			_, err = v.file.WriteAt(data, int64(blkReq.sector*SectorSize))
+			_, err = v.file.WriteAt(data, int64(blkReq.Sector*SectorSize))
 		} else {
 			// read from file
-			_, err = v.file.ReadAt(data, int64(blkReq.sector*SectorSize))
+			_, err = v.file.ReadAt(data, int64(blkReq.Sector*SectorSize))
 		}
 
 		if err != nil {
