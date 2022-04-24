@@ -34,6 +34,24 @@ vda.img:
 	umount mnt_test
 	file $@
 
+# because a go-based VMM deserves a go initrd.
+# but we include bash (because people like it) and other handy tools.
+# we include the local host tools; the u-root -files command will arrange to bring
+# in all the needed .so
+# You need to have installed the u-root command.
+# GOPATH needs to be set.
+# Something weird here: if I use $SHELL in this it expands to /bin/sh *in this makefile*, but not outside. WTF?
+goinitrd:
+	#echo u-root -defaultsh $(SHELL) -o $(PWD)/goinitrd.cpio -files `which ethtool` -files `which lspci` -files `which $(SHELL)`
+	echo u-root -defaultsh /usr/bin/bash -o $(PWD)/goinitrd.cpio -files `which ethtool` -files `which lspci` -files `which /usr/bin/bash`
+	(cd $(GOPATH)/src/github.com/u-root/u-root && \
+			u-root \
+			-defaultsh /usr/bin/bash \
+			-o $(PWD)/goinitrd.cpio \
+			-files `which ethtool` \
+			-files `which lspci` \
+			-files `which /usr/bin/bash`)
+
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
 	tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
 	$(MAKE) -C _pciutils \
