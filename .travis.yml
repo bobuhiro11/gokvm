@@ -8,7 +8,7 @@ addons:
       - libmnl-dev
 language: go
 go:
-  - 1.15.x
+  - 1.17.x
 
 before_script:
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
@@ -16,7 +16,8 @@ before_script:
   - chmod a+x ./cc-test-reporter
   - sudo -E env "PATH=$PATH" ./cc-test-reporter before-build
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
-  - sudo -E env "PATH=$PATH" make golangci-lint initrd vda.img
+  - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/u-root/u-root
+  - sudo -E env "PATH=$PATH" make golangci-lint initrd goinitrd vda.img
   - sudo -E env "PATH=$PATH" make -j $(nproc) bzImage
 script:
   - sudo -E env "PATH=$PATH" make gokvm

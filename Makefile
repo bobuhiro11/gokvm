@@ -42,12 +42,10 @@ vda.img:
 # GOPATH needs to be set.
 # Something weird here: if I use $SHELL in this it expands to /bin/sh *in this makefile*, but not outside. WTF?
 goinitrd:
-	#echo u-root -defaultsh $(SHELL) -o $(PWD)/goinitrd.cpio -files `which ethtool` -files `which lspci` -files `which $(SHELL)`
-	echo u-root -defaultsh /usr/bin/bash -o $(PWD)/goinitrd.cpio -files `which ethtool` -files `which lspci` -files `which /usr/bin/bash`
 	(cd $(GOPATH)/src/github.com/u-root/u-root && \
 			u-root \
 			-defaultsh /usr/bin/bash \
-			-o $(PWD)/goinitrd.cpio \
+			-o $(PWD)/goinitrd \
 			-files `which ethtool` \
 			-files `which lspci` \
 			-files `which /usr/bin/bash`)

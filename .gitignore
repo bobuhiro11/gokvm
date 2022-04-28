@@ -9,6 +9,7 @@ golangci-lint
 busybox.tar.bz2
 busybox
 initrd
+goinitrd
 bzImage
 linux-*.tar.xz
 linux.tar.xz
