@@ -20,14 +20,15 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 	}
 
 	param := `console=ttyS0 earlyprintk=serial noapic noacpi notsc ` +
-		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 rdinit=/sbin/init`
+		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 ` +
+		`rdinit=/init init=/init`
 
 	kern, err := os.Open("../bzImage")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	initrd, err := os.Open("../initrd")
+	initrd, err := os.Open("../goinitrd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
-	output, err = exec.Command("curl", "--retry", "5", "192.168.20.1/mnt/dev_vda/index.html").Output()
+	output, err = exec.Command("curl", "--retry", "5", "-L", "192.168.20.1/mnt/dev_vda/index.html").Output()
 	t.Logf("curl output: %s\n", output)
 
 	if err != nil {

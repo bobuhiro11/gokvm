@@ -42,13 +42,24 @@ vda.img:
 # GOPATH needs to be set.
 # Something weird here: if I use $SHELL in this it expands to /bin/sh *in this makefile*, but not outside. WTF?
 goinitrd:
+	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' goinitrd.bashrc
 	(cd $(GOPATH)/src/github.com/u-root/u-root && \
 			u-root \
-			-defaultsh /usr/bin/bash \
+			-defaultsh `which bash` \
 			-o $(PWD)/goinitrd \
 			-files `which ethtool` \
 			-files `which lspci` \
-			-files `which /usr/bin/bash`)
+			-files `which lsblk` \
+			-files `which hexdump` \
+			-files `which mount` \
+			-files `which bash` \
+			-files `which nohup` \
+			-files `which clear` \
+			-files `which tic` \
+			-files "/usr/share/terminfo/l/linux-c:/usr/share/terminfo/l/linux" \
+			-files "/usr/share/misc/pci.ids" \
+			-files "$(PWD)/goinitrd.bashrc:/.bashrc" \
+			core boot github.com/u-root/u-root/cmds/exp/srvfiles)
 
 initrd: busybox.config busybox.tar.bz2 busybox.inittab busybox.passwd busybox.rcS pciutils.tar.gz ethtool.tar.gz
 	tar -xf pciutils.tar.gz --one-top-level=_pciutils --strip-components 1
@@ -92,7 +103,7 @@ bzImage: linux.config linux.tar.xz
 	cp _linux/arch/x86/boot/bzImage .
 
 .PHONY: run
-run: initrd bzImage
+run: goinitrd bzImage
 	go run . -c 4
 
 .PHONY: run-system-kernel
@@ -126,6 +137,6 @@ clean:
 		_ethtool ethtool.tar.gz _pciutils pciutils.tar.gz
 
 .PHONY: qemu
-qemu: initrd bzImage
-	qemu-system-x86_64 -kernel ./bzImage -initrd ./initrd --nographic --enable-kvm \
-		--append "root=/dev/ram rw console=ttyS0 rdinit=/bin/init" --enable-kvm
+qemu: goinitrd bzImage
+	qemu-system-x86_64 -kernel ./bzImage -initrd ./goinitrd --nographic --enable-kvm \
+		--append "root=/dev/ram rw console=ttyS0 rdinit=/init" --enable-kvm
