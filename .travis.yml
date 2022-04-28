@@ -16,7 +16,8 @@ before_script:
   - chmod a+x ./cc-test-reporter
   - sudo -E env "PATH=$PATH" ./cc-test-reporter before-build
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
-  - sudo -E env "PATH=$PATH" make golangci-lint initrd vda.img
+  - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/u-root/u-root
+  - sudo -E env "PATH=$PATH" make golangci-lint initrd goinitrd vda.img
   - sudo -E env "PATH=$PATH" make -j $(nproc) bzImage
 script:
   - sudo -E env "PATH=$PATH" make gokvm
