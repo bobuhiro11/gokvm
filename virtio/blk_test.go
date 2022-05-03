@@ -2,6 +2,7 @@ package virtio_test
 
 import (
 	"bytes"
+	"os"
 	"testing"
 	"unsafe"
 
@@ -65,6 +66,10 @@ func TestIO(t *testing.T) {
 
 	v, err := virtio.NewBlk("../vda.img", 10, &mockInjector{}, mem)
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skipf("../vda.img does not exist, skipping this test")
+		}
+
 		t.Fatalf("err: %v\n", err)
 	}
 

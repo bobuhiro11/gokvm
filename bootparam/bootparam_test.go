@@ -1,4 +1,4 @@
-package bootparam
+package bootparam_test
 
 import (
 	"bytes"
@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/bobuhiro11/gokvm/bootparam"
 )
 
-func bpnew(n string) (*BootParam, error) {
-	f, err := os.Open("../bzImage")
+func bpnew(n string) (*bootparam.BootParam, error) {
+	f, err := os.Open(n)
 	if err != nil {
-		return nil, fmt.Errorf("Skipping this test: %v", err)
+		return nil, fmt.Errorf("Skipping this test: %w", err)
 	}
 
-	return New(f)
+	return bootparam.New(f)
 }
 
 func TestNew(t *testing.T) {
@@ -55,10 +57,11 @@ func TestAddE820Entry(t *testing.T) {
 	if err != nil {
 		t.Skipf("Skipping this test: %v", err)
 	}
+
 	b.AddE820Entry(
 		0x1234567812345678,
 		0xabcdefabcdefabcd,
-		E820Ram,
+		bootparam.E820Ram,
 	)
 
 	rawBootParam, _ := b.Bytes()
@@ -66,7 +69,7 @@ func TestAddE820Entry(t *testing.T) {
 		t.Fatalf("invalid e820_entries: %d", rawBootParam[0x1E8])
 	}
 
-	actual := E820Entry{}
+	actual := bootparam.E820Entry{}
 	reader := bytes.NewReader(rawBootParam[0x2D0:])
 
 	if err := binary.Read(reader, binary.LittleEndian, &actual); err != nil {
@@ -81,7 +84,7 @@ func TestAddE820Entry(t *testing.T) {
 		t.Fatalf("invalid e820 size: %v", actual.Size)
 	}
 
-	if actual.Type != E820Ram {
+	if actual.Type != bootparam.E820Ram {
 		t.Fatalf("invalid e820 type: %v", actual.Type)
 	}
 }

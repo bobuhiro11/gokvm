@@ -22,7 +22,17 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 
-	if err := m.LoadLinux(kernelPath, initrdPath, params); err != nil {
+	kern, err := os.Open(kernelPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	initrd, err := os.Open(initrdPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := m.LoadLinux(kern, initrd, params); err != nil {
 		log.Fatalf("%v", err)
 	}
 
