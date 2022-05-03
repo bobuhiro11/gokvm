@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"unsafe"
 )
 
@@ -100,13 +100,8 @@ var ErrorSignatureNotMatch = errors.New("signature not match in bzImage")
 
 var ErrorOldProtocolVersion = errors.New("old protocol version")
 
-func New(bzImagePath string) (*BootParam, error) {
+func New(r io.ReaderAt) (*BootParam, error) {
 	b := &BootParam{}
-
-	bzImage, err := ioutil.ReadFile(bzImagePath)
-	if err != nil {
-		return b, err
-	}
 
 	// In 64-bit boot protocol, the first step in loading a Linux kernel should be
 	// to setup the boot parameters (struct boot_params, traditionally known as
@@ -116,7 +111,7 @@ func New(bzImagePath string) (*BootParam, error) {
 	// and examined.
 	//
 	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#id1
-	reader := bytes.NewReader(bzImage[0x01f1:])
+	reader := io.NewSectionReader(r, 0x1f1, 0x1000)
 	if err := binary.Read(reader, binary.LittleEndian, &(b.Hdr)); err != nil {
 		return b, err
 	}
