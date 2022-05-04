@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/bobuhiro11/gokvm/flag"
 	"github.com/bobuhiro11/gokvm/machine"
@@ -26,11 +27,19 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 
+	var wg sync.WaitGroup
+
 	for i := 0; i < nCpus; i++ {
+		fmt.Printf("Start CPU %d of %d\r\n", i, nCpus)
+		wg.Add(1)
+
 		go func(cpuId int) {
 			if err = m.RunInfiniteLoop(cpuId); err != nil {
-				log.Fatalf("%v", err)
+				fmt.Printf("%v\n\r", err)
 			}
+
+			wg.Done()
+			fmt.Printf("CPU %d exits\n\r", cpuId)
 		}(i)
 	}
 
@@ -50,25 +59,32 @@ func main() {
 
 	in := bufio.NewReader(os.Stdin)
 
-	for {
-		b, err := in.ReadByte()
-		if err != nil {
-			log.Printf("%v", err)
+	go func() {
+		for {
+			b, err := in.ReadByte()
+			if err != nil {
+				log.Printf("%v", err)
 
-			break
-		}
-		m.GetInputChan() <- b
-
-		if len(m.GetInputChan()) > 0 {
-			if err := m.InjectSerialIRQ(); err != nil {
-				log.Printf("InjectSerialIRQ: %v", err)
+				break
 			}
-		}
+			m.GetInputChan() <- b
 
-		if before == 0x1 && b == 'x' {
-			break
-		}
+			if len(m.GetInputChan()) > 0 {
+				if err := m.InjectSerialIRQ(); err != nil {
+					log.Printf("InjectSerialIRQ: %v", err)
+				}
+			}
 
-		before = b
-	}
+			if before == 0x1 && b == 'x' {
+				restoreMode()
+				os.Exit(0)
+			}
+
+			before = b
+		}
+	}()
+
+	fmt.Printf("Waiting for CPUs to exit\r\n")
+	wg.Wait()
+	fmt.Printf("All cpus done\n\r")
 }
