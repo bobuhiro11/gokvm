@@ -3,30 +3,36 @@ package bootparam_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
 )
 
+func bpnew(n string) (*bootparam.BootParam, error) {
+	f, err := os.Open(n)
+	if err != nil {
+		return nil, fmt.Errorf("Skipping this test: %w", err)
+	}
+
+	return bootparam.New(f)
+}
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 
 	// Do a test open for the bzimage. If it fails for any reason,
 	// just skip this test.
-	if _, err := os.Open("../bzImage"); err != nil {
+	if _, err := bpnew("../bzImage"); err != nil {
 		t.Skipf("Skipping this test: %v", err)
-	}
-
-	if _, err := bootparam.New("../bzImage"); err != nil {
-		t.Fatal(err)
 	}
 }
 
 func TestNewNotbzImage(t *testing.T) {
 	t.Parallel()
 
-	if _, err := bootparam.New("../README.md"); err == nil {
+	if _, err := bpnew("../README.md"); err == nil {
 		t.Fatal(err)
 	}
 }
@@ -34,7 +40,10 @@ func TestNewNotbzImage(t *testing.T) {
 func TestBytes(t *testing.T) {
 	t.Parallel()
 
-	b, _ := bootparam.New("../bzImage")
+	b, err := bpnew("../bzImage")
+	if err != nil {
+		t.Skipf("Skipping this test: %v", err)
+	}
 
 	if _, err := b.Bytes(); err != nil {
 		t.Fatal(err)
@@ -44,7 +53,11 @@ func TestBytes(t *testing.T) {
 func TestAddE820Entry(t *testing.T) {
 	t.Parallel()
 
-	b, _ := bootparam.New("../bzImage")
+	b, err := bpnew("../bzImage")
+	if err != nil {
+		t.Skipf("Skipping this test: %v", err)
+	}
+
 	b.AddE820Entry(
 		0x1234567812345678,
 		0xabcdefabcdefabcd,

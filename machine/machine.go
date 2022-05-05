@@ -1,8 +1,9 @@
 package machine
 
 import (
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"runtime"
 	"syscall"
@@ -188,21 +189,19 @@ func (m *Machine) RunData() []*kvm.RunData {
 	return m.runs
 }
 
-func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
+func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	// Load initrd
-	initrd, err := ioutil.ReadFile(initPath)
-	if err != nil {
-		return err
+	initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
+	if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
 	}
-
-	copy(m.mem[initrdAddr:], initrd)
 
 	// Load kernel command-line parameters
 	copy(m.mem[cmdlineAddr:], params)
 	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
 
 	// Load Boot Param
-	bootParam, err := bootparam.New(bzImagePath)
+	bootParam, err := bootparam.New(kernel)
 	if err != nil {
 		return err
 	}
@@ -232,7 +231,7 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	bootParam.Hdr.VidMode = 0xFFFF                                                                  // Proto ALL
 	bootParam.Hdr.TypeOfLoader = 0xFF                                                               // Proto 2.00+
 	bootParam.Hdr.RamdiskImage = initrdAddr                                                         // Proto 2.00+
-	bootParam.Hdr.RamdiskSize = uint32(len(initrd))                                                 // Proto 2.00+
+	bootParam.Hdr.RamdiskSize = uint32(initrdSize)                                                  // Proto 2.00+
 	bootParam.Hdr.LoadFlags |= bootparam.CanUseHeap | bootparam.LoadedHigh | bootparam.KeepSegments // Proto 2.00+
 	bootParam.Hdr.HeapEndPtr = 0xFE00                                                               // Proto 2.01+
 	bootParam.Hdr.ExtLoaderVer = 0                                                                  // Proto 2.02+
@@ -247,11 +246,6 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	copy(m.mem[bootParamAddr:], bytes)
 
 	// Load kernel
-	bzImage, err := ioutil.ReadFile(bzImagePath)
-	if err != nil {
-		return err
-	}
-
 	// copy to g.mem with offest setupsz
 	//
 	// The 32-bit (non-real-mode) kernel starts at offset (setup_sects+1)*512 in
@@ -260,7 +254,11 @@ func (m *Machine) LoadLinux(bzImagePath, initPath, params string) error {
 	//
 	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
 	offset := int(bootParam.Hdr.SetupSects+1) * 512
-	copy(m.mem[kernelAddr:], bzImage[offset:])
+
+	kernSize, err := kernel.ReadAt(m.mem[kernelAddr:], int64(offset))
+	if err != nil && kernSize == 0 && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("kernel: (%v, %w)", kernSize, err)
+	}
 
 	for i := range m.vcpuFds {
 		if err = m.initRegs(i); err != nil {
