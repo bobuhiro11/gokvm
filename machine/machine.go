@@ -58,7 +58,11 @@ const (
 	virtioBlkIRQ = 10
 )
 
-var errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
+var (
+	errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
+	// ErrorWriteToCF9 indicates a write to cf9, the standard x86 reset port.
+	ErrorWriteToCF9 = fmt.Errorf("power cycle via 0xcf9")
+)
 
 type Machine struct {
 	kvmFd, vmFd    uintptr
@@ -423,6 +427,30 @@ func (m *Machine) initIOPortHandlers() {
 		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
 	}
 
+	// 0xCF9 port can get three values for three types of reset:
+	//
+	// Writing 4 to 0xCF9:(INIT) Will INIT the CPU. Meaning it will jump
+	// to the initial location of booting but it will keep many CPU
+	// elements untouched. Most internal tables, chaches etc will remain
+	// unchanged by the Init call (but may change during it).
+	//
+	// Writing 6 to 0xCF9:(RESET) Will RESET the CPU with all
+	// internal tables caches etc cleared to initial state.
+	//
+	// Writing 0xE to 0xCF9:(RESTART) Will power cycle the mother board
+	// with everything that comes with it.
+	// For now, we will exit without regard to the value. Should we wish
+	// to have more sophisticated cf9 handling, we will need to modify
+	// gokvm a bit more.
+
+	funcOutbCF9 := func(m *Machine, port uint64, bytes []byte) error {
+		if len(bytes) == 1 && bytes[0] == 0xe {
+			return fmt.Errorf("write 0xe to cf9: %w", ErrorWriteToCF9)
+		}
+
+		return fmt.Errorf("write %#x to cf9: %w", bytes, ErrorWriteToCF9)
+	}
+
 	// default handler
 	for port := 0; port < 0x10000; port++ {
 		for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
@@ -431,6 +459,10 @@ func (m *Machine) initIOPortHandlers() {
 	}
 
 	for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
+		// CF9
+		m.ioportHandlers[0xcf9][dir] = funcNone
+		m.ioportHandlers[0xcf9][dir] = funcOutbCF9
+
 		// VGA
 		for port := 0x3c0; port <= 0x3da; port++ {
 			m.ioportHandlers[port][dir] = funcNone
