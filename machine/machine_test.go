@@ -59,7 +59,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(15 * time.Second)
 
 	output, err := exec.Command("ping", "192.168.20.1", "-c", "3", "-i", "0.1").Output()
 	t.Logf("ping output: %s\n", output)
