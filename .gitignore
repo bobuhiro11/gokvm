@@ -7,7 +7,6 @@
 gokvm
 golangci-lint
 initrd
-goinitrd
 bzImage
 linux-*.tar.xz
 linux.tar.xz

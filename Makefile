@@ -27,12 +27,12 @@ vda.img:
 # You need to have installed the u-root command.
 # GOPATH needs to be set.
 # Something weird here: if I use $SHELL in this it expands to /bin/sh *in this makefile*, but not outside. WTF?
-goinitrd:
-	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' goinitrd.bashrc
+initrd:
+	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' .bashrc
 	(cd $(GOPATH)/src/github.com/u-root/u-root && \
 			u-root \
 			-defaultsh `which bash` \
-			-o $(PWD)/goinitrd \
+			-o $(PWD)/initrd \
 			-files `which ethtool` \
 			-files `which lspci` \
 			-files `which lsblk` \
@@ -44,7 +44,7 @@ goinitrd:
 			-files `which tic` \
 			-files "/usr/share/terminfo/l/linux-c:/usr/share/terminfo/l/linux" \
 			-files "/usr/share/misc/pci.ids" \
-			-files "$(PWD)/goinitrd.bashrc:/.bashrc" \
+			-files "$(PWD)/.bashrc:.bashrc" \
 			core boot github.com/u-root/u-root/cmds/exp/srvfiles)
 
 linux.tar.xz:
@@ -60,7 +60,7 @@ bzImage: linux.config linux.tar.xz
 	cp _linux/arch/x86/boot/bzImage .
 
 .PHONY: run
-run: goinitrd bzImage
+run: initrd bzImage
 	go run . -c 4
 
 .PHONY: run-system-kernel
@@ -85,7 +85,7 @@ golangci: golangci-lint
 		--disable gocognit \
 		./...
 
-test: golangci goinitrd bzImage vda.img
+test: golangci initrd bzImage vda.img
 	go test -coverprofile c.out ./...
 
 .PHONY: clean
@@ -93,6 +93,6 @@ clean:
 	rm -rf ./gokvm ./golangci-lint bzImage _linux
 
 .PHONY: qemu
-qemu: goinitrd bzImage
-	qemu-system-x86_64 -kernel ./bzImage -initrd ./goinitrd --nographic --enable-kvm \
+qemu: initrd bzImage
+	qemu-system-x86_64 -kernel ./bzImage -initrd ./initrd --nographic --enable-kvm \
 		--append "root=/dev/ram rw console=ttyS0 rdinit=/init" --enable-kvm
