@@ -65,11 +65,12 @@ func TestIO(t *testing.T) {
 	mem := make([]byte, 0x1000000)
 
 	v, err := virtio.NewBlk("../vda.img", 10, &mockInjector{}, mem)
-	if err != nil {
-		if os.IsNotExist(err) {
-			t.Skipf("../vda.img does not exist, skipping this test")
-		}
 
+	if os.IsNotExist(err) {
+		t.Skipf("../vda.img does not exist, skipping this test")
+	}
+
+	if err != nil {
 		t.Fatalf("err: %v\n", err)
 	}
 
