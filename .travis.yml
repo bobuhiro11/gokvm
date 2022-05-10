@@ -1,3 +1,6 @@
+branches:
+  only:
+    - main
 dist: focal
 sudo: true
 addons:
