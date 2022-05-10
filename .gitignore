@@ -6,15 +6,10 @@
 *.dylib
 gokvm
 golangci-lint
-busybox.tar.bz2
-busybox
 initrd
-goinitrd
 bzImage
 linux-*.tar.xz
 linux.tar.xz
-ethtool.tar.gz
-pciutils.tar.gz
 cc-test-reporter
 vda.img
 
@@ -26,7 +21,4 @@ vda.img
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-_busybox/
 _linux/
-_ethtool/
-_pciutils/

@@ -28,7 +28,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
-	initrd, err := os.Open("../goinitrd")
+	initrd, err := os.Open("../initrd")
 	if err != nil {
 		t.Fatal(err)
 	}
