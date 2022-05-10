@@ -1,3 +1,6 @@
+branches:
+  only:
+    - main
 dist: focal
 sudo: true
 addons:
@@ -9,6 +12,7 @@ addons:
 language: go
 go:
   - 1.17.x
+  - 1.18.x
 
 before_script:
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
@@ -31,4 +35,6 @@ deploy:
   skip_cleanup: true
   script: curl --retry 5 -sL https://git.io/goreleaser | bash
   on:
+    # https://docs.travis-ci.com/user/languages/go/#environment-variable
     tags: true
+    condition: $TRAVIS_GO_VERSION =~ ^1\.7

@@ -217,9 +217,7 @@ func TestAddNum(t *testing.T) {
 	}
 
 	code := []byte{0xba, 0xf8, 0x03, 0x00, 0xd8, 0x04, '0', 0xee, 0xb0, '\n', 0xee, 0xf4}
-	for i := 0; i < len(code); i++ {
-		mem[i] = code[i]
-	}
+	copy(mem, code)
 
 	if err = kvm.SetUserMemoryRegion(vmFd, &kvm.UserspaceMemoryRegion{
 		Slot:          0,

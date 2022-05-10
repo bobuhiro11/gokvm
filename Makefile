@@ -1,4 +1,4 @@
-GOLANGCI_LINT_VERSION = v1.35.2
+GOLANGCI_LINT_VERSION = v1.46.0
 LINUX_VERSION = 5.14.3
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 GUEST_IPV4_ADDR = 192.168.20.1/24
@@ -83,6 +83,17 @@ golangci: golangci-lint
 		--disable forbidigo \
 		--disable funlen \
 		--disable gocognit \
+		--disable ifshort \
+		--disable varnamelen \
+		--disable nonamedreturns \
+		--disable cyclop \
+		--disable errname \
+		--disable exhaustivestruct \
+		--disable exhaustruct \
+		--disable forcetypeassert \
+		--disable wastedassign \
+		--disable ireturn \
+		--disable revive \
 		./...
 
 test: golangci initrd bzImage vda.img
