@@ -72,7 +72,7 @@ type Machine struct {
 	runs           []*kvm.RunData
 	pci            *pci.PCI
 	serial         *serial.Serial
-	ioportHandlers [0x10000][2]func(m *Machine, port uint64, bytes []byte) error
+	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
 func New(nCpus int, tapIfName string, diskPath string) (*Machine, error) {
@@ -270,11 +270,11 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		}
 	}
 
-	m.initIOPortHandlers()
-
 	if m.serial, err = serial.New(m); err != nil {
 		return err
 	}
+
+	m.initIOPortHandlers()
 
 	return nil
 }
@@ -395,7 +395,7 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[i])) + uintptr(offset))))[0:size]
 
 		for i := 0; i < int(count); i++ {
-			if err := f(m, port, bytes); err != nil {
+			if err := f(port, bytes); err != nil {
 				return false, err
 			}
 		}
@@ -417,11 +417,11 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 }
 
 func (m *Machine) initIOPortHandlers() {
-	funcNone := func(m *Machine, port uint64, bytes []byte) error {
+	funcNone := func(port uint64, bytes []byte) error {
 		return nil
 	}
 
-	funcError := func(m *Machine, port uint64, bytes []byte) error {
+	funcError := func(port uint64, bytes []byte) error {
 		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
 	}
 
@@ -441,7 +441,7 @@ func (m *Machine) initIOPortHandlers() {
 	// to have more sophisticated cf9 handling, we will need to modify
 	// gokvm a bit more.
 
-	funcOutbCF9 := func(m *Machine, port uint64, bytes []byte) error {
+	funcOutbCF9 := func(port uint64, bytes []byte) error {
 		if len(bytes) == 1 && bytes[0] == 0xe {
 			return fmt.Errorf("write 0xe to cf9: %w", ErrorWriteToCF9)
 		}
@@ -512,7 +512,7 @@ func (m *Machine) initIOPortHandlers() {
 
 	// PS/2 Keyboard (Always 8042 Chip)
 	for port := 0x60; port <= 0x6f; port++ {
-		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
+		m.ioportHandlers[port][kvm.EXITIOIN] = func(port uint64, bytes []byte) error {
 			// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
 			// infinitely. To deal with this issue, refer to kvmtool and
 			// configure the input to the Status Register of the PS2 controller.
@@ -530,12 +530,8 @@ func (m *Machine) initIOPortHandlers() {
 
 	// Serial port 1
 	for port := serial.COM1Addr; port < serial.COM1Addr+8; port++ {
-		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
-			return m.serial.In(port, bytes)
-		}
-		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
-			return m.serial.Out(port, bytes)
-		}
+		m.ioportHandlers[port][kvm.EXITIOIN] = m.serial.In
+		m.ioportHandlers[port][kvm.EXITIOOUT] = m.serial.Out
 	}
 
 	// PCI configuration
@@ -544,33 +540,25 @@ func (m *Machine) initIOPortHandlers() {
 	// 0xcfc + 0xcff for data for PCI Config Space
 	// see https://github.com/torvalds/linux/blob/master/arch/x86/pci/direct.c for more detail.
 
-	m.ioportHandlers[0xCF8][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
-		return m.pci.PciConfAddrIn(port, bytes)
-	}
-	m.ioportHandlers[0xCF8][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
-		return m.pci.PciConfAddrOut(port, bytes)
-	}
+	m.ioportHandlers[0xCF8][kvm.EXITIOIN] = m.pci.PciConfAddrIn
+	m.ioportHandlers[0xCF8][kvm.EXITIOOUT] = m.pci.PciConfAddrOut
 
 	for port := 0xcfc; port < 0xcfc+4; port++ {
-		m.ioportHandlers[port][kvm.EXITIOIN] = func(m *Machine, port uint64, bytes []byte) error {
-			return m.pci.PciConfDataIn(port, bytes)
-		}
-		m.ioportHandlers[port][kvm.EXITIOOUT] = func(m *Machine, port uint64, bytes []byte) error {
-			return m.pci.PciConfDataOut(port, bytes)
-		}
+		m.ioportHandlers[port][kvm.EXITIOIN] = m.pci.PciConfDataIn
+		m.ioportHandlers[port][kvm.EXITIOOUT] = m.pci.PciConfDataOut
 	}
 
 	// PCI devices
 	for _, device := range m.pci.Devices {
 		start, end := device.GetIORange()
 		for port := start; port < end; port++ {
-			m.ioportHandlers[port][kvm.EXITIOIN] = pciInFunc
-			m.ioportHandlers[port][kvm.EXITIOOUT] = pciOutFunc
+			m.ioportHandlers[port][kvm.EXITIOIN] = m.pciInFunc
+			m.ioportHandlers[port][kvm.EXITIOOUT] = m.pciOutFunc
 		}
 	}
 }
 
-func pciInFunc(m *Machine, port uint64, bytes []byte) error {
+func (m *Machine) pciInFunc(port uint64, bytes []byte) error {
 	for i := range m.pci.Devices {
 		start, end := m.pci.Devices[i].GetIORange()
 		if start <= port && port < end {
@@ -581,7 +569,7 @@ func pciInFunc(m *Machine, port uint64, bytes []byte) error {
 	return errorPCIDeviceNotFoundForPort
 }
 
-func pciOutFunc(m *Machine, port uint64, bytes []byte) error {
+func (m *Machine) pciOutFunc(port uint64, bytes []byte) error {
 	for i := range m.pci.Devices {
 		start, end := m.pci.Devices[i].GetIORange()
 		if start <= port && port < end {
