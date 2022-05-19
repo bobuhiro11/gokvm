@@ -59,11 +59,8 @@ const (
 	virtioBlkIRQ = 10
 )
 
-var (
-	errorPCIDeviceNotFoundForPort = fmt.Errorf("pci device cannot be found for port")
-	// ErrorWriteToCF9 indicates a write to cf9, the standard x86 reset port.
-	ErrorWriteToCF9 = fmt.Errorf("power cycle via 0xcf9")
-)
+// ErrorWriteToCF9 indicates a write to cf9, the standard x86 reset port.
+var ErrorWriteToCF9 = fmt.Errorf("power cycle via 0xcf9")
 
 type Machine struct {
 	kvmFd, vmFd    uintptr
@@ -498,32 +495,13 @@ func (m *Machine) initIOPortHandlers() {
 	m.registerIOPortHandler(0xcfc, 0xd00, m.pci.PciConfDataIn, m.pci.PciConfDataOut)
 
 	// PCI devices
-	for _, device := range m.pci.Devices {
+	for i, device := range m.pci.Devices {
 		start, end := device.GetIORange()
-		m.registerIOPortHandler(start, end, m.pciInFunc, m.pciOutFunc)
+		m.registerIOPortHandler(
+			start, end,
+			m.pci.Devices[i].IOInHandler, m.pci.Devices[i].IOOutHandler,
+		)
 	}
-}
-
-func (m *Machine) pciInFunc(port uint64, bytes []byte) error {
-	for i := range m.pci.Devices {
-		start, end := m.pci.Devices[i].GetIORange()
-		if start <= port && port < end {
-			return m.pci.Devices[i].IOInHandler(port, bytes)
-		}
-	}
-
-	return errorPCIDeviceNotFoundForPort
-}
-
-func (m *Machine) pciOutFunc(port uint64, bytes []byte) error {
-	for i := range m.pci.Devices {
-		start, end := m.pci.Devices[i].GetIORange()
-		if start <= port && port < end {
-			return m.pci.Devices[i].IOOutHandler(port, bytes)
-		}
-	}
-
-	return errorPCIDeviceNotFoundForPort
 }
 
 func (m *Machine) InjectSerialIRQ() error {
