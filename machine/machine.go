@@ -416,6 +416,16 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 	}
 }
 
+func (m *Machine) registerIOPortHandler(
+	start, end uint64,
+	inHandler, outHandler func(port uint64, bytes []byte) error,
+) {
+	for i := start; i < end; i++ {
+		m.ioportHandlers[i][kvm.EXITIOIN] = inHandler
+		m.ioportHandlers[i][kvm.EXITIOOUT] = outHandler
+	}
+}
+
 func (m *Machine) initIOPortHandlers() {
 	funcNone := func(port uint64, bytes []byte) error {
 		return nil
@@ -440,7 +450,6 @@ func (m *Machine) initIOPortHandlers() {
 	// For now, we will exit without regard to the value. Should we wish
 	// to have more sophisticated cf9 handling, we will need to modify
 	// gokvm a bit more.
-
 	funcOutbCF9 := func(port uint64, bytes []byte) error {
 		if len(bytes) == 1 && bytes[0] == 0xe {
 			return fmt.Errorf("write 0xe to cf9: %w", ErrorWriteToCF9)
@@ -449,112 +458,49 @@ func (m *Machine) initIOPortHandlers() {
 		return fmt.Errorf("write %#x to cf9: %w", bytes, ErrorWriteToCF9)
 	}
 
-	// default handler
-	for port := 0; port < 0x10000; port++ {
-		for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
-			m.ioportHandlers[port][dir] = funcError
-		}
+	// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
+	// infinitely. To deal with this issue, refer to kvmtool and
+	// configure the input to the Status Register of the PS2 controller.
+	//
+	// refs:
+	// https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/hw/i8042.c#L312
+	// https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/tree/hw/i8042.c#n312
+	// https://wiki.osdev.org/%228042%22_PS/2_Controller
+	funcInbPS2 := func(port uint64, bytes []byte) error {
+		bytes[0] = 0x20
+
+		return nil
 	}
 
-	for dir := kvm.EXITIOIN; dir <= kvm.EXITIOOUT; dir++ {
-		// CF9
-		m.ioportHandlers[0xcf9][dir] = funcNone
-		m.ioportHandlers[0xcf9][dir] = funcOutbCF9
-
-		// VGA
-		for port := 0x3c0; port <= 0x3da; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		for port := 0x3b4; port <= 0x3b5; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// CMOS clock
-		for port := 0x70; port <= 0x71; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// DMA Page Registers (Commonly 74L612 Chip)
-		for port := 0x80; port <= 0x9f; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// Serial port 2
-		for port := 0x2f8; port <= 0x2ff; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// Serial port 3
-		for port := 0x3e8; port <= 0x3ef; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// Serial port 4
-		for port := 0x2e8; port <= 0x2ef; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// unknown
-		for port := 0xcfe; port <= 0xcfe; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		for port := 0xcfa; port <= 0xcfb; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-
-		// PCI Configuration Space Access Mechanism #2
-		for port := 0xc000; port <= 0xcfff; port++ {
-			m.ioportHandlers[port][dir] = funcNone
-		}
-	}
-
-	// PS/2 Keyboard (Always 8042 Chip)
-	for port := 0x60; port <= 0x6f; port++ {
-		m.ioportHandlers[port][kvm.EXITIOIN] = func(port uint64, bytes []byte) error {
-			// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
-			// infinitely. To deal with this issue, refer to kvmtool and
-			// configure the input to the Status Register of the PS2 controller.
-			//
-			// refs:
-			// https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/hw/i8042.c#L312
-			// https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/tree/hw/i8042.c#n312
-			// https://wiki.osdev.org/%228042%22_PS/2_Controller
-			bytes[0] = 0x20
-
-			return nil
-		}
-		m.ioportHandlers[port][kvm.EXITIOOUT] = funcNone
-	}
+	m.registerIOPortHandler(0, 0x10000, funcError, funcError)    // default handler
+	m.registerIOPortHandler(0xcf9, 0xcfa, funcNone, funcOutbCF9) // CF9
+	m.registerIOPortHandler(0x3c0, 0x3db, funcNone, funcNone)    // VGA
+	m.registerIOPortHandler(0x3b4, 0x3b6, funcNone, funcNone)    // VGA
+	m.registerIOPortHandler(0x70, 0x72, funcNone, funcNone)      // CMOS clock
+	m.registerIOPortHandler(0x80, 0xa0, funcNone, funcNone)      // DMA Page Registers (Commonly 74L612 Chip)
+	m.registerIOPortHandler(0x2f8, 0x300, funcNone, funcNone)    // Serial port 2
+	m.registerIOPortHandler(0x3e8, 0x3f0, funcNone, funcNone)    // Serial port 3
+	m.registerIOPortHandler(0x2e8, 0x2f0, funcNone, funcNone)    // Serial port 4
+	m.registerIOPortHandler(0xcfe, 0xcff, funcNone, funcNone)    // unknown
+	m.registerIOPortHandler(0xcfa, 0xcfc, funcNone, funcNone)    // unknown
+	m.registerIOPortHandler(0xc000, 0xd000, funcNone, funcNone)  // PCI Configuration Space Access Mechanism #2
+	m.registerIOPortHandler(0x60, 0x70, funcInbPS2, funcNone)    // PS/2 Keyboard (Always 8042 Chip)
 
 	// Serial port 1
-	for port := serial.COM1Addr; port < serial.COM1Addr+8; port++ {
-		m.ioportHandlers[port][kvm.EXITIOIN] = m.serial.In
-		m.ioportHandlers[port][kvm.EXITIOOUT] = m.serial.Out
-	}
+	m.registerIOPortHandler(serial.COM1Addr, serial.COM1Addr+8, m.serial.In, m.serial.Out)
 
 	// PCI configuration
 	//
 	// 0xcf8 for address register for PCI Config Space
 	// 0xcfc + 0xcff for data for PCI Config Space
 	// see https://github.com/torvalds/linux/blob/master/arch/x86/pci/direct.c for more detail.
-
-	m.ioportHandlers[0xCF8][kvm.EXITIOIN] = m.pci.PciConfAddrIn
-	m.ioportHandlers[0xCF8][kvm.EXITIOOUT] = m.pci.PciConfAddrOut
-
-	for port := 0xcfc; port < 0xcfc+4; port++ {
-		m.ioportHandlers[port][kvm.EXITIOIN] = m.pci.PciConfDataIn
-		m.ioportHandlers[port][kvm.EXITIOOUT] = m.pci.PciConfDataOut
-	}
+	m.registerIOPortHandler(0xcf8, 0xcf9, m.pci.PciConfAddrIn, m.pci.PciConfAddrOut)
+	m.registerIOPortHandler(0xcfc, 0xd00, m.pci.PciConfDataIn, m.pci.PciConfDataOut)
 
 	// PCI devices
 	for _, device := range m.pci.Devices {
 		start, end := device.GetIORange()
-		for port := start; port < end; port++ {
-			m.ioportHandlers[port][kvm.EXITIOIN] = m.pciInFunc
-			m.ioportHandlers[port][kvm.EXITIOOUT] = m.pciOutFunc
-		}
+		m.registerIOPortHandler(start, end, m.pciInFunc, m.pciOutFunc)
 	}
 }
 
