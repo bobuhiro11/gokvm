@@ -3,7 +3,7 @@ LINUX_VERSION = 5.14.3
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 GUEST_IPV4_ADDR = 192.168.20.1/24
 
-gokvm: $(wildcard *.go)
+gokvm: $(wildcard *.go) $(wildcard */*.go)
 	go build .
 
 golangci-lint:
