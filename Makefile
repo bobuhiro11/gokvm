@@ -94,6 +94,9 @@ golangci: golangci-lint
 		--disable wastedassign \
 		--disable ireturn \
 		--disable revive \
+		--disable golint \
+		--disable scopelint \
+		--disable interfacer \
 		./...
 
 test: golangci initrd bzImage vda.img
