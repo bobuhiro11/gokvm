@@ -14,7 +14,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	m, err := machine.New(1, "tap", "../vda.img")
+	m, err := machine.New("/dev/kvm", 1, "tap", "../vda.img")
 	if err != nil {
 		t.Fatal(err)
 	}

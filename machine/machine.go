@@ -72,12 +72,12 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
-func New(nCpus int, tapIfName string, diskPath string) (*Machine, error) {
+func New(kvmPath string, nCpus int, tapIfName string, diskPath string) (*Machine, error) {
 	m := &Machine{}
 
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
 	if err != nil {
-		return m, fmt.Errorf(`/dev/kvm: %w`, err)
+		return m, err
 	}
 
 	m.kvmFd = devKVM.Fd()
@@ -156,27 +156,31 @@ func New(nCpus int, tapIfName string, diskPath string) (*Machine, error) {
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
-	t, err := tap.New(tapIfName)
-	if err != nil {
-		return nil, err
+	m.pci = pci.New(pci.NewBridge()) // 00:00.0 for PCI bridge
+
+	if len(tapIfName) > 0 {
+		t, err := tap.New(tapIfName)
+		if err != nil {
+			return nil, err
+		}
+
+		v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+		go v.TxThreadEntry()
+		go v.RxThreadEntry()
+		// 00:01.0 for Virtio net
+		m.pci.Devices = append(m.pci.Devices, v)
 	}
 
-	virtioNet := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
-	go virtioNet.TxThreadEntry()
-	go virtioNet.RxThreadEntry()
+	if len(diskPath) > 0 {
+		v, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem)
+		if err != nil {
+			return nil, err
+		}
 
-	virtioBlk, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem)
-	if err != nil {
-		return nil, err
+		go v.IOThreadEntry()
+		// 00:02.0 for Virtio blk
+		m.pci.Devices = append(m.pci.Devices, v)
 	}
-
-	go virtioBlk.IOThreadEntry()
-
-	m.pci = pci.New(
-		pci.NewBridge(), // 00:00.0 for PCI bridge
-		virtioNet,       // 00:01.0 for Virtio net
-		virtioBlk,       // 00:02.0 for Virtio blk
-	)
 
 	return m, nil
 }
