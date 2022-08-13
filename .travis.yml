@@ -10,9 +10,11 @@ addons:
       - qemu-utils
       - libmnl-dev
 language: go
-go:
-  - 1.17.x
-  - 1.18.x
+jobs:
+  include:
+  - go: 1.17.x
+  - go: 1.18.x
+    env: GOFLAGS="-buildvcs=false"
 
 before_script:
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
