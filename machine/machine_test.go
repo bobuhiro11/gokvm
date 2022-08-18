@@ -68,7 +68,8 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
-	output, err = exec.Command("curl", "--retry", "5", "-L", "192.168.20.1/mnt/dev_vda/index.html").Output()
+	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L",
+		"192.168.20.1/mnt/dev_vda/index.html").Output()
 	t.Logf("curl output: %s\n", output)
 
 	if err != nil {
