@@ -486,6 +486,7 @@ func (m *Machine) initIOPortHandlers() {
 	m.registerIOPortHandler(0xcfa, 0xcfc, funcNone, funcNone)    // unknown
 	m.registerIOPortHandler(0xc000, 0xd000, funcNone, funcNone)  // PCI Configuration Space Access Mechanism #2
 	m.registerIOPortHandler(0x60, 0x70, funcInbPS2, funcNone)    // PS/2 Keyboard (Always 8042 Chip)
+	m.registerIOPortHandler(0xed, 0xee, funcNone, funcNone)      // 0xed is the new standard delay port.
 
 	// Serial port 1
 	m.registerIOPortHandler(serial.COM1Addr, serial.COM1Addr+8, m.serial.In, m.serial.Out)
