@@ -1,10 +1,15 @@
 package machine
 
 import (
+	"bytes"
+	"debug/elf"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"reflect"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -20,44 +25,119 @@ import (
 
 // InitialRegState GuestPhysAddr                      Binary files [+ offsets in the file]
 //
-//                 0x00000000    +------------------+
-//                               |                  |
+//	0x00000000    +------------------+
+//	              |                  |
+//
 // RSI -->         0x00010000    +------------------+ bzImage [+ 0]
-//                               |                  |
-//                               |  boot param      |
-//                               |                  |
-//                               +------------------+
-//                               |                  |
-//                 0x00020000    +------------------+
-//                               |                  |
-//                               |   cmdline        |
-//                               |                  |
-//                               +------------------+
-//                               |                  |
+//
+//	              |                  |
+//	              |  boot param      |
+//	              |                  |
+//	              +------------------+
+//	              |                  |
+//	0x00020000    +------------------+
+//	              |                  |
+//	              |   cmdline        |
+//	              |                  |
+//	              +------------------+
+//	              |                  |
+//
 // RIP -->         0x00100000    +------------------+ bzImage [+ 512 x (setup_sects in boot param header + 1)]
-//                               |                  |
-//                               |   64bit kernel   |
-//                               |                  |
-//                               +------------------+
-//                               |                  |
-//                 0x0f000000    +------------------+ initrd [+ 0]
-//                               |                  |
-//                               |   initrd         |
-//                               |                  |
-//                               +------------------+
-//                               |                  |
-//                 0x40000000    +------------------+
+//
+//	              |                  |
+//	              |   64bit kernel   |
+//	              |                  |
+//	              +------------------+
+//	              |                  |
+//	0x0f000000    +------------------+ initrd [+ 0]
+//	              |                  |
+//	              |   initrd         |
+//	              |                  |
+//	              +------------------+
+//	              |                  |
+//	0x40000000    +------------------+
 const (
-	memSize       = 1 << 30
 	bootParamAddr = 0x10000
 	cmdlineAddr   = 0x20000
-	kernelAddr    = 0x100000
-	initrdAddr    = 0xf000000
+
+	initrdAddr  = 0xf000000
+	highMemBase = 0x100000
 
 	serialIRQ    = 4
 	virtioNetIRQ = 9
 	virtioBlkIRQ = 10
+
+	pageTableBase = 0x30_000
 )
+
+const (
+	// These *could* be in kvm, but we'll see.
+
+	// golangci-lint is completely wrong about these names.
+	// Control Register Paging Enable for example:
+	// golang style requires all letters in an acronym to be caps.
+	// CR0 bits.
+	CR0xPE = 1
+	CR0xMP = (1 << 1)
+	CR0xEM = (1 << 2)
+	CR0xTS = (1 << 3)
+	CR0xET = (1 << 4)
+	CR0xNE = (1 << 5)
+	CR0xWP = (1 << 16)
+	CR0xAM = (1 << 18)
+	CR0xNW = (1 << 29)
+	CR0xCD = (1 << 30)
+	CR0xPG = (1 << 31)
+
+	// CR4 bits.
+	CR4xVME        = 1
+	CR4xPVI        = (1 << 1)
+	CR4xTSD        = (1 << 2)
+	CR4xDE         = (1 << 3)
+	CR4xPSE        = (1 << 4)
+	CR4xPAE        = (1 << 5)
+	CR4xMCE        = (1 << 6)
+	CR4xPGE        = (1 << 7)
+	CR4xPCE        = (1 << 8)
+	CR4xOSFXSR     = (1 << 8)
+	CR4xOSXMMEXCPT = (1 << 10)
+	CR4xUMIP       = (1 << 11)
+	CR4xVMXE       = (1 << 13)
+	CR4xSMXE       = (1 << 14)
+	CR4xFSGSBASE   = (1 << 16)
+	CR4xPCIDE      = (1 << 17)
+	CR4xOSXSAVE    = (1 << 18)
+	CR4xSMEP       = (1 << 20)
+	CR4xSMAP       = (1 << 21)
+
+	EFERxSCE = 1
+	EFERxLME = (1 << 8)
+	EFERxLMA = (1 << 10)
+	EFERxNXE = (1 << 11)
+
+	// 64-bit page * entry bits.
+	PDE64xPRESENT  = 1
+	PDE64xRW       = (1 << 1)
+	PDE64xUSER     = (1 << 2)
+	PDE64xACCESSED = (1 << 5)
+	PDE64xDIRTY    = (1 << 6)
+	PDE64xPS       = (1 << 7)
+	PDE64xG        = (1 << 8)
+)
+
+const (
+	// Poison is an instruction that should force a vmexit.
+	// it fills memory to make catching guest errors easier.
+	// vmcall, nop is this pattern
+	// Poison = []byte{0x0f, 0x0b, } //0x01, 0xC1, 0x90}
+	// Disassembly:
+	// 0:  b8 be ba fe ca          mov    eax,0xcafebabe
+	// 5:  90                      nop
+	// 6:  0f 0b                   ud2
+	Poison = "\xB8\xBE\xBA\xFE\xCA\x90\x0F\x0B"
+)
+
+var ErrZeroSizeKernel = errors.New("kernel is 0 bytes")
 
 // ErrorWriteToCF9 indicates a write to cf9, the standard x86 reset port.
 var ErrorWriteToCF9 = fmt.Errorf("power cycle via 0xcf9")
@@ -72,7 +152,7 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
-func New(kvmPath string, nCpus int, tapIfName string, diskPath string) (*Machine, error) {
+func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize int) (*Machine, error) {
 	m := &Machine{}
 
 	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
@@ -130,14 +210,16 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string) (*Machine
 		m.runs[i] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
-	m.mem, err = syscall.Mmap(-1, 0, memSize,
-		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
-	if err != nil {
+	// Another coding anti-pattern reguired by golangci-lint.
+	// Would not pass review in Google.
+	if m.mem, err = syscall.Mmap(-1, 0, memSize,
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_SHARED|syscall.MAP_ANONYMOUS); err != nil {
 		return m, err
 	}
 
 	err = kvm.SetUserMemoryRegion(m.vmFd, &kvm.UserspaceMemoryRegion{
-		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: 1 << 30,
+		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: uint64(memSize),
 		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&m.mem[0]))),
 	})
 	if err != nil {
@@ -181,8 +263,43 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string) (*Machine
 		// 00:02.0 for Virtio blk
 		m.pci.Devices = append(m.pci.Devices, v)
 	}
+	// Poison memory.
+	// 0 is valid instruction and if you start running in the middle of all those
+	// 0's it is impossible to diagnore.
+	for i := 0x100000; i < len(m.mem); i += len(Poison) {
+		copy(m.mem[i:], Poison)
+	}
 
 	return m, nil
+}
+
+func (m *Machine) Translate(vaddr uint64) ([]*Translate, error) {
+	t := make([]*Translate, 0, len(m.vcpuFds))
+
+	for i := range m.vcpuFds {
+		tt, err := GetTranslate(m.vcpuFds[i], vaddr)
+		if err != nil {
+			return t, err
+		}
+
+		t = append(t, tt)
+	}
+
+	return t, nil
+}
+
+func (m *Machine) SetupRegs(rip, bp uint64, amd64 bool) error {
+	for i := range m.vcpuFds {
+		if err := m.initRegs(i, rip, bp); err != nil {
+			return err
+		}
+
+		if err := m.initSregs(i, amd64); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // RunData returns the kvm.RunData for the VM.
@@ -191,6 +308,11 @@ func (m *Machine) RunData() []*kvm.RunData {
 }
 
 func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
+	var (
+		DefaultKernelAddr = uint64(0x100000)
+		err               error
+	)
+
 	// Load initrd
 	initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
 	if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
@@ -201,10 +323,24 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	copy(m.mem[cmdlineAddr:], params)
 	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
 
-	// Load Boot Param
-	bootParam, err := bootparam.New(kernel)
-	if err != nil {
-		return err
+	// try to read as ELF. If it fails, no problem,
+	// next effort is to read as a bzimage.
+	var isElfFile bool
+
+	k, err := elf.NewFile(kernel)
+	if err == nil {
+		isElfFile = true
+	}
+
+	bootParam := &bootparam.BootParam{}
+
+	// might be a bzimage
+	if !isElfFile {
+		// Load Boot Param
+		bootParam, err = bootparam.New(kernel)
+		if err != nil {
+			return err
+		}
 	}
 
 	// refs https://github.com/kvmtool/kvmtool/blob/0e1882a49f81cb15d328ef83a78849c0ea26eecc/x86/bios.c#L66-L86
@@ -224,8 +360,8 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		bootparam.E820Reserved,
 	)
 	bootParam.AddE820Entry(
-		kernelAddr,
-		memSize-kernelAddr,
+		highMemBase,
+		uint64(len(m.mem)-highMemBase),
 		bootparam.E820Ram,
 	)
 
@@ -254,21 +390,50 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	// be loaded at address 0x10000 for Image/zImage kernels and 0x100000 for bzImage kernels.
 	//
 	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
-	offset := int(bootParam.Hdr.SetupSects+1) * 512
 
-	kernSize, err := kernel.ReadAt(m.mem[kernelAddr:], int64(offset))
-	if err != nil && kernSize == 0 && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("kernel: (%v, %w)", kernSize, err)
+	var (
+		amd64    bool
+		kernSize int
+	)
+
+	switch isElfFile {
+	case false:
+		offset := int(bootParam.Hdr.SetupSects+1) * 512
+
+		kernSize, err = kernel.ReadAt(m.mem[DefaultKernelAddr:], int64(offset))
+
+		if err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("kernel: (%v, %w)", kernSize, err)
+		}
+	case true:
+		if k.Class == elf.ELFCLASS64 {
+			amd64 = true
+		}
+
+		DefaultKernelAddr = k.Entry
+
+		for i, p := range k.Progs {
+			if p.Type != elf.PT_LOAD {
+				continue
+			}
+
+			log.Printf("Load elf segment @%#x from file %#x %#x bytes", p.Paddr, p.Off, p.Filesz)
+
+			n, err := p.ReadAt(m.mem[p.Paddr:], 0)
+			if !errors.Is(err, io.EOF) || uint64(n) != p.Filesz {
+				return fmt.Errorf("reading ELF prog %d@%#x: %d/%d bytes, err %w", i, p.Paddr, n, p.Filesz, err)
+			}
+
+			kernSize += n
+		}
 	}
 
-	for i := range m.vcpuFds {
-		if err = m.initRegs(i); err != nil {
-			return err
-		}
+	if kernSize == 0 {
+		return ErrZeroSizeKernel
+	}
 
-		if err = m.initSregs(i); err != nil {
-			return err
-		}
+	if err := m.SetupRegs(DefaultKernelAddr, bootParamAddr, amd64); err != nil {
+		return err
 	}
 
 	if m.serial, err = serial.New(m); err != nil {
@@ -284,15 +449,33 @@ func (m *Machine) GetInputChan() chan<- byte {
 	return m.serial.GetInputChan()
 }
 
-func (m *Machine) initRegs(i int) error {
+func (m *Machine) GetRegs(i int) (kvm.Regs, error) {
+	return kvm.GetRegs(m.vcpuFds[i])
+}
+
+func (m *Machine) GetSRegs(i int) (kvm.Sregs, error) {
+	return kvm.GetSregs(m.vcpuFds[i])
+}
+
+func (m *Machine) SetRegs(i int, r kvm.Regs) error {
+	return kvm.SetRegs(m.vcpuFds[i], r)
+}
+
+func (m *Machine) SetSRegs(i int, s kvm.Sregs) error {
+	return kvm.SetSregs(m.vcpuFds[i], s)
+}
+
+func (m *Machine) initRegs(i int, rip, bp uint64) error {
 	regs, err := kvm.GetRegs(m.vcpuFds[i])
 	if err != nil {
 		return err
 	}
 
+	// Clear all FLAGS bits, except bit 1 which is always set.
 	regs.RFLAGS = 2
-	regs.RIP = kernelAddr
-	regs.RSI = bootParamAddr
+	regs.RIP = rip
+	// Create stack which will grow down.
+	regs.RSI = bp
 
 	if err := kvm.SetRegs(m.vcpuFds[i], regs); err != nil {
 		return err
@@ -301,22 +484,114 @@ func (m *Machine) initRegs(i int) error {
 	return nil
 }
 
-func (m *Machine) initSregs(i int) error {
+func (m *Machine) initSregs(i int, amd64 bool) error {
 	sregs, err := kvm.GetSregs(m.vcpuFds[i])
 	if err != nil {
 		return err
 	}
 
-	// set all segment flat
-	sregs.CS.Base, sregs.CS.Limit, sregs.CS.G = 0, 0xFFFFFFFF, 1
-	sregs.DS.Base, sregs.DS.Limit, sregs.DS.G = 0, 0xFFFFFFFF, 1
-	sregs.FS.Base, sregs.FS.Limit, sregs.FS.G = 0, 0xFFFFFFFF, 1
-	sregs.GS.Base, sregs.GS.Limit, sregs.GS.G = 0, 0xFFFFFFFF, 1
-	sregs.ES.Base, sregs.ES.Limit, sregs.ES.G = 0, 0xFFFFFFFF, 1
-	sregs.SS.Base, sregs.SS.Limit, sregs.SS.G = 0, 0xFFFFFFFF, 1
+	if !amd64 {
+		// set all segment flat
+		sregs.CS.Base, sregs.CS.Limit, sregs.CS.G = 0, 0xFFFFFFFF, 1
+		sregs.DS.Base, sregs.DS.Limit, sregs.DS.G = 0, 0xFFFFFFFF, 1
+		sregs.FS.Base, sregs.FS.Limit, sregs.FS.G = 0, 0xFFFFFFFF, 1
+		sregs.GS.Base, sregs.GS.Limit, sregs.GS.G = 0, 0xFFFFFFFF, 1
+		sregs.ES.Base, sregs.ES.Limit, sregs.ES.G = 0, 0xFFFFFFFF, 1
+		sregs.SS.Base, sregs.SS.Limit, sregs.SS.G = 0, 0xFFFFFFFF, 1
 
-	sregs.CS.DB, sregs.SS.DB = 1, 1
-	sregs.CR0 |= 1 // protected mode
+		sregs.CS.DB, sregs.SS.DB = 1, 1
+		sregs.CR0 |= 1 // protected mode
+
+		if err := kvm.SetSregs(m.vcpuFds[i], sregs); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	high64k := m.mem[pageTableBase : pageTableBase+0x6000]
+
+	// zero out the page tables.
+	// but we might in fact want to poison them?
+	// do we really want 1G, for example?
+	for i := range high64k {
+		high64k[i] = 0
+	}
+
+	// Set up page tables for long mode.
+	// take the first six pages of an area it should not touch -- PageTableBase
+	// present, read/write, page table at 0xffff0000
+	// ptes[0] = PageTableBase + 0x1000 | 0x3
+	// 3 in lowest 2 bits means present and read/write
+	// 0x60 means accessed/dirty
+	// 0x80 means the page size bit -- 0x80 | 0x60 = 0xe0
+	// 0x10 here is making it point at the next page.
+	// another go anti-pattern from golangci-lint.
+	// golangci-lint claims this file has not been go-fumpt-ed
+	// but it has.
+	copy(high64k, []byte{
+		0x03,
+		0x10 | uint8((pageTableBase>>8)&0xff),
+		uint8((pageTableBase >> 16) & 0xff),
+		uint8((pageTableBase >> 24) & 0xff), 0, 0, 0, 0,
+	})
+	// need four pointers to 2M page tables -- PHYSICAL addresses:
+	// 0x2000, 0x3000, 0x4000, 0x5000
+	// experiment: set PS bit
+	// Don't.
+	for i := uint64(0); i < 4; i++ {
+		ptb := pageTableBase + (i+2)*0x1000
+		// Another coding anti-pattern
+		copy(high64k[int(i*8)+0x1000:],
+			[]byte{
+				/*0x80 |*/ 0x63,
+				uint8((ptb >> 8) & 0xff),
+				uint8((ptb >> 16) & 0xff),
+				uint8((ptb >> 24) & 0xff), 0, 0, 0, 0,
+			})
+	}
+	// Now the 2M pages.
+	for i := uint64(0); i < 0x1_0000_0000; i += 0x2_00_000 {
+		ptb := i | 0xe3
+		ix := int((i/0x2_00_000)*8 + 0x2000)
+		// another coding anti-pattern from golangci-lint.
+		copy(high64k[ix:], []byte{
+			uint8(ptb),
+			uint8((ptb >> 8) & 0xff),
+			uint8((ptb >> 16) & 0xff),
+			uint8((ptb >> 24) & 0xff), 0, 0, 0, 0,
+		})
+	}
+
+	// set to true to debug.
+	if false {
+		log.Printf("Page tables: %s", hex.Dump(m.mem[pageTableBase:pageTableBase+0x3000]))
+	}
+
+	sregs.CR3 = uint64(pageTableBase)
+	sregs.CR4 = CR4xPAE
+	sregs.CR0 = CR0xPE | CR0xMP | CR0xET | CR0xNE | CR0xWP | CR0xAM | CR0xPG
+	sregs.EFER = EFERxLME | EFERxLMA
+
+	seg := kvm.Segment{
+		Base:     0,
+		Limit:    0xffffffff,
+		Selector: 1 << 3,
+		Typ:      11, /* Code: execute, read, accessed */
+		Present:  1,
+		DPL:      0,
+		DB:       0,
+		S:        1, /* Code/data */
+		L:        1,
+		G:        1, /* 4KB granularity */
+		AVL:      0,
+	}
+
+	sregs.CS = seg
+
+	seg.Typ = 3 /* Data: read/write, accessed */
+	seg.Selector = 2 << 3
+	sregs.DS, sregs.ES, sregs.FS, sregs.GS, sregs.SS = seg, seg, seg, seg, seg
 
 	if err := kvm.SetSregs(m.vcpuFds[i], sregs); err != nil {
 		return err
@@ -347,6 +622,17 @@ func (m *Machine) initCPUID(i int) error {
 
 	if err := kvm.SetCPUID2(m.vcpuFds[i], &cpuid); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// EnableSingleStep enables single stepping the guest.
+func (m *Machine) SingleStep(onoff bool) error {
+	for i := range m.vcpuFds {
+		if err := kvm.SingleStep(m.vcpuFds[i], onoff); err != nil {
+			return fmt.Errorf("ingle Step %d:%w", i, err)
+		}
 	}
 
 	return nil
@@ -434,7 +720,12 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 			return false, err
 		}
 
-		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedEXITReason, exit.String())
+		r, _ := m.GetRegs(i)
+		s, _ := m.GetSRegs(i)
+		// another coding anti-pattern from golangci-lint.
+		return false, fmt.Errorf("%w: %v: regs:\n%s",
+			kvm.ErrUnexpectedEXITReason,
+			kvm.ExitType(m.runs[i].ExitReason).String(), show("", &s, &r))
 	}
 }
 
@@ -564,4 +855,70 @@ func (m *Machine) InjectVirtioBlkIRQ() error {
 	}
 
 	return nil
+}
+
+// ReadAt implements io.ReadAt for the kvm guest memory.
+func (m *Machine) ReadAt(b []byte, off int64) (int, error) {
+	mem := bytes.NewReader(m.mem)
+
+	return mem.ReadAt(b, off)
+}
+
+func showone(indent string, in interface{}) string {
+	var ret string
+
+	s := reflect.ValueOf(in).Elem()
+	typeOfT := s.Type()
+
+	for i := 0; i < s.NumField(); i++ {
+		f := s.Field(i)
+		if f.Kind() == reflect.String {
+			ret += fmt.Sprintf(indent+"%s %s = %s\n", typeOfT.Field(i).Name, f.Type(), f.Interface())
+		} else {
+			ret += fmt.Sprintf(indent+"%s %s = %#x\n", typeOfT.Field(i).Name, f.Type(), f.Interface())
+		}
+	}
+
+	return ret
+}
+
+func show(indent string, l ...interface{}) string {
+	var ret string
+	for _, i := range l {
+		ret += showone(indent, i)
+	}
+
+	return ret
+}
+
+// Translate is a struct for KVM_TRANSLATE queries.
+type Translate struct {
+	// LinearAddress is input.
+	// Most people call this a "virtual address"
+	// Intel has their own name.
+	LinearAddress uint64
+
+	// This is output
+	PhysicalAddress uint64
+	Valid           uint8
+	Writeable       uint8
+	Usermode        uint8
+	_               [5]uint8
+}
+
+// GetTranslate returns the virtual to physical mapping across all vCPUs.
+// It is incredibly helpful for debugging at startup and detecting
+// corrupted page tables.
+// N.B.: on x86 it appears to ignore vcpufd.
+func GetTranslate(vcpuFd uintptr, vaddr uint64) (*Translate, error) {
+	var (
+		kvmTranslate = kvm.IIOWR(0x85, 3*8)
+		t            = &Translate{LinearAddress: vaddr}
+	)
+
+	if _, err := kvm.Ioctl(vcpuFd, kvmTranslate, uintptr(unsafe.Pointer(t))); err != nil {
+		return t, err
+	}
+
+	return t, nil
 }
