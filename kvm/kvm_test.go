@@ -1,6 +1,8 @@
 package kvm_test
 
 import (
+	"errors"
+	"math"
 	"os"
 	"syscall"
 	"testing"
@@ -265,17 +267,42 @@ func TestAddNum(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := kvm.SingleStep(vcpuFd, true); err != nil {
+		t.Logf("kvm.SingleStep(%d, true): got %v, want nil", vcpuFd, err)
+	}
+
+	if err := kvm.SingleStep(vcpuFd, false); err != nil {
+		t.Logf("kvm.SingleStep(%d, false): got %v, want nil", vcpuFd, err)
+	}
+
+	if err := kvm.SingleStep(uintptr(math.MaxUint), false); !errors.Is(err, syscall.EBADF) {
+		t.Errorf("fixme:kvm.SingleStep(%d, false): got %v, want %v", vcpuFd, err, syscall.EBADF)
+	}
+
+	if err := kvm.SingleStep(vcpuFd, true); err != nil {
+		t.Logf("kvm.SingleStep(%d, true): got %v, want nil", vcpuFd, err)
+	}
+
+	// While we are running the test, run it with SingleStep enabled,
+	// so we can test that too.
+	var singleStepOK bool
+
 	for {
 		if err = kvm.Run(vcpuFd); err != nil {
 			t.Logf("kvm.Run(%d) returns with %v", vcpuFd, err)
 		}
 
-		switch run.ExitReason {
+		switch kvm.ExitType(run.ExitReason) {
 		case kvm.EXITHLT:
+			if !singleStepOK {
+				t.Errorf("singleStepOK: got false, want true; single step is not working")
+			}
+
 			return
+
 		case kvm.EXITIO:
 			direction, size, port, count, offset := run.IO()
-			if direction == kvm.EXITIOOUT && size == 1 && port == 0x3f8 && count == 1 {
+			if direction == uint64(kvm.EXITIOOUT) && size == 1 && port == 0x3f8 && count == 1 {
 				p := uintptr(unsafe.Pointer(run))
 				c := *(*byte)(unsafe.Pointer(p + uintptr(offset)))
 				t.Logf("output from IO port: \"%c\"\n", c)
@@ -286,8 +313,26 @@ func TestAddNum(t *testing.T) {
 			} else {
 				t.Fatal("Unexpected KVM_EXIT_IO")
 			}
+		case kvm.EXITDEBUG:
+			singleStepOK = true
+		case kvm.EXITDCR,
+			kvm.EXITINTR,
+			kvm.EXITEXCEPTION,
+			kvm.EXITFAILENTRY,
+			kvm.EXITHYPERCALL,
+			kvm.EXITINTERNALERROR,
+			kvm.EXITIRQWINDOWOPEN,
+			kvm.EXITMMIO,
+			kvm.EXITNMI,
+			kvm.EXITS390RESET,
+			kvm.EXITS390SIEIC,
+			kvm.EXITSETTPR,
+			kvm.EXITSHUTDOWN,
+			kvm.EXITTPRACCESS,
+			kvm.EXITUNKNOWN:
+			t.Fatalf("Unexpected EXIT REASON = %s\n", kvm.ExitType(run.ExitReason).String())
 		default:
-			t.Fatalf("Unexpected EXIT REASON = %d\n", run.ExitReason)
+			t.Fatalf("Unexpected EXIT REASON = %s\n", kvm.ExitType(run.ExitReason).String())
 		}
 	}
 }
@@ -331,5 +376,29 @@ func TestIRQLine(t *testing.T) {
 
 	if err := kvm.IRQLine(vmFd, 4, 0); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestIoctlStringer(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		val  kvm.ExitType
+		want string
+	}{
+		{name: "First error", val: kvm.EXITUNKNOWN, want: "EXITUNKNOWN"},
+		{name: "Middle error", val: kvm.EXITIO, want: "EXITIO"},
+		{name: "Last error", val: kvm.EXITINTERNALERROR, want: "EXITINTERNALERROR"},
+		{name: "Out of range error", val: kvm.ExitType(1024), want: "ExitType(1024)"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := test.val.String()
+			if got != test.want {
+				t.Errorf("%s:%s != %s", test.name, test.want, got)
+			}
+		})
 	}
 }

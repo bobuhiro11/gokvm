@@ -385,7 +385,9 @@ func (m *Machine) RunInfiniteLoop(i int) error {
 func (m *Machine) RunOnce(i int) (bool, error) {
 	err := kvm.Run(m.vcpuFds[i])
 
-	switch m.runs[i].ExitReason {
+	exit := kvm.ExitType(m.runs[i].ExitReason)
+
+	switch exit {
 	case kvm.EXITHLT:
 		fmt.Println("KVM_EXIT_HLT")
 
@@ -408,12 +410,31 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 		// When a signal is sent to the thread hosting the VM it will result in EINTR
 		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
 		return true, nil
+	case kvm.EXITDCR,
+		kvm.EXITDEBUG,
+		kvm.EXITEXCEPTION,
+		kvm.EXITFAILENTRY,
+		kvm.EXITHYPERCALL,
+		kvm.EXITINTERNALERROR,
+		kvm.EXITIRQWINDOWOPEN,
+		kvm.EXITMMIO,
+		kvm.EXITNMI,
+		kvm.EXITS390RESET,
+		kvm.EXITS390SIEIC,
+		kvm.EXITSETTPR,
+		kvm.EXITSHUTDOWN,
+		kvm.EXITTPRACCESS:
+		if err != nil {
+			return false, err
+		}
+
+		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedEXITReason, exit.String())
 	default:
 		if err != nil {
 			return false, err
 		}
 
-		return false, fmt.Errorf("%w: %d", kvm.ErrorUnexpectedEXITReason, m.runs[i].ExitReason)
+		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedEXITReason, exit.String())
 	}
 }
 
@@ -433,7 +454,7 @@ func (m *Machine) initIOPortHandlers() {
 	}
 
 	funcError := func(port uint64, bytes []byte) error {
-		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrorUnexpectedEXITReason, port)
+		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrUnexpectedEXITReason, port)
 	}
 
 	// 0xCF9 port can get three values for three types of reset:
