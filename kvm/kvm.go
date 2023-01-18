@@ -61,7 +61,10 @@ const (
 	CPUIDFuncPerMon = 0x0A
 )
 
-var ErrUnexpectedEXITReason = errors.New("unexpected kvm exit reason")
+var (
+	ErrUnexpectedEXITReason = errors.New("unexpected kvm exit reason")
+	ErrDebug = errors.New("Debug Exit")
+)
 
 // Regs are registers for both 386 and amd64.
 // In 386 mode, only some of them are used.
@@ -223,7 +226,7 @@ func SingleStep(vmFd uintptr, onoff bool) error {
 	)
 
 	if onoff {
-		// We used to need this? Not sure. debug[2] = 0x0002 // 0000
+		debug[2] = 0x0002 // 0000
 		debug[0] = Enable | SingleStep
 	}
 

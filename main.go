@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	kvmPath, kernelPath, initrdPath, params, tapIfName, diskPath, nCpus, memSize, err := flag.ParseArgs(os.Args)
+	kvmPath, kernelPath, initrdPath, params, tapIfName, diskPath, nCpus, memSize, trace, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatalf("ParseArgs: %v", err)
 	}
@@ -68,6 +68,10 @@ func main() {
 	var before byte = 0
 
 	in := bufio.NewReader(os.Stdin)
+
+	if err := m.SingleStep(trace); err != nil {
+		log.Fatalf("SingleStep(%v): %v", trace, err)
+	}
 
 	go func() {
 		for {
