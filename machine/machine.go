@@ -262,7 +262,7 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 	// Poison memory.
 	// 0 is valid instruction and if you start running in the middle of all those
 	// 0's it is impossible to diagnore.
-	for i := 0x100000; i < len(m.mem); i += len(Poison) {
+	for i := highMemBase; i < len(m.mem); i += len(Poison) {
 		copy(m.mem[i:], Poison)
 	}
 
@@ -305,7 +305,7 @@ func (m *Machine) RunData() []*kvm.RunData {
 
 func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	var (
-		DefaultKernelAddr = uint64(0x100000)
+		DefaultKernelAddr = uint64(highMemBase)
 		err               error
 	)
 
@@ -383,7 +383,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	//
 	// The 32-bit (non-real-mode) kernel starts at offset (setup_sects+1)*512 in
 	// the kernel file (again, if setup_sects == 0 the real value is 4.) It should
-	// be loaded at address 0x10000 for Image/zImage kernels and 0x100000 for bzImage kernels.
+	// be loaded at address 0x10000 for Image/zImage kernels and highMemBase for bzImage kernels.
 	//
 	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
 
