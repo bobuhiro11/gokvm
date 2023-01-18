@@ -378,15 +378,6 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 
 	copy(m.mem[bootParamAddr:], bytes)
 
-	// Load kernel
-	// copy to g.mem with offest setupsz
-	//
-	// The 32-bit (non-real-mode) kernel starts at offset (setup_sects+1)*512 in
-	// the kernel file (again, if setup_sects == 0 the real value is 4.) It should
-	// be loaded at address 0x10000 for Image/zImage kernels and highMemBase for bzImage kernels.
-	//
-	// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
-
 	var (
 		amd64    bool
 		kernSize int
@@ -394,9 +385,17 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 
 	switch isElfFile {
 	case false:
-		offset := int(bootParam.Hdr.SetupSects+1) * 512
+		// Load kernel
+		// copy to g.mem with offset setupsz
+		//
+		// The 32-bit (non-real-mode) kernel starts at offset (setup_sects+1)*512 in
+		// the kernel file (again, if setup_sects == 0 the real value is 4.) It should
+		// be loaded at address 0x10000 for Image/zImage kernels and highMemBase for bzImage kernels.
+		//
+		// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
+		setupsz := int(bootParam.Hdr.SetupSects+1) * 512
 
-		kernSize, err = kernel.ReadAt(m.mem[DefaultKernelAddr:], int64(offset))
+		kernSize, err = kernel.ReadAt(m.mem[DefaultKernelAddr:], int64(setupsz))
 
 		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("kernel: (%v, %w)", kernSize, err)
