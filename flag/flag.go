@@ -49,7 +49,7 @@ func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
 		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" pci=realloc=off `+
 		`virtio_pci.force_legacy=1 rdinit=/init init=/init`, "kernel command-line parameters")
 	flag.StringVar(&tapIfName, "t", "tap", "name of tap interface")
-	flag.StringVar(&disk, "d", "/dev/zero", "path of disk file Var(&disk,for /dev/vda)")
+	flag.StringVar(&disk, "d", "/dev/zero", "path of disk file (for /dev/vda)")
 
 	flag.IntVar(&nCpus, "c", 1, "number of cpus")
 
