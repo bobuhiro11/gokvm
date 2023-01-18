@@ -38,7 +38,9 @@ func ParseMemSize(s string) (int, error) {
 // device, kernel, initrd, bootparams, tapIfName, disk, memSize, and nCpus.
 // another coding anti-pattern from golangci-lint.
 func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
-	tapIfName, disk string, nCpus, memSize int, err error,
+	tapIfName, disk string, nCpus, memSize int, 
+	trace bool,
+	err error,
 ) {
 	flag.StringVar(&kvmPath, "D", "/dev/kvm", "path of kvm device")
 	flag.StringVar(&kernel, "k", "./bzImage", "kernel image path")
@@ -50,6 +52,8 @@ func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
 		`virtio_pci.force_legacy=1 rdinit=/init init=/init`, "kernel command-line parameters")
 	flag.StringVar(&tapIfName, "t", "tap", "name of tap interface")
 	flag.StringVar(&disk, "d", "/dev/zero", "path of disk file (for /dev/vda)")
+
+	flag.BoolVar(&trace, "T", false, "single-step process and print each step")
 
 	flag.IntVar(&nCpus, "c", 1, "number of cpus")
 

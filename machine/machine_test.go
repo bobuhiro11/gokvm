@@ -155,7 +155,7 @@ func TestHalt(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestReadAt(t *testing.T) { // nolint:paralleltest
+func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
 	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -175,6 +175,21 @@ func TestReadAt(t *testing.T) { // nolint:paralleltest
 	}
 
 	t.Logf("%#x found at %#x", b, off)
+
+	var zeros [8]byte
+	if n, err := m.WriteAt(zeros[:], off); err != nil || n != len(zeros) {
+		t.Fatalf("WriteAt(%#x, %#x): (%d, %v) != (%d, nil)", zeros, off, n, err, len(zeros))
+	}
+
+	var got [8]byte
+	if n, err := m.ReadAt(got[:], off); err != nil || n != len(got) {
+		t.Fatalf("ReedAt(got, %#x): (%d,%v) != (%d,nil)", off, n, err, len(got))
+	}
+
+	if !bytes.Equal(got[:], zeros[:]) {
+		t.Fatalf("ReadAt(b, %#x): %#x != %#x", off, got, zeros)
+	}
+
 }
 
 func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
@@ -244,6 +259,10 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 		t.Fatalf("SetupRegs: got %v, want nil", err)
 	}
 
+	if err := m.SingleStep(true); err != nil {
+		t.Fatalf("SingleStep(true): got %v, want nil", err)
+	}
+
 	r, err := m.GetRegs(0)
 	if err != nil {
 		t.Errorf("GetRegs before RunOnce: %v != nil", err)
@@ -257,6 +276,8 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 		t.Errorf("Run: RAX is %#x, not %#x", r.RIP, 0x1_00_000)
 	}
 
+	t.Logf("Before RunOnce, flags are %#x", r.RFLAGS)
+
 	ok, err := m.RunOnce(0)
 	if err == nil {
 		t.Errorf("Run: got %v, %v, want nil", ok, err)
@@ -264,8 +285,8 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 
 	t.Logf("Runonce: %v, %v", ok, err)
 
-	if !errors.Is(err, kvm.ErrUnexpectedEXITReason) {
-		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrUnexpectedEXITReason)
+	if !errors.Is(err, kvm.ErrDebug) {
+		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrDebug)
 	}
 
 	if r, err = m.GetRegs(0); err != nil {
@@ -276,8 +297,30 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 		t.Errorf("Run: RAX is %#x, not %#x", r.RAX, 0xcafebabe)
 	}
 
+	if r.RIP != 0x1_00_005 {
+		t.Errorf("Run: RIP is %#x, not %#x", r.RIP, 0x1_00_005)
+	}
+
+	t.Logf("After RunOnce, flags are %#x", r.RFLAGS)
+
+	if err := m.SingleStep(true); err != nil {
+		t.Fatalf("SingleStep(true): got %v, want nil", err)
+	}
+
+	// It stepped once. See if it will step the NOP.
+	ok, err = m.RunOnce(0)
+	if err == nil {
+		t.Errorf("Run: got %v, %v, want nil", ok, err)
+	}
+
+	t.Logf("Runonce: %v, %v", ok, err)
+
+	if r, err = m.GetRegs(0); err != nil {
+		t.Errorf("Run: GetRegs(0) exit is %v, not nil", err)
+	}
+
 	if r.RIP != 0x1_00_006 {
-		t.Errorf("Run: RAX is %#x, not %#x", r.RIP, 0x1_00_006)
+		t.Errorf("Run: RIP is %#x, not %#x", r.RIP, 0x1_00_006)
 	}
 }
 

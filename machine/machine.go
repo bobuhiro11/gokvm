@@ -653,12 +653,14 @@ func (m *Machine) RunInfiniteLoop(i int) error {
 
 	for {
 		isContinue, err := m.RunOnce(i)
+		if isContinue {
+			if err != nil {
+				fmt.Printf("%v\r\n", err)
+			}
+			continue
+		}
 		if err != nil {
 			return err
-		}
-
-		if !isContinue {
-			return nil
 		}
 	}
 }
@@ -670,9 +672,8 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 
 	switch exit {
 	case kvm.EXITHLT:
-		fmt.Println("KVM_EXIT_HLT")
-
 		return false, err
+
 	case kvm.EXITIO:
 		direction, size, port, count, offset := m.runs[i].IO()
 		f := m.ioportHandlers[port][direction]
@@ -691,8 +692,12 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 		// When a signal is sent to the thread hosting the VM it will result in EINTR
 		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
 		return true, nil
+	case kvm.EXITDEBUG:
+		// if this fails, it fails.
+		r, _ := m.GetRegs(i)
+		return true, fmt.Errorf("%#x:%w", r.RIP, kvm.ErrDebug)
+
 	case kvm.EXITDCR,
-		kvm.EXITDEBUG,
 		kvm.EXITEXCEPTION,
 		kvm.EXITFAILENTRY,
 		kvm.EXITHYPERCALL,
@@ -857,6 +862,15 @@ func (m *Machine) ReadAt(b []byte, off int64) (int, error) {
 	mem := bytes.NewReader(m.mem)
 
 	return mem.ReadAt(b, off)
+}
+
+// WriteAt implements io.WriteAt for the kvm guest memory.
+func (m *Machine) WriteAt(b []byte, off int64) (int, error) {
+	if off > int64(len(m.mem)) {
+		return 0, nil
+	}
+	n := copy(m.mem[off:], b)
+	return n, nil
 }
 
 func showone(indent string, in interface{}) string {
