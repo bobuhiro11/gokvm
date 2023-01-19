@@ -8,10 +8,13 @@ gokvm
 golangci-lint
 initrd
 bzImage
+vmlinux
 linux-*.tar.xz
 linux.tar.xz
 cc-test-reporter
 vda.img
+extract-ikconfig
+extract-vmlinux
 
 # Test binary, built with `go test -c`
 *.test

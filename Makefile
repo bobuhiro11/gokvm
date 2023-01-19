@@ -1,5 +1,4 @@
 GOLANGCI_LINT_VERSION = v1.46.0
-LINUX_VERSION = 5.14.3
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 GUEST_IPV4_ADDR = 192.168.20.1/24
 
@@ -47,17 +46,11 @@ initrd:
 			-files "$(PWD)/.bashrc:.bashrc" \
 			core boot github.com/u-root/u-root/cmds/exp/srvfiles)
 
-linux.tar.xz:
-	curl --retry 5 https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$(LINUX_VERSION).tar.xz \
-		-o linux.tar.xz
+bzImage: linux.config
+	./scripts/get_kernel.bash
 
-bzImage: linux.config linux.tar.xz
-	if ! test -f _linux/.config; then \
-		tar Jxf ./linux.tar.xz --one-top-level=_linux --strip-components 1; \
-		cp linux.config _linux/.config; \
-	fi
-	$(MAKE) -C _linux
-	cp _linux/arch/x86/boot/bzImage .
+vmlinux: linux.config
+	./scripts/get_kernel.bash
 
 .PHONY: run
 run: initrd bzImage
