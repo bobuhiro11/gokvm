@@ -3,6 +3,7 @@ NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 GUEST_IPV4_ADDR = 192.168.20.1/24
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)
+	$(MAKE) generate
 	go build .
 
 golangci-lint:
@@ -54,26 +55,36 @@ vmlinux: linux.config
 
 .PHONY: run
 run: initrd bzImage
+	$(MAKE) generate
 	go run . -c 4
 
 .PHONY: run-system-kernel
 run-system-kernel:
+	$(MAKE) generate
 	# Implemented based on fedora's default path.
 	# Other distributions need to be considered.
 	go run . -p "console=ttyS0 pci=off earlyprintk=serial nokaslr rdinit=/bin/sh" \
 		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
+.PHONY: generate
+generate:
+	go generate ./...
+
 .PHONY: golangci
 golangci: golangci-lint
+	$(MAKE) generate
 	./golangci-lint run ./...
 
-test: golangci initrd bzImage vda.img
+.PHONY: test
+test: bzImage vda.img
+	$(MAKE) generate
+	$(MAKE) golangci
 	go test -coverprofile c.out ./...
 
 .PHONY: clean
 clean:
-	rm -rf ./gokvm ./golangci-lint bzImage _linux
+	rm -rf ./gokvm ./golangci-lint bzImage vmlinux _linux *_string.go
 
 .PHONY: qemu
 qemu: initrd bzImage
