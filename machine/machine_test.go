@@ -189,7 +189,6 @@ func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
 	if !bytes.Equal(got[:], zeros[:]) {
 		t.Fatalf("ReadAt(b, %#x): %#x != %#x", off, got, zeros)
 	}
-
 }
 
 func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
@@ -378,5 +377,44 @@ func TestTranslate32(t *testing.T) { // nolint:paralleltest
 	for i, tr := range trs {
 		t.Logf("Translate(%d, 0x100000): pa %#x, Valid %#x, Writeable %#x, Usermode %#x",
 			i, tr.PhysicalAddress, tr.Valid, tr.Writeable, tr.Usermode)
+	}
+}
+
+func TestCPUtoFD(t *testing.T) { // nolint:paralleltest
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	if err != nil {
+		t.Fatalf("Open: got %v, want nil", err)
+	}
+
+	if _, err := m.CPUToFD(0); err != nil {
+		t.Errorf("m.CPUtoFD(0): got %v, want nil", err)
+	}
+
+	if _, err := m.CPUToFD(42); !errors.Is(err, machine.ErrBadCPU) {
+		t.Errorf("m.CPUtoFD(42): got nil, want %v", machine.ErrBadCPU)
+	}
+}
+
+func TestVtoP(t *testing.T) { // nolint:paralleltest
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
+	if err != nil {
+		t.Fatalf("Open: got %v, want nil", err)
+	}
+
+	// Test a good address
+	pa, err := m.VtoP(0, 0)
+	if err != nil || pa != 0 {
+		t.Errorf("m.VtoP(0, 0): got (%#x, %v), want 0, nil", pa, err)
+	}
+
+	pa, err = m.VtoP(0, 0xf<<56)
+	if !errors.Is(err, machine.ErrBadVA) || pa != -1 {
+		t.Errorf("m.VtoP(0, 0xf<<56): got (%#x, %v), want -1, %v", pa, err, machine.ErrBadVA)
+	}
+}
+
+func TestMemTooSmall(t *testing.T) { // nolint:paralleltest
+	if _, err := machine.New("/dev/kvm", 1, "", "", 1<<16); !errors.Is(err, machine.ErrMemTooSmall) {
+		t.Fatalf(`machine.New("/dev/kvm", 1, "", "", 1<<16): got nil, want %v`, machine.ErrMemTooSmall)
 	}
 }

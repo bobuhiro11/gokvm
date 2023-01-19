@@ -68,7 +68,7 @@ func TestParseArg(t *testing.T) {
 		t.Errorf("msize: got %#x, want %#x", msize, 1<<30)
 	}
 
-	if ! trace {
+	if !trace {
 		t.Errorf("trace: got %v, want true", trace)
 	}
 }
