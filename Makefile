@@ -64,33 +64,9 @@ run-system-kernel:
 		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
-# N.B. the golangci-lint recommends you not enable --enable-all (which begs the
-# question of why it's there in the first place) as upgrades to golangci-lint
-# can break your CI!
 .PHONY: golangci
 golangci: golangci-lint
-	./golangci-lint run --enable-all \
-		--disable gomnd \
-		--disable wrapcheck \
-		--disable maligned \
-		--disable forbidigo \
-		--disable funlen \
-		--disable gocognit \
-		--disable ifshort \
-		--disable varnamelen \
-		--disable nonamedreturns \
-		--disable cyclop \
-		--disable errname \
-		--disable exhaustivestruct \
-		--disable exhaustruct \
-		--disable forcetypeassert \
-		--disable wastedassign \
-		--disable ireturn \
-		--disable revive \
-		--disable golint \
-		--disable scopelint \
-		--disable interfacer \
-		./...
+	./golangci-lint run ./...
 
 test: golangci initrd bzImage vda.img
 	go test -coverprofile c.out ./...
