@@ -1,0 +1,26 @@
+# N.B. the golangci-lint recommends you not enable --enable-all (which begs the
+# question of why it's there in the first place) as upgrades to golangci-lint
+# can break your CI!
+linters:
+  enable-all: true
+  disable:
+    - gomnd
+    - wrapcheck
+    - maligned
+    - forbidigo
+    - funlen
+    - gocognit
+    - ifshort
+    - varnamelen
+    - nonamedreturns
+    - cyclop
+    - errname
+    - exhaustivestruct
+    - exhaustruct
+    - forcetypeassert
+    - wastedassign
+    - ireturn
+    - revive
+    - golint
+    - scopelint
+    - interfacer

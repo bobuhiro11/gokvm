@@ -26,14 +26,10 @@ const (
 	kvmIRQLine             = 0xc008ae67
 )
 
+//go:generate stringer -type=ExitType
 // ExitType is a virtual machine exit type.
 type ExitType uint
 
-// fails: go :    generate stringer -type=ExitType
-// This generate causes a well-documented internal error in the stringer, first reported
-// in 2015, seemingly never fixed.
-// So, instead we took this piece of the file, generated the stringer in another directory, and
-// brought it back. Yuck!
 const (
 	EXITUNKNOWN       ExitType = 0
 	EXITEXCEPTION     ExitType = 1
