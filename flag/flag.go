@@ -2,28 +2,68 @@ package flag
 
 import (
 	"flag"
+	"fmt"
+	"strconv"
+	"strings"
 )
 
-// ParseArgs calls flag.Parse and returns strings for device, kernel, initrd, bootparams, tapIfName, disk, and nCpus.
-func ParseArgs(args []string) (string, string, string, string, string, string, int, error) {
-	kernel := flag.String("k", "./bzImage", "kernel image path")
-	initrd := flag.String("i", "./initrd", "initrd path")
-	nCpus := flag.Int("c", 1, "number of cpus")
-	tapIfName := flag.String("t", "tap", "name of tap interface")
-	disk := flag.String("d", "/dev/zero", "path of disk file (for /dev/vda)")
-	kvmPath := flag.String("D", "/dev/kvm", "path of kvm device")
+func ParseMemSize(s string) (int, error) {
+	sz := strings.TrimRight(s, "gGmMkK")
+	if len(sz) == 0 {
+		return -1, fmt.Errorf("%q:can't parse as num[gGmMkK]:%w", s, strconv.ErrSyntax)
+	}
 
+	amt, err := strconv.ParseUint(sz, 0, 0)
+	if err != nil {
+		return -1, err
+	}
+
+	if len(sz) == len(s) {
+		return int(amt) << 30, nil
+	}
+
+	switch s[len(sz):] {
+	case "G", "g":
+		return int(amt) << 30, nil
+	case "M", "m":
+		return int(amt) << 20, nil
+	case "K", "k":
+		return int(amt) << 10, nil
+	}
+
+	return -1, fmt.Errorf("can not parse %q as num[gGmMkK]:%w", s, strconv.ErrSyntax)
+}
+
+// ParseArgs calls flag.Parse and returns strings for
+// device, kernel, initrd, bootparams, tapIfName, disk, memSize, and nCpus.
+// another coding anti-pattern from golangci-lint.
+func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
+	tapIfName, disk string, nCpus, memSize int, err error,
+) {
+	flag.StringVar(&kvmPath, "D", "/dev/kvm", "path of kvm device")
+	flag.StringVar(&kernel, "k", "./bzImage", "kernel image path")
+	flag.StringVar(&initrd, "i", "./initrd", "initrd path")
 	//  refs: commit 1621292e73770aabbc146e72036de5e26f901e86 in kvmtool
-	params := flag.String("p", `console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
+	flag.StringVar(&params, "p", `console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
 		`debug apic=debug show_lapic=all mitigations=off lapic tsc_early_khz=2000 `+
 		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" pci=realloc=off `+
 		`virtio_pci.force_legacy=1 rdinit=/init init=/init`, "kernel command-line parameters")
+	flag.StringVar(&tapIfName, "t", "tap", "name of tap interface")
+	flag.StringVar(&disk, "d", "/dev/zero", "path of disk file (for /dev/vda)")
+
+	flag.IntVar(&nCpus, "c", 1, "number of cpus")
+
+	msize := flag.String("m", "1G", "memory size: as number[gGmM], optional units, defaults to G")
 
 	flag.Parse()
 
-	if err := flag.CommandLine.Parse(args[1:]); err != nil {
-		return "", "", "", "", "", "", 0, err
+	if err = flag.CommandLine.Parse(args[1:]); err != nil {
+		return
 	}
 
-	return *kvmPath, *kernel, *initrd, *params, *tapIfName, *disk, *nCpus, nil
+	if memSize, err = ParseMemSize(*msize); err != nil {
+		return
+	}
+
+	return
 }

@@ -181,8 +181,11 @@ func (r *UserspaceMemoryRegion) SetMemReadonly() {
 	r.Flags |= 1 << 1
 }
 
-// ioctl is a convenience function to call ioctl.
-func ioctl(fd, op, arg uintptr) (uintptr, error) {
+// Ioctl is a convenience function to call ioctl.
+// Its main purpose is to format arguments
+// and return values to make things easier for
+// programmers.
+func Ioctl(fd, op, arg uintptr) (uintptr, error) {
 	res, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, op, arg)
 	if errno != 0 {
 		return res, errno
@@ -193,23 +196,24 @@ func ioctl(fd, op, arg uintptr) (uintptr, error) {
 
 // GetAPIVersion gets the qemu API version, which changes rarely if at all.
 func GetAPIVersion(kvmFd uintptr) (uintptr, error) {
-	return ioctl(kvmFd, uintptr(kvmGetAPIVersion), uintptr(0))
+	return Ioctl(kvmFd, uintptr(kvmGetAPIVersion), uintptr(0))
 }
 
 // CreateVM creates a KVM from the KVM device fd, i.e. /dev/kvm.
 func CreateVM(kvmFd uintptr) (uintptr, error) {
-	return ioctl(kvmFd, uintptr(kvmCreateVM), uintptr(0))
+	return Ioctl(kvmFd, uintptr(kvmCreateVM), uintptr(0))
 }
 
 // DebugControl controls guest debug.
 type DebugControl struct {
 	Control  uint32
 	_        uint32
-	Debugreg [8]uint64
+	DebugReg [8]uint64
 }
 
-// SingleStep enables single stepping on on a vcpu.
-func SingleStep(vcpuFd uintptr, onoff bool) error {
+// SingleStep enables single stepping on all vCPUS in a VM. At present, it seems
+// not to work. It is based on working code from the linuxboot Voodoo project.
+func SingleStep(vmFd uintptr, onoff bool) error {
 	const (
 		// Enable enables debug options in the guest
 		Enable = 1
@@ -224,17 +228,13 @@ func SingleStep(vcpuFd uintptr, onoff bool) error {
 
 	if onoff {
 		// We used to need this? Not sure. debug[2] = 0x0002 // 0000
-		// This may be needed? It's not clear
-		//	for i := range debug {
-		//				debug[i] = 0xff
-		//			}
 		debug[0] = Enable | SingleStep
 	}
 
 	// this is not very nice, but it is easy.
 	// And TBH, the tricks the Linux kernel people
 	// play are a lot nastier.
-	_, err := ioctl(vcpuFd, setGuestDebug, uintptr(unsafe.Pointer(&debug[0])))
+	_, err := Ioctl(vmFd, setGuestDebug, uintptr(unsafe.Pointer(&debug[0])))
 
 	return err
 }
@@ -245,12 +245,12 @@ func SingleStep(vcpuFd uintptr, onoff bool) error {
 // vmfd from creating a vm from the fd
 // vcpu fd from the vmfd.
 func CreateVCPU(vmFd uintptr, vcpuID int) (uintptr, error) {
-	return ioctl(vmFd, uintptr(kvmCreateVCPU), uintptr(vcpuID))
+	return Ioctl(vmFd, uintptr(kvmCreateVCPU), uintptr(vcpuID))
 }
 
 // Run runs a single vcpu from the vcpufd from createvcpu.
 func Run(vcpuFd uintptr) error {
-	_, err := ioctl(vcpuFd, uintptr(kvmRun), uintptr(0))
+	_, err := Ioctl(vcpuFd, uintptr(kvmRun), uintptr(0))
 	if err != nil {
 		// refs: https://github.com/kvmtool/kvmtool/blob/415f92c33a227c02f6719d4594af6fad10f07abf/kvm-cpu.c#L44
 		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
@@ -265,20 +265,20 @@ func Run(vcpuFd uintptr) error {
 // required for interacting with the vcpu, as the struct size can change
 // over time.
 func GetVCPUMMmapSize(kvmFd uintptr) (uintptr, error) {
-	return ioctl(kvmFd, uintptr(kvmGetVCPUMMapSize), uintptr(0))
+	return Ioctl(kvmFd, uintptr(kvmGetVCPUMMapSize), uintptr(0))
 }
 
 // GetSRegs gets the special registers for a vcpu.
 func GetSregs(vcpuFd uintptr) (Sregs, error) {
 	sregs := Sregs{}
-	_, err := ioctl(vcpuFd, uintptr(kvmGetSregs), uintptr(unsafe.Pointer(&sregs)))
+	_, err := Ioctl(vcpuFd, uintptr(kvmGetSregs), uintptr(unsafe.Pointer(&sregs)))
 
 	return sregs, err
 }
 
 // SetSRegs sets the special registers for a vcpu.
 func SetSregs(vcpuFd uintptr, sregs Sregs) error {
-	_, err := ioctl(vcpuFd, uintptr(kvmSetSregs), uintptr(unsafe.Pointer(&sregs)))
+	_, err := Ioctl(vcpuFd, uintptr(kvmSetSregs), uintptr(unsafe.Pointer(&sregs)))
 
 	return err
 }
@@ -286,28 +286,28 @@ func SetSregs(vcpuFd uintptr, sregs Sregs) error {
 // GetRegs gets the general purpose registers for a vcpu.
 func GetRegs(vcpuFd uintptr) (Regs, error) {
 	regs := Regs{}
-	_, err := ioctl(vcpuFd, uintptr(kvmGetRegs), uintptr(unsafe.Pointer(&regs)))
+	_, err := Ioctl(vcpuFd, uintptr(kvmGetRegs), uintptr(unsafe.Pointer(&regs)))
 
 	return regs, err
 }
 
 // SetRegs sets the general purpose registers for a vcpu.
 func SetRegs(vcpuFd uintptr, regs Regs) error {
-	_, err := ioctl(vcpuFd, uintptr(kvmSetRegs), uintptr(unsafe.Pointer(&regs)))
+	_, err := Ioctl(vcpuFd, uintptr(kvmSetRegs), uintptr(unsafe.Pointer(&regs)))
 
 	return err
 }
 
 // SetUserMemoryRegion adds a memory region to a vm -- not a vcpu, a vm.
 func SetUserMemoryRegion(vmFd uintptr, region *UserspaceMemoryRegion) error {
-	_, err := ioctl(vmFd, uintptr(kvmSetUserMemoryRegion), uintptr(unsafe.Pointer(region)))
+	_, err := Ioctl(vmFd, uintptr(kvmSetUserMemoryRegion), uintptr(unsafe.Pointer(region)))
 
 	return err
 }
 
 // SetTSSAddr sets the Task Segment Selector for a vm.
 func SetTSSAddr(vmFd uintptr) error {
-	_, err := ioctl(vmFd, kvmSetTSSAddr, 0xffffd000)
+	_, err := Ioctl(vmFd, kvmSetTSSAddr, 0xffffd000)
 
 	return err
 }
@@ -315,7 +315,7 @@ func SetTSSAddr(vmFd uintptr) error {
 // SetIdentityMapAddr sets the address of a 4k-sized-page for a vm.
 func SetIdentityMapAddr(vmFd uintptr) error {
 	var mapAddr uint64 = 0xffffc000
-	_, err := ioctl(vmFd, kvmSetIdentityMapAddr, uintptr(unsafe.Pointer(&mapAddr)))
+	_, err := Ioctl(vmFd, kvmSetIdentityMapAddr, uintptr(unsafe.Pointer(&mapAddr)))
 
 	return err
 }
@@ -333,14 +333,14 @@ func IRQLine(vmFd uintptr, irq, level uint32) error {
 		Level: level,
 	}
 
-	_, err := ioctl(vmFd, kvmIRQLine, uintptr(unsafe.Pointer(&irqLevel)))
+	_, err := Ioctl(vmFd, kvmIRQLine, uintptr(unsafe.Pointer(&irqLevel)))
 
 	return err
 }
 
 // CreateIRQChip creates an IRQ device (chip) to which to attach interrupts?
 func CreateIRQChip(vmFd uintptr) error {
-	_, err := ioctl(vmFd, kvmCreateIRQChip, 0)
+	_, err := Ioctl(vmFd, kvmCreateIRQChip, 0)
 
 	return err
 }
@@ -356,7 +356,7 @@ func CreatePIT2(vmFd uintptr) error {
 	pit := PitConfig{
 		Flags: 0,
 	}
-	_, err := ioctl(vmFd, kvmCreatePIT2, uintptr(unsafe.Pointer(&pit)))
+	_, err := Ioctl(vmFd, kvmCreatePIT2, uintptr(unsafe.Pointer(&pit)))
 
 	return err
 }
@@ -383,7 +383,7 @@ type CPUIDEntry2 struct {
 
 // GetSupportedCPUID gets all supported CPUID entries for a vm.
 func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
-	_, err := ioctl(kvmFd, kvmGetSupportedCPUID, uintptr(unsafe.Pointer(kvmCPUID)))
+	_, err := Ioctl(kvmFd, kvmGetSupportedCPUID, uintptr(unsafe.Pointer(kvmCPUID)))
 
 	return err
 }
@@ -393,38 +393,7 @@ func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
 // individual vCPUs. This seems odd, but in fact lets code tailor CPUID entries
 // as needed.
 func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
-	_, err := ioctl(vcpuFd, kvmSetCPUID2, uintptr(unsafe.Pointer(kvmCPUID)))
+	_, err := Ioctl(vcpuFd, kvmSetCPUID2, uintptr(unsafe.Pointer(kvmCPUID)))
 
 	return err
 }
-
-// This has to wait until amd64 support goes in.
-// // Translate is a struct for KVM_TRANSLATE queries.
-// type Translate struct {
-// 	// LinearAddress is input.
-// 	LinearAddress uint64
-
-// 	// This is output
-// 	PhysicalAddress uint64
-// 	Valid           uint8
-// 	Writeable       uint8
-// 	Usermode        uint8
-// 	_               [5]uint8
-// }
-
-// // GetTranslate returns the virtual to physical mapping across all vCPUs.
-// // It is incredibly helpful for debugging at startup and detecting
-// // corrupted page tables.
-// // N.B.: on x86 it appears to ignore vcpufd.
-// func GetTranslate(vcpuFd uintptr, vaddr uint64) (*Translate, error) {
-// 	var (
-// 		kvmTranslate = IIOWR(0x85, 3*8)
-// 		t            = &Translate{LinearAddress: vaddr}
-// 	)
-
-// 	if _, err := ioctl(vcpuFd, kvmTranslate, uintptr(unsafe.Pointer(t))); err != nil {
-// 		return t, err
-// 	}
-
-// 	return t, nil
-// }
