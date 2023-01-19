@@ -38,7 +38,7 @@ func ParseMemSize(s string) (int, error) {
 // device, kernel, initrd, bootparams, tapIfName, disk, memSize, and nCpus.
 // another coding anti-pattern from golangci-lint.
 func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
-	tapIfName, disk string, nCpus, memSize int, 
+	tapIfName, disk string, nCpus, memSize int,
 	trace bool,
 	err error,
 ) {
@@ -69,5 +69,10 @@ func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
 		return
 	}
 
-	return
+	// personally, I think the naked return is easier, it avoids
+	// getting things in the wrong order. But, in fact, there are
+	// too many returns to this function, I think it needs
+	// a config struct.
+	return kvmPath, kernel, initrd, params,
+		tapIfName, disk, nCpus, memSize, trace, nil
 }

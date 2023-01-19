@@ -62,8 +62,11 @@ const (
 )
 
 var (
+	// ErrUnexpectedReason is any error that we do not understand.
 	ErrUnexpectedEXITReason = errors.New("unexpected kvm exit reason")
-	ErrDebug = errors.New("Debug Exit")
+
+	// ErrDebug is a debug exit, caused by single step or breakpoint.
+	ErrDebug = errors.New("debug exit")
 )
 
 // Regs are registers for both 386 and amd64.
