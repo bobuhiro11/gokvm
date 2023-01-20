@@ -29,7 +29,11 @@ before_script:
 script:
   - sudo -E env "PATH=$PATH" make gokvm
   - sudo -E env "PATH=$PATH" go test -v  -run TestNewAndLoadLinux ./machine/...
-  - dmesg
+  - sudo dmesg | tail -n 200
+  - sudo -E env "PATH=$PATH" go test -v  ./machine/...
+  - sudo dmesg | tail -n 200
+  - sudo -E env "PATH=$PATH" make test
+  - sudo dmesg | tail -n 200
 after_script:
   - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
   - sudo -E env "PATH=$PATH" ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
