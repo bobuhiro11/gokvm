@@ -7,7 +7,6 @@ import (
 
 	"github.com/bobuhiro11/gokvm/kvm"
 	"golang.org/x/arch/x86/x86asm"
-	"golang.org/x/sys/unix"
 )
 
 // Debug is a normally empty function that enables debug prints.
@@ -16,37 +15,68 @@ import (
 // ErrBadRegister indicates a bad register was used.
 var ErrBadRegister = errors.New("bad register")
 
+// ErrBadArg indicates an argument number was out of range.
+var ErrBadArg = errors.New("arg count must be in range 1..6")
+
+// ErrBadArgType indicates an argument type is not correct,
+// e.g. code expected a Mem but got an Imm.
+var ErrBadArgType = errors.New("bad arg type")
+
 // Args returns the top nargs args, going down the stack if needed. The max is 6.
 // This is UEFI calling convention.
-func (m *Machine) Args(cpu int, r *kvm.Regs, nargs int) []uintptr {
+func (m *Machine) Args(cpu int, r *kvm.Regs, nargs int) ([]uintptr, error) {
+	// We must always validate the cpu number, even if we don't absolutely need it.
+	// i.e., for pure register args, the cpu is not needed, but it's
+	// best to validate it.
+	if _, err := m.CPUToFD(cpu); err != nil {
+		return nil, err
+	}
+
 	sp := uintptr(r.RSP)
 
 	switch nargs {
 	case 6:
-		w1, _ := m.ReadWord(cpu, sp+0x28)
-		w2, _ := m.ReadWord(cpu, sp+0x30)
+		w1, err := m.ReadWord(cpu, sp+0x28)
+		if err != nil {
+			return nil, err
+		}
 
-		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9), uintptr(w1), uintptr(w2)}
+		w2, err := m.ReadWord(cpu, sp+0x30)
+		if err != nil {
+			return nil, err
+		}
+
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9), uintptr(w1), uintptr(w2)}, nil
 	case 5:
-		w1, _ := m.ReadWord(cpu, sp+0x28)
+		w1, err := m.ReadWord(cpu, sp+0x28)
+		if err != nil {
+			return nil, err
+		}
 
-		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9), uintptr(w1)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9), uintptr(w1)}, nil
 	case 4:
-		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9)}, nil
 	case 3:
-		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8)}, nil
 	case 2:
-		return []uintptr{uintptr(r.RCX), uintptr(r.RDX)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX)}, nil
 	case 1:
-		return []uintptr{uintptr(r.RCX)}
+		return []uintptr{uintptr(r.RCX)}, nil
 	}
 
-	return []uintptr{}
+	return []uintptr{}, fmt.Errorf("args(%d):%w", nargs, ErrBadArg)
 }
 
 // Pointer returns the data pointed to by args[arg].
-func (m *Machine) Pointer(inst *x86asm.Inst, r *kvm.Regs, arg int) (uintptr, error) {
-	mem := inst.Args[arg].(x86asm.Mem)
+func (m *Machine) Pointer(inst *x86asm.Inst, r *kvm.Regs, arg uint) (uintptr, error) {
+	if arg >= uint(len(inst.Args)) {
+		return 0, fmt.Errorf("pointer(..,%d): only %d args:%w", arg, len(inst.Args), ErrBadArgType)
+	}
+
+	mem, ok := inst.Args[arg].(x86asm.Mem)
+	if !ok {
+		return 0, fmt.Errorf("arg %d is not a memory argument:%w", arg, ErrBadArgType)
+	}
 	// A Mem is a memory reference.
 	// The general form is Segment:[Base+Scale*Index+Disp].
 	/*
@@ -114,7 +144,7 @@ func (m *Machine) Inst(cpu int) (*x86asm.Inst, *kvm.Regs, string, error) {
 		return nil, nil, "", fmt.Errorf("decoding %#02x:%w", insn, err)
 	}
 
-	return &d, &r, x86asm.GNUSyntax(d, r.RIP, nil), nil
+	return &d, r, x86asm.GNUSyntax(d, r.RIP, nil), nil
 }
 
 // Asm returns a string for the given instruction at the given pc.
@@ -123,7 +153,7 @@ func Asm(d *x86asm.Inst, pc uint64) string {
 }
 
 // CallInfo provides calling info for a function.
-func CallInfo(_ *unix.SignalfdSiginfo, inst *x86asm.Inst, r *kvm.Regs) string {
+func CallInfo(inst *x86asm.Inst, r *kvm.Regs) string {
 	l := fmt.Sprintf("%s[", show("", r))
 	for _, a := range inst.Args {
 		l += fmt.Sprintf("%v,", a)

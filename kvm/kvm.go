@@ -271,31 +271,31 @@ func GetVCPUMMmapSize(kvmFd uintptr) (uintptr, error) {
 }
 
 // GetSRegs gets the special registers for a vcpu.
-func GetSregs(vcpuFd uintptr) (Sregs, error) {
-	sregs := Sregs{}
-	_, err := Ioctl(vcpuFd, uintptr(kvmGetSregs), uintptr(unsafe.Pointer(&sregs)))
+func GetSregs(vcpuFd uintptr) (*Sregs, error) {
+	sregs := &Sregs{}
+	_, err := Ioctl(vcpuFd, uintptr(kvmGetSregs), uintptr(unsafe.Pointer(sregs)))
 
 	return sregs, err
 }
 
 // SetSRegs sets the special registers for a vcpu.
-func SetSregs(vcpuFd uintptr, sregs Sregs) error {
-	_, err := Ioctl(vcpuFd, uintptr(kvmSetSregs), uintptr(unsafe.Pointer(&sregs)))
+func SetSregs(vcpuFd uintptr, sregs *Sregs) error {
+	_, err := Ioctl(vcpuFd, uintptr(kvmSetSregs), uintptr(unsafe.Pointer(sregs)))
 
 	return err
 }
 
 // GetRegs gets the general purpose registers for a vcpu.
-func GetRegs(vcpuFd uintptr) (Regs, error) {
-	regs := Regs{}
-	_, err := Ioctl(vcpuFd, uintptr(kvmGetRegs), uintptr(unsafe.Pointer(&regs)))
+func GetRegs(vcpuFd uintptr) (*Regs, error) {
+	regs := &Regs{}
+	_, err := Ioctl(vcpuFd, uintptr(kvmGetRegs), uintptr(unsafe.Pointer(regs)))
 
 	return regs, err
 }
 
 // SetRegs sets the general purpose registers for a vcpu.
-func SetRegs(vcpuFd uintptr, regs Regs) error {
-	_, err := Ioctl(vcpuFd, uintptr(kvmSetRegs), uintptr(unsafe.Pointer(&regs)))
+func SetRegs(vcpuFd uintptr, regs *Regs) error {
+	_, err := Ioctl(vcpuFd, uintptr(kvmSetRegs), uintptr(unsafe.Pointer(regs)))
 
 	return err
 }

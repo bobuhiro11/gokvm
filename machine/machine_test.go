@@ -10,6 +10,7 @@ import (
 
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
+	"golang.org/x/arch/x86/x86asm"
 )
 
 func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
@@ -210,7 +211,6 @@ func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-// TestHalt tries to run a Halt instruction in 64-bit mode.
 func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
 	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
@@ -221,9 +221,25 @@ func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
 		t.Fatalf("SetupRegs: got %v, want nil", err)
 	}
 
+	if _, err := m.GetRegs(1024); err == nil {
+		t.Errorf("GetRegs(1024): got nil, want err")
+	}
+
+	if _, err := m.GetSRegs(1024); err == nil {
+		t.Errorf("GetSRegs(1024): got nil, want err")
+	}
+
 	r, err := m.GetRegs(0)
 	if err != nil {
 		t.Fatalf("GetRegs: got %v, want nil", err)
+	}
+
+	if err := m.SetRegs(1024, nil); err == nil {
+		t.Errorf("SetRegs(1024, ...): got nil, want err")
+	}
+
+	if err := m.SetSRegs(1024, nil); err == nil {
+		t.Errorf("SetSRegs(1024): got nil, want err")
 	}
 
 	t.Logf("Regs %#x r.RIP %#x", r, r.RIP)
@@ -401,6 +417,11 @@ func TestVtoP(t *testing.T) { // nolint:paralleltest
 		t.Fatalf("Open: got %v, want nil", err)
 	}
 
+	// Test a bad CPU
+	if _, err := m.VtoP(1024, 0); err == nil {
+		t.Errorf("m.VtoP(1024, 0): got nil, want err")
+	}
+
 	// Test a good address
 	pa, err := m.VtoP(0, 0)
 	if err != nil || pa != 0 {
@@ -416,5 +437,61 @@ func TestVtoP(t *testing.T) { // nolint:paralleltest
 func TestMemTooSmall(t *testing.T) { // nolint:paralleltest
 	if _, err := machine.New("/dev/kvm", 1, "", "", 1<<16); !errors.Is(err, machine.ErrMemTooSmall) {
 		t.Fatalf(`machine.New("/dev/kvm", 1, "", "", 1<<16): got nil, want %v`, machine.ErrMemTooSmall)
+	}
+}
+
+func TestGetReg(t *testing.T) { // nolint:paralleltest
+	regs := []x86asm.Reg{
+		x86asm.RAX,
+		x86asm.RCX,
+		x86asm.RDX,
+		x86asm.RBX,
+		x86asm.RSP,
+		x86asm.RBP,
+		x86asm.RSI,
+		x86asm.RDI,
+		x86asm.R8,
+		x86asm.R9,
+		x86asm.R10,
+		x86asm.R11,
+		x86asm.R12,
+		x86asm.R13,
+		x86asm.R14,
+		x86asm.R15,
+		x86asm.RIP,
+	}
+	r := &kvm.Regs{
+		RAX: 1,
+		RCX: 2,
+		RDX: 3,
+		RBX: 4,
+		RSP: 5,
+		RBP: 6,
+		RSI: 7,
+		RDI: 8,
+		R8:  9,
+		R9:  10,
+		R10: 11,
+		R11: 12,
+		R12: 13,
+		R13: 14,
+		R14: 15,
+		R15: 16,
+		RIP: 17,
+	}
+
+	for i := range regs {
+		v, err := machine.GetReg(r, regs[i])
+		if err != nil {
+			t.Errorf("GetReg(r, %#x): got %v, want nil", regs[i], err)
+		}
+
+		if *v != uint64(i+1) {
+			t.Errorf("Reg %#x: got %#x, want %#x", i, *v, i+1)
+		}
+	}
+
+	if _, err := machine.GetReg(r, x86asm.AL); err == nil {
+		t.Errorf("GetReg(r, x86asm.AL): got nil, want err")
 	}
 }

@@ -474,27 +474,27 @@ func (m *Machine) GetInputChan() chan<- byte {
 }
 
 // GetRegs gets regs for vCPU.
-func (m *Machine) GetRegs(cpu int) (kvm.Regs, error) {
+func (m *Machine) GetRegs(cpu int) (*kvm.Regs, error) {
 	fd, err := m.CPUToFD(cpu)
 	if err != nil {
-		return kvm.Regs{}, err
+		return nil, err
 	}
 
 	return kvm.GetRegs(fd)
 }
 
 // GetSRegs gets sregs for vCPU.
-func (m *Machine) GetSRegs(cpu int) (kvm.Sregs, error) {
+func (m *Machine) GetSRegs(cpu int) (*kvm.Sregs, error) {
 	fd, err := m.CPUToFD(cpu)
 	if err != nil {
-		return kvm.Sregs{}, err
+		return nil, err
 	}
 
 	return kvm.GetSregs(fd)
 }
 
 // SetRegs sets regs for vCPU.
-func (m *Machine) SetRegs(cpu int, r kvm.Regs) error {
+func (m *Machine) SetRegs(cpu int, r *kvm.Regs) error {
 	fd, err := m.CPUToFD(cpu)
 	if err != nil {
 		return err
@@ -504,7 +504,7 @@ func (m *Machine) SetRegs(cpu int, r kvm.Regs) error {
 }
 
 // SetSRegs sets sregs for vCPU.
-func (m *Machine) SetSRegs(cpu int, s kvm.Sregs) error {
+func (m *Machine) SetSRegs(cpu int, s *kvm.Sregs) error {
 	fd, err := m.CPUToFD(cpu)
 	if err != nil {
 		return err
