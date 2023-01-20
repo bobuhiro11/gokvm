@@ -9,6 +9,7 @@ addons:
       - qemu-kvm
       - qemu-utils
       - libmnl-dev
+      - genext2fs
 language: go
 go:
   - 1.18.x
