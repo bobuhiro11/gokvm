@@ -311,12 +311,12 @@ func (m *Machine) Translate(vaddr uint64) ([]*Translate, error) {
 // SetupRegs sets up the general purpose registers,
 // including a RIP and BP.
 func (m *Machine) SetupRegs(rip, bp uint64, amd64 bool) error {
-	for i := range m.vcpuFds {
-		if err := m.initRegs(i, rip, bp); err != nil {
+	for _, cpu := range m.vcpuFds {
+		if err := m.initRegs(cpu, rip, bp); err != nil {
 			return err
 		}
 
-		if err := m.initSregs(i, amd64); err != nil {
+		if err := m.initSregs(cpu, amd64); err != nil {
 			return err
 		}
 	}
@@ -475,26 +475,46 @@ func (m *Machine) GetInputChan() chan<- byte {
 
 // GetRegs gets regs for vCPU.
 func (m *Machine) GetRegs(cpu int) (kvm.Regs, error) {
-	return kvm.GetRegs(m.vcpuFds[cpu])
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return kvm.Regs{}, err
+	}
+
+	return kvm.GetRegs(fd)
 }
 
 // GetSRegs gets sregs for vCPU.
 func (m *Machine) GetSRegs(cpu int) (kvm.Sregs, error) {
-	return kvm.GetSregs(m.vcpuFds[cpu])
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return kvm.Sregs{}, err
+	}
+
+	return kvm.GetSregs(fd)
 }
 
 // SetRegs sets regs for vCPU.
 func (m *Machine) SetRegs(cpu int, r kvm.Regs) error {
-	return kvm.SetRegs(m.vcpuFds[cpu], r)
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return err
+	}
+
+	return kvm.SetRegs(fd, r)
 }
 
 // SetSRegs sets sregs for vCPU.
 func (m *Machine) SetSRegs(cpu int, s kvm.Sregs) error {
-	return kvm.SetSregs(m.vcpuFds[cpu], s)
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return err
+	}
+
+	return kvm.SetSregs(fd, s)
 }
 
-func (m *Machine) initRegs(cpu int, rip, bp uint64) error {
-	regs, err := kvm.GetRegs(m.vcpuFds[cpu])
+func (m *Machine) initRegs(vcpufd uintptr, rip, bp uint64) error {
+	regs, err := kvm.GetRegs(vcpufd)
 	if err != nil {
 		return err
 	}
@@ -505,15 +525,15 @@ func (m *Machine) initRegs(cpu int, rip, bp uint64) error {
 	// Create stack which will grow down.
 	regs.RSI = bp
 
-	if err := kvm.SetRegs(m.vcpuFds[cpu], regs); err != nil {
+	if err := kvm.SetRegs(vcpufd, regs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Machine) initSregs(cpu int, amd64 bool) error {
-	sregs, err := kvm.GetSregs(m.vcpuFds[cpu])
+func (m *Machine) initSregs(vcpufd uintptr, amd64 bool) error {
+	sregs, err := kvm.GetSregs(vcpufd)
 	if err != nil {
 		return err
 	}
@@ -530,7 +550,7 @@ func (m *Machine) initSregs(cpu int, amd64 bool) error {
 		sregs.CS.DB, sregs.SS.DB = 1, 1
 		sregs.CR0 |= 1 // protected mode
 
-		if err := kvm.SetSregs(m.vcpuFds[cpu], sregs); err != nil {
+		if err := kvm.SetSregs(vcpufd, sregs); err != nil {
 			return err
 		}
 
@@ -621,7 +641,7 @@ func (m *Machine) initSregs(cpu int, amd64 bool) error {
 	seg.Selector = 2 << 3
 	sregs.DS, sregs.ES, sregs.FS, sregs.GS, sregs.SS = seg, seg, seg, seg, seg
 
-	if err := kvm.SetSregs(m.vcpuFds[cpu], sregs); err != nil {
+	if err := kvm.SetSregs(vcpufd, sregs); err != nil {
 		return err
 	}
 
@@ -704,8 +724,12 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 
 // RunOnce runs the guest vCPU until it exits.
 func (m *Machine) RunOnce(cpu int) (bool, error) {
-	err := kvm.Run(m.vcpuFds[cpu])
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return false, err
+	}
 
+	_ = kvm.Run(fd)
 	exit := kvm.ExitType(m.runs[cpu].ExitReason)
 
 	switch exit {

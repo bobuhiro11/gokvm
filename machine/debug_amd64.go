@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"syscall"
 
 	"github.com/bobuhiro11/gokvm/kvm"
 	"golang.org/x/arch/x86/x86asm"
@@ -19,27 +18,27 @@ var ErrBadRegister = errors.New("bad register")
 
 // Args returns the top nargs args, going down the stack if needed. The max is 6.
 // This is UEFI calling convention.
-func (m *Machine) Args(cpu int, r *syscall.PtraceRegs, nargs int) []uintptr {
-	sp := uintptr(r.Rsp)
+func (m *Machine) Args(cpu int, r *kvm.Regs, nargs int) []uintptr {
+	sp := uintptr(r.RSP)
 
 	switch nargs {
 	case 6:
 		w1, _ := m.ReadWord(cpu, sp+0x28)
 		w2, _ := m.ReadWord(cpu, sp+0x30)
 
-		return []uintptr{uintptr(r.Rcx), uintptr(r.Rdx), uintptr(r.R8), uintptr(r.R9), uintptr(w1), uintptr(w2)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9), uintptr(w1), uintptr(w2)}
 	case 5:
 		w1, _ := m.ReadWord(cpu, sp+0x28)
 
-		return []uintptr{uintptr(r.Rcx), uintptr(r.Rdx), uintptr(r.R8), uintptr(r.R9), uintptr(w1)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9), uintptr(w1)}
 	case 4:
-		return []uintptr{uintptr(r.Rcx), uintptr(r.Rdx), uintptr(r.R8), uintptr(r.R9)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8), uintptr(r.R9)}
 	case 3:
-		return []uintptr{uintptr(r.Rcx), uintptr(r.Rdx), uintptr(r.R8)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX), uintptr(r.R8)}
 	case 2:
-		return []uintptr{uintptr(r.Rcx), uintptr(r.Rdx)}
+		return []uintptr{uintptr(r.RCX), uintptr(r.RDX)}
 	case 1:
-		return []uintptr{uintptr(r.Rcx)}
+		return []uintptr{uintptr(r.RCX)}
 	}
 
 	return []uintptr{}
@@ -93,7 +92,7 @@ func (m *Machine) Pop(cpu int, r *kvm.Regs) (uint64, error) {
 }
 
 // Inst retrieves an instruction from the guest, at RIP.
-// It returns an x86asm.Inst, Ptraceregs, a string in GNU syntax, and
+// It returns an x86asm.Inst, Ptraceregs, a string in GNU syntax,
 // and error.
 func (m *Machine) Inst(cpu int) (*x86asm.Inst, *kvm.Regs, string, error) {
 	r, err := m.GetRegs(cpu)
