@@ -17,7 +17,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	m, err := machine.New("/dev/kvm", 1, "tap", "../vda.img", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "tap", "../vda.img", 1<<29)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
 func TestHalt(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -156,7 +156,7 @@ func TestHalt(t *testing.T) { // nolint:paralleltest
 }
 
 func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -192,7 +192,7 @@ func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
 }
 
 func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -212,7 +212,7 @@ func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
 func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -249,7 +249,7 @@ func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
 }
 
 func TestSingleStep(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -324,7 +324,7 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 }
 
 func TestTranslate32(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -381,7 +381,7 @@ func TestTranslate32(t *testing.T) { // nolint:paralleltest
 }
 
 func TestCPUtoFD(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<30)
+	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
