@@ -63,9 +63,9 @@ func main() {
 				_, r, s, err := m.Inst(cpu)
 				if err != nil {
 					fmt.Printf("disassembling after debug exit:%v", err)
+				} else {
+					fmt.Printf("%#x:%s\r\n", r.RIP, s)
 				}
-
-				fmt.Printf("%#x:%s\r\n", r.RIP, s)
 
 				if err := m.SingleStep(trace); err != nil {
 					log.Fatalf("Setting trace to %v:%v", trace, err)
