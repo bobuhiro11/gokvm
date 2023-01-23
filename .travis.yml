@@ -9,6 +9,7 @@ addons:
       - qemu-kvm
       - qemu-utils
       - libmnl-dev
+      - genext2fs
 language: go
 go:
   - 1.18.x
@@ -40,4 +41,4 @@ deploy:
   on:
     # https://docs.travis-ci.com/user/languages/go/#environment-variable
     tags: true
-    condition: $TRAVIS_GO_VERSION =~ ^1\.7
+    condition: $TRAVIS_GO_VERSION =~ ^1\.8

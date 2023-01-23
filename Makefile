@@ -11,13 +11,9 @@ golangci-lint:
 		| sh -s -- -b . $(GOLANGCI_LINT_VERSION)
 
 vda.img:
-	dd if=/dev/zero of=$@ bs=1024k count=10
-	mkfs.ext2 $@
-	mkdir -p mnt_test
-	mount -o loop -t ext2 $@ mnt_test
-	echo "index.html: this message is from /dev/vda in guest" > mnt_test/index.html
-	ls -la mnt_test
-	umount mnt_test
+	$(eval dir = $(shell mktemp -d))
+	echo "index.html: this message is from /dev/vda in guest" > ${dir}/index.html
+	genext2fs -b 1024 -d ${dir} $@
 	file $@
 
 # because a go-based VMM deserves a go initrd.

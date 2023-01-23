@@ -4,7 +4,6 @@
 *.dll
 *.so
 *.dylib
-*_string.go
 gokvm
 golangci-lint
 initrd
