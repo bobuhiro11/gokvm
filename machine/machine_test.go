@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
@@ -118,8 +119,8 @@ func TestHalt(t *testing.T) { // nolint:paralleltest
 
 	t.Logf("RunOnce: %v,%v", ok, err)
 
-	if !errors.Is(err, kvm.ErrUnexpectedEXITReason) {
-		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrUnexpectedEXITReason)
+	if !errors.Is(err, kvm.ErrUnexpectedExitReason) {
+		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrUnexpectedExitReason)
 	}
 
 	if s, err := m.GetSRegs(0); err != nil {
@@ -180,6 +181,10 @@ func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
 	var zeros [8]byte
 	if n, err := m.WriteAt(zeros[:], off); err != nil || n != len(zeros) {
 		t.Fatalf("WriteAt(%#x, %#x): (%d, %v) != (%d, nil)", zeros, off, n, err, len(zeros))
+	}
+
+	if n, err := m.WriteAt(zeros[:], 1<<30); !errors.Is(err, syscall.EFBIG) {
+		t.Fatalf("WriteAt(_, 1<<30): (%d, %v) != (%d, %v)", n, err, 0, syscall.EFBIG)
 	}
 
 	var got [8]byte
@@ -369,8 +374,8 @@ func TestTranslate32(t *testing.T) { // nolint:paralleltest
 
 	t.Logf("Runonce: %v, %v", ok, err)
 
-	if !errors.Is(err, kvm.ErrUnexpectedEXITReason) {
-		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrUnexpectedEXITReason)
+	if !errors.Is(err, kvm.ErrUnexpectedExitReason) {
+		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrUnexpectedExitReason)
 	}
 
 	if r, err = m.GetRegs(0); err != nil {

@@ -179,7 +179,7 @@ func (m *Machine) WriteWord(cpu int, vaddr uintptr, word uint64) error {
 	return err
 }
 
-// ReadWord reads bytes from the CPUs virtual address space.
+// ReadBytes reads bytes from the CPUs virtual address space.
 func (m *Machine) ReadBytes(cpu int, b []byte, vaddr uintptr) (int, error) {
 	pa, err := m.VtoP(cpu, vaddr)
 	if err != nil {

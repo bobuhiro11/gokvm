@@ -774,7 +774,7 @@ func (m *Machine) RunOnce(cpu int) (bool, error) {
 			return false, err
 		}
 
-		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedEXITReason, exit.String())
+		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedExitReason, exit.String())
 	default:
 		if err != nil {
 			return false, err
@@ -784,7 +784,7 @@ func (m *Machine) RunOnce(cpu int) (bool, error) {
 		s, _ := m.GetSRegs(cpu)
 		// another coding anti-pattern from golangci-lint.
 		return false, fmt.Errorf("%w: %v: regs:\n%s",
-			kvm.ErrUnexpectedEXITReason,
+			kvm.ErrUnexpectedExitReason,
 			kvm.ExitType(m.runs[cpu].ExitReason).String(), show("", &s, &r))
 	}
 }
@@ -805,7 +805,7 @@ func (m *Machine) initIOPortHandlers() {
 	}
 
 	funcError := func(port uint64, bytes []byte) error {
-		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrUnexpectedEXITReason, port)
+		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrUnexpectedExitReason, port)
 	}
 
 	// 0xCF9 port can get three values for three types of reset:
@@ -930,7 +930,7 @@ func (m *Machine) ReadAt(b []byte, off int64) (int, error) {
 // WriteAt implements io.WriteAt for the kvm guest memory.
 func (m *Machine) WriteAt(b []byte, off int64) (int, error) {
 	if off > int64(len(m.mem)) {
-		return 0, nil
+		return 0, syscall.EFBIG
 	}
 
 	n := copy(m.mem[off:], b)
