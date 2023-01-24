@@ -21,6 +21,7 @@ import (
 	"github.com/bobuhiro11/gokvm/serial"
 	"github.com/bobuhiro11/gokvm/tap"
 	"github.com/bobuhiro11/gokvm/virtio"
+	"golang.org/x/arch/x86/x86asm"
 )
 
 // InitialRegState GuestPhysAddr                      Binary files [+ offsets in the file]
@@ -64,6 +65,8 @@ const (
 	virtioBlkIRQ = 10
 
 	pageTableBase = 0x30_000
+
+	MinMemSize = 1 << 20
 )
 
 const (
@@ -135,8 +138,20 @@ const (
 
 var ErrZeroSizeKernel = errors.New("kernel is 0 bytes")
 
-// ErrorWriteToCF9 indicates a write to cf9, the standard x86 reset port.
-var ErrorWriteToCF9 = fmt.Errorf("power cycle via 0xcf9")
+// ErrWriteToCF9 indicates a write to cf9, the standard x86 reset port.
+var ErrWriteToCF9 = fmt.Errorf("power cycle via 0xcf9")
+
+// ErrBadVA indicates a bad virtual address was used.
+var ErrBadVA = fmt.Errorf("bad virtual address")
+
+// ErrBadCPU indicates a cpu number is invalid.
+var ErrBadCPU = fmt.Errorf("bad cpu number")
+
+// ErrUnsupported indicates something we do not yet do.
+var ErrUnsupported = fmt.Errorf("unsupported")
+
+// ErrMemTooSmall indicates the requested memory size is too small.
+var ErrMemTooSmall = fmt.Errorf("mem request must be at least 1<<20")
 
 type Machine struct {
 	kvmFd, vmFd    uintptr
@@ -148,7 +163,13 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
+// New creates a new KVM. This includes opening the kvm device, creating VM, creating
+// vCPUs, and attaching memory, disk (if needed), and tap (if needed).
 func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize int) (*Machine, error) {
+	if memSize < MinMemSize {
+		return nil, fmt.Errorf("memory size %d:%w", memSize, ErrMemTooSmall)
+	}
+
 	m := &Machine{}
 
 	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
@@ -185,25 +206,26 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 		return m, err
 	}
 
-	for i := 0; i < nCpus; i++ {
+	for cpu := 0; cpu < nCpus; cpu++ {
 		// Create vCPU
-		m.vcpuFds[i], err = kvm.CreateVCPU(m.vmFd, i)
+		m.vcpuFds[cpu], err = kvm.CreateVCPU(m.vmFd, cpu)
 		if err != nil {
 			return m, err
 		}
 
 		// init CPUID
-		if err := m.initCPUID(i); err != nil {
+		if err := m.initCPUID(cpu); err != nil {
 			return m, err
 		}
 
 		// init kvm_run structure
-		r, err := syscall.Mmap(int(m.vcpuFds[i]), 0, int(mmapSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		r, err := syscall.Mmap(int(m.vcpuFds[cpu]), 0, int(mmapSize),
+			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
 			return m, err
 		}
 
-		m.runs[i] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
+		m.runs[cpu] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
 	// Another coding anti-pattern reguired by golangci-lint.
@@ -269,11 +291,13 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 	return m, nil
 }
 
+// Translate translates a virtual address for all active CPUs
+// and returns a []*Translate or error.
 func (m *Machine) Translate(vaddr uint64) ([]*Translate, error) {
 	t := make([]*Translate, 0, len(m.vcpuFds))
 
-	for i := range m.vcpuFds {
-		tt, err := GetTranslate(m.vcpuFds[i], vaddr)
+	for cpu := range m.vcpuFds {
+		tt, err := GetTranslate(m.vcpuFds[cpu], vaddr)
 		if err != nil {
 			return t, err
 		}
@@ -284,13 +308,15 @@ func (m *Machine) Translate(vaddr uint64) ([]*Translate, error) {
 	return t, nil
 }
 
+// SetupRegs sets up the general purpose registers,
+// including a RIP and BP.
 func (m *Machine) SetupRegs(rip, bp uint64, amd64 bool) error {
-	for i := range m.vcpuFds {
-		if err := m.initRegs(i, rip, bp); err != nil {
+	for _, cpu := range m.vcpuFds {
+		if err := m.initRegs(cpu, rip, bp); err != nil {
 			return err
 		}
 
-		if err := m.initSregs(i, amd64); err != nil {
+		if err := m.initSregs(cpu, amd64); err != nil {
 			return err
 		}
 	}
@@ -303,6 +329,8 @@ func (m *Machine) RunData() []*kvm.RunData {
 	return m.runs
 }
 
+// LoadLinux loads a bzImage or ELF file, an optional initrd, and
+// optional params.
 func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	var (
 		DefaultKernelAddr = uint64(highMemBase)
@@ -440,28 +468,53 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	return nil
 }
 
+// GetInputChan returns a chan <- byte for serial.
 func (m *Machine) GetInputChan() chan<- byte {
 	return m.serial.GetInputChan()
 }
 
-func (m *Machine) GetRegs(i int) (kvm.Regs, error) {
-	return kvm.GetRegs(m.vcpuFds[i])
+// GetRegs gets regs for vCPU.
+func (m *Machine) GetRegs(cpu int) (*kvm.Regs, error) {
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return nil, err
+	}
+
+	return kvm.GetRegs(fd)
 }
 
-func (m *Machine) GetSRegs(i int) (kvm.Sregs, error) {
-	return kvm.GetSregs(m.vcpuFds[i])
+// GetSRegs gets sregs for vCPU.
+func (m *Machine) GetSRegs(cpu int) (*kvm.Sregs, error) {
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return nil, err
+	}
+
+	return kvm.GetSregs(fd)
 }
 
-func (m *Machine) SetRegs(i int, r kvm.Regs) error {
-	return kvm.SetRegs(m.vcpuFds[i], r)
+// SetRegs sets regs for vCPU.
+func (m *Machine) SetRegs(cpu int, r *kvm.Regs) error {
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return err
+	}
+
+	return kvm.SetRegs(fd, r)
 }
 
-func (m *Machine) SetSRegs(i int, s kvm.Sregs) error {
-	return kvm.SetSregs(m.vcpuFds[i], s)
+// SetSRegs sets sregs for vCPU.
+func (m *Machine) SetSRegs(cpu int, s *kvm.Sregs) error {
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return err
+	}
+
+	return kvm.SetSregs(fd, s)
 }
 
-func (m *Machine) initRegs(i int, rip, bp uint64) error {
-	regs, err := kvm.GetRegs(m.vcpuFds[i])
+func (m *Machine) initRegs(vcpufd uintptr, rip, bp uint64) error {
+	regs, err := kvm.GetRegs(vcpufd)
 	if err != nil {
 		return err
 	}
@@ -472,15 +525,15 @@ func (m *Machine) initRegs(i int, rip, bp uint64) error {
 	// Create stack which will grow down.
 	regs.RSI = bp
 
-	if err := kvm.SetRegs(m.vcpuFds[i], regs); err != nil {
+	if err := kvm.SetRegs(vcpufd, regs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Machine) initSregs(i int, amd64 bool) error {
-	sregs, err := kvm.GetSregs(m.vcpuFds[i])
+func (m *Machine) initSregs(vcpufd uintptr, amd64 bool) error {
+	sregs, err := kvm.GetSregs(vcpufd)
 	if err != nil {
 		return err
 	}
@@ -497,7 +550,7 @@ func (m *Machine) initSregs(i int, amd64 bool) error {
 		sregs.CS.DB, sregs.SS.DB = 1, 1
 		sregs.CR0 |= 1 // protected mode
 
-		if err := kvm.SetSregs(m.vcpuFds[i], sregs); err != nil {
+		if err := kvm.SetSregs(vcpufd, sregs); err != nil {
 			return err
 		}
 
@@ -588,14 +641,14 @@ func (m *Machine) initSregs(i int, amd64 bool) error {
 	seg.Selector = 2 << 3
 	sregs.DS, sregs.ES, sregs.FS, sregs.GS, sregs.SS = seg, seg, seg, seg, seg
 
-	if err := kvm.SetSregs(m.vcpuFds[i], sregs); err != nil {
+	if err := kvm.SetSregs(vcpufd, sregs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Machine) initCPUID(i int) error {
+func (m *Machine) initCPUID(cpu int) error {
 	cpuid := kvm.CPUID{}
 	cpuid.Nent = 100
 
@@ -615,25 +668,27 @@ func (m *Machine) initCPUID(i int) error {
 		}
 	}
 
-	if err := kvm.SetCPUID2(m.vcpuFds[i], &cpuid); err != nil {
+	if err := kvm.SetCPUID2(m.vcpuFds[cpu], &cpuid); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// EnableSingleStep enables single stepping the guest.
+// SingleStep enables single stepping the guest.
 func (m *Machine) SingleStep(onoff bool) error {
-	for i := range m.vcpuFds {
-		if err := kvm.SingleStep(m.vcpuFds[i], onoff); err != nil {
-			return fmt.Errorf("ingle Step %d:%w", i, err)
+	for cpu := range m.vcpuFds {
+		if err := kvm.SingleStep(m.vcpuFds[cpu], onoff); err != nil {
+			return fmt.Errorf("single step %d:%w", cpu, err)
 		}
 	}
 
 	return nil
 }
 
-func (m *Machine) RunInfiniteLoop(i int) error {
+// RunInfiniteLoop runs the guest cpu until there is an error.
+// If the error is ErrExitDebug, this function can be called again.
+func (m *Machine) RunInfiniteLoop(cpu int) error {
 	// https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
 	// - vcpu ioctls: These query and set attributes that control the operation
 	//   of a single virtual cpu.
@@ -652,31 +707,39 @@ func (m *Machine) RunInfiniteLoop(i int) error {
 	defer runtime.UnlockOSThread()
 
 	for {
-		isContinue, err := m.RunOnce(i)
-		if err != nil {
-			return err
+		isContinue, err := m.RunOnce(cpu)
+		if isContinue {
+			if err != nil {
+				fmt.Printf("%v\r\n", err)
+			}
+
+			continue
 		}
 
-		if !isContinue {
-			return nil
+		if err != nil {
+			return err
 		}
 	}
 }
 
-func (m *Machine) RunOnce(i int) (bool, error) {
-	err := kvm.Run(m.vcpuFds[i])
+// RunOnce runs the guest vCPU until it exits.
+func (m *Machine) RunOnce(cpu int) (bool, error) {
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return false, err
+	}
 
-	exit := kvm.ExitType(m.runs[i].ExitReason)
+	_ = kvm.Run(fd)
+	exit := kvm.ExitType(m.runs[cpu].ExitReason)
 
 	switch exit {
 	case kvm.EXITHLT:
-		fmt.Println("KVM_EXIT_HLT")
-
 		return false, err
+
 	case kvm.EXITIO:
-		direction, size, port, count, offset := m.runs[i].IO()
+		direction, size, port, count, offset := m.runs[cpu].IO()
 		f := m.ioportHandlers[port][direction]
-		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[i])) + uintptr(offset))))[0:size]
+		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[cpu])) + uintptr(offset))))[0:size]
 
 		for i := 0; i < int(count); i++ {
 			if err := f(port, bytes); err != nil {
@@ -691,8 +754,10 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 		// When a signal is sent to the thread hosting the VM it will result in EINTR
 		// refs https://gist.github.com/mcastelino/df7e65ade874f6890f618dc51778d83a
 		return true, nil
+	case kvm.EXITDEBUG:
+		return false, kvm.ErrDebug
+
 	case kvm.EXITDCR,
-		kvm.EXITDEBUG,
 		kvm.EXITEXCEPTION,
 		kvm.EXITFAILENTRY,
 		kvm.EXITHYPERCALL,
@@ -709,18 +774,18 @@ func (m *Machine) RunOnce(i int) (bool, error) {
 			return false, err
 		}
 
-		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedEXITReason, exit.String())
+		return false, fmt.Errorf("%w: %s", kvm.ErrUnexpectedExitReason, exit.String())
 	default:
 		if err != nil {
 			return false, err
 		}
 
-		r, _ := m.GetRegs(i)
-		s, _ := m.GetSRegs(i)
+		r, _ := m.GetRegs(cpu)
+		s, _ := m.GetSRegs(cpu)
 		// another coding anti-pattern from golangci-lint.
 		return false, fmt.Errorf("%w: %v: regs:\n%s",
-			kvm.ErrUnexpectedEXITReason,
-			kvm.ExitType(m.runs[i].ExitReason).String(), show("", &s, &r))
+			kvm.ErrUnexpectedExitReason,
+			kvm.ExitType(m.runs[cpu].ExitReason).String(), show("", &s, &r))
 	}
 }
 
@@ -740,7 +805,7 @@ func (m *Machine) initIOPortHandlers() {
 	}
 
 	funcError := func(port uint64, bytes []byte) error {
-		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrUnexpectedEXITReason, port)
+		return fmt.Errorf("%w: unexpected io port 0x%x", kvm.ErrUnexpectedExitReason, port)
 	}
 
 	// 0xCF9 port can get three values for three types of reset:
@@ -760,10 +825,10 @@ func (m *Machine) initIOPortHandlers() {
 	// gokvm a bit more.
 	funcOutbCF9 := func(port uint64, bytes []byte) error {
 		if len(bytes) == 1 && bytes[0] == 0xe {
-			return fmt.Errorf("write 0xe to cf9: %w", ErrorWriteToCF9)
+			return fmt.Errorf("write 0xe to cf9: %w", ErrWriteToCF9)
 		}
 
-		return fmt.Errorf("write %#x to cf9: %w", bytes, ErrorWriteToCF9)
+		return fmt.Errorf("write %#x to cf9: %w", bytes, ErrWriteToCF9)
 	}
 
 	// In ubuntu 20.04 on wsl2, the output to IO port 0x64 continued
@@ -816,6 +881,7 @@ func (m *Machine) initIOPortHandlers() {
 	}
 }
 
+// InjectSerialIRQ injects a serial interrupt.
 func (m *Machine) InjectSerialIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, serialIRQ, 0); err != nil {
 		return err
@@ -828,6 +894,7 @@ func (m *Machine) InjectSerialIRQ() error {
 	return nil
 }
 
+// InjectViortNetIRQ injects a virtio net interrupt.
 func (m *Machine) InjectVirtioNetIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 0); err != nil {
 		return err
@@ -840,6 +907,7 @@ func (m *Machine) InjectVirtioNetIRQ() error {
 	return nil
 }
 
+// InjectViortNetIRQ injects a virtio block interrupt.
 func (m *Machine) InjectVirtioBlkIRQ() error {
 	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 0); err != nil {
 		return err
@@ -857,6 +925,17 @@ func (m *Machine) ReadAt(b []byte, off int64) (int, error) {
 	mem := bytes.NewReader(m.mem)
 
 	return mem.ReadAt(b, off)
+}
+
+// WriteAt implements io.WriteAt for the kvm guest memory.
+func (m *Machine) WriteAt(b []byte, off int64) (int, error) {
+	if off > int64(len(m.mem)) {
+		return 0, syscall.EFBIG
+	}
+
+	n := copy(m.mem[off:], b)
+
+	return n, nil
 }
 
 func showone(indent string, in interface{}) string {
@@ -905,6 +984,8 @@ type Translate struct {
 // It is incredibly helpful for debugging at startup and detecting
 // corrupted page tables.
 // N.B.: on x86 it appears to ignore vcpufd.
+// And, further, it always says the address is valid.
+// I've no idea why.
 func GetTranslate(vcpuFd uintptr, vaddr uint64) (*Translate, error) {
 	var (
 		kvmTranslate = kvm.IIOWR(0x85, 3*8)
@@ -912,8 +993,114 @@ func GetTranslate(vcpuFd uintptr, vaddr uint64) (*Translate, error) {
 	)
 
 	if _, err := kvm.Ioctl(vcpuFd, kvmTranslate, uintptr(unsafe.Pointer(t))); err != nil {
-		return t, err
+		return t, fmt.Errorf("translate %#x:%w", vaddr, err)
 	}
 
 	return t, nil
+}
+
+// CPUToFD translates a CPU number to an fd.
+func (m *Machine) CPUToFD(cpu int) (uintptr, error) {
+	if cpu > len(m.vcpuFds) {
+		return 0, fmt.Errorf("cpu %d out of range 0-%d:%w", cpu, len(m.vcpuFds), ErrBadCPU)
+	}
+
+	return m.vcpuFds[cpu], nil
+}
+
+// VtoP returns the physical address for a vCPU virtual address.
+func (m *Machine) VtoP(cpu int, vaddr uintptr) (int64, error) {
+	fd, err := m.CPUToFD(cpu)
+	if err != nil {
+		return 0, err
+	}
+
+	t, err := GetTranslate(fd, uint64(vaddr))
+	if err != nil {
+		return -1, err
+	}
+
+	// There can exist a valid translation for memory that does not exist.
+	// For now, we call that an error.
+	if t.Valid == 0 || t.PhysicalAddress > uint64(len(m.mem)) {
+		return -1, fmt.Errorf("%#x:valid not set:%w", vaddr, ErrBadVA)
+	}
+
+	return int64(t.PhysicalAddress), nil
+}
+
+// GetReg gets a pointer to a register in kvm.Regs, given
+// a register number from reg. This used to be a comprehensive
+// case, but golangci-lint disliked the cyclomatic complexity
+// So we only show the few registers we support.
+func GetReg(r *kvm.Regs, reg x86asm.Reg) (*uint64, error) {
+	if reg == x86asm.RAX {
+		return &r.RAX, nil
+	}
+
+	if reg == x86asm.RCX {
+		return &r.RCX, nil
+	}
+
+	if reg == x86asm.RDX {
+		return &r.RDX, nil
+	}
+
+	if reg == x86asm.RBX {
+		return &r.RBX, nil
+	}
+
+	if reg == x86asm.RSP {
+		return &r.RSP, nil
+	}
+
+	if reg == x86asm.RBP {
+		return &r.RBP, nil
+	}
+
+	if reg == x86asm.RSI {
+		return &r.RSI, nil
+	}
+
+	if reg == x86asm.RDI {
+		return &r.RDI, nil
+	}
+
+	if reg == x86asm.R8 {
+		return &r.R8, nil
+	}
+
+	if reg == x86asm.R9 {
+		return &r.R9, nil
+	}
+
+	if reg == x86asm.R10 {
+		return &r.R10, nil
+	}
+
+	if reg == x86asm.R11 {
+		return &r.R11, nil
+	}
+
+	if reg == x86asm.R12 {
+		return &r.R12, nil
+	}
+
+	if reg == x86asm.R13 {
+		return &r.R13, nil
+	}
+
+	if reg == x86asm.R14 {
+		return &r.R14, nil
+	}
+
+	if reg == x86asm.R15 {
+		return &r.R15, nil
+	}
+
+	if reg == x86asm.RIP {
+		return &r.RIP, nil
+	}
+
+	return nil, fmt.Errorf("register %v%w", reg, ErrUnsupported)
 }

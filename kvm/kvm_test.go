@@ -259,7 +259,7 @@ func TestAddNum(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = kvm.SetRegs(vcpuFd, kvm.Regs{
+	if err = kvm.SetRegs(vcpuFd, &kvm.Regs{
 		RIP: 0x1000, RAX: 2, RBX: 2, RFLAGS: 0x2, RCX: 0, RDX: 0, RSI: 0,
 		RDI: 0, RSP: 0, RBP: 0, R8: 0, R9: 0, R10: 0, R11: 0, R12: 0,
 		R13: 0, R14: 0, R15: 0,

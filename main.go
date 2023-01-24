@@ -2,18 +2,20 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"sync"
 
 	"github.com/bobuhiro11/gokvm/flag"
+	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/term"
 )
 
 func main() {
-	kvmPath, kernelPath, initrdPath, params, tapIfName, diskPath, nCpus, memSize, err := flag.ParseArgs(os.Args)
+	kvmPath, kernelPath, initrdPath, params, tapIfName, diskPath, nCpus, memSize, trace, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatalf("ParseArgs: %v", err)
 	}
@@ -39,18 +41,40 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	for i := 0; i < nCpus; i++ {
-		fmt.Printf("Start CPU %d of %d\r\n", i, nCpus)
+	if err := m.SingleStep(trace); err != nil {
+		log.Fatalf("Setting trace to %v:%v", trace, err)
+	}
+
+	for cpu := 0; cpu < nCpus; cpu++ {
+		fmt.Printf("Start CPU %d of %d\r\n", cpu, nCpus)
 		wg.Add(1)
 
-		go func(cpuId int) {
-			if err = m.RunInfiniteLoop(cpuId); err != nil {
-				fmt.Printf("%v\n\r", err)
+		go func(cpu int) {
+			for {
+				err = m.RunInfiniteLoop(cpu)
+				if err == nil {
+					continue
+				}
+
+				if !errors.Is(err, kvm.ErrDebug) {
+					break
+				}
+
+				_, r, s, err := m.Inst(cpu)
+				if err != nil {
+					fmt.Printf("disassembling after debug exit:%v", err)
+				} else {
+					fmt.Printf("%#x:%s\r\n", r.RIP, s)
+				}
+
+				if err := m.SingleStep(trace); err != nil {
+					log.Fatalf("Setting trace to %v:%v", trace, err)
+				}
 			}
 
 			wg.Done()
-			fmt.Printf("CPU %d exits\n\r", cpuId)
-		}(i)
+			fmt.Printf("CPU %d exits\n\r", cpu)
+		}(cpu)
 	}
 
 	if !term.IsTerminal() {
@@ -68,6 +92,12 @@ func main() {
 	var before byte = 0
 
 	in := bufio.NewReader(os.Stdin)
+
+	if err := m.SingleStep(trace); err != nil {
+		log.Printf("SingleStep(%v): %v", trace, err)
+
+		return
+	}
 
 	go func() {
 		for {

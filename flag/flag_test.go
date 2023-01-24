@@ -27,9 +27,11 @@ func TestParseArg(t *testing.T) {
 		"disk_path",
 		"-m",
 		"1G",
+		"-T",
+		"true",
 	}
 
-	kvmPath, kernel, initrd, params, tapIfName, disk, nCpus, msize, err := flag.ParseArgs(args)
+	kvmPath, kernel, initrd, params, tapIfName, disk, nCpus, msize, trace, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +66,10 @@ func TestParseArg(t *testing.T) {
 
 	if msize != 1<<30 {
 		t.Errorf("msize: got %#x, want %#x", msize, 1<<30)
+	}
+
+	if !trace {
+		t.Errorf("trace: got %v, want true", trace)
 	}
 }
 
