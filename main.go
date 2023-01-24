@@ -15,7 +15,11 @@ import (
 )
 
 func main() {
-	kvmPath, kernelPath, initrdPath, params, tapIfName, diskPath, nCpus, memSize, trace, err := flag.ParseArgs(os.Args)
+	// This line break is required by golangci-lint but
+	// such breaks are considered an anti-pattern
+	// at Google.
+	kvmPath, kernelPath, initrdPath, params, tapIfName,
+		diskPath, nCpus, memSize, tracecount, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatalf("ParseArgs: %v", err)
 	}
@@ -41,6 +45,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	trace := tracecount > 0
 	if err := m.SingleStep(trace); err != nil {
 		log.Fatalf("Setting trace to %v:%v", trace, err)
 	}
@@ -50,7 +55,10 @@ func main() {
 		wg.Add(1)
 
 		go func(cpu int) {
-			for {
+			// Consider ANOTHER option, maxInsCount, which would
+			// exit this loop after a certain number of instructions
+			// were run.
+			for tc := 0; ; tc++ {
 				err = m.RunInfiniteLoop(cpu)
 				if err == nil {
 					continue
@@ -60,15 +68,19 @@ func main() {
 					break
 				}
 
+				if err := m.SingleStep(trace); err != nil {
+					log.Fatalf("Setting trace to %v:%v", trace, err)
+				}
+
+				if tc%tracecount != 0 {
+					continue
+				}
+
 				_, r, s, err := m.Inst(cpu)
 				if err != nil {
 					fmt.Printf("disassembling after debug exit:%v", err)
 				} else {
 					fmt.Printf("%#x:%s\r\n", r.RIP, s)
-				}
-
-				if err := m.SingleStep(trace); err != nil {
-					log.Fatalf("Setting trace to %v:%v", trace, err)
 				}
 			}
 
