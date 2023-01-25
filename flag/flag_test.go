@@ -31,45 +31,45 @@ func TestParseArg(t *testing.T) {
 		"1M",
 	}
 
-	kvmPath, kernel, initrd, params, tapIfName, disk, nCpus, msize, tc, err := flag.ParseArgs(args)
+	c, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if kvmPath != "/dev/kvm" {
+	if c.Dev != "/dev/kvm" {
 		t.Error("invalid kvm  path")
 	}
 
-	if kernel != "kernel_path" {
+	if c.Kernel != "kernel_path" {
 		t.Error("invalid kernel image path")
 	}
 
-	if initrd != "initrd_path" {
+	if c.Initrd != "initrd_path" {
 		t.Error("invalid initrd path")
 	}
 
-	if params != "params" {
+	if c.Params != "params" {
 		t.Error("invalid kernel command-line parameters")
 	}
 
-	if tapIfName != "tap_if_name" {
+	if c.TapIfName != "tap_if_name" {
 		t.Error("invalid name of tap interface")
 	}
 
-	if disk != "disk_path" {
-		t.Errorf("invalid path of disk file: got %v, want %v", disk, "disk_path")
+	if c.Disk != "disk_path" {
+		t.Errorf("invalid path of disk file: got %v, want %v", c.Disk, "disk_path")
 	}
 
-	if nCpus != 2 {
+	if c.NCPUs != 2 {
 		t.Error("invalid number of vcpus")
 	}
 
-	if msize != 1<<30 {
-		t.Errorf("msize: got %#x, want %#x", msize, 1<<30)
+	if c.MemSize != 1<<30 {
+		t.Errorf("msize: got %#x, want %#x", c.MemSize, 1<<30)
 	}
 
-	if tc != 1<<20 {
-		t.Errorf("trace: got %#x, want %#x", tc, 1<<20)
+	if c.TraceCount != 1<<20 {
+		t.Errorf("trace: got %#x, want %#x", c.TraceCount, 1<<20)
 	}
 }
 
