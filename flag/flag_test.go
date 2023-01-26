@@ -28,10 +28,10 @@ func TestParseArg(t *testing.T) {
 		"-m",
 		"1G",
 		"-T",
-		"true",
+		"1M",
 	}
 
-	kvmPath, kernel, initrd, params, tapIfName, disk, nCpus, msize, trace, err := flag.ParseArgs(args)
+	kvmPath, kernel, initrd, params, tapIfName, disk, nCpus, msize, tc, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,14 +68,15 @@ func TestParseArg(t *testing.T) {
 		t.Errorf("msize: got %#x, want %#x", msize, 1<<30)
 	}
 
-	if !trace {
-		t.Errorf("trace: got %v, want true", trace)
+	if tc != 1<<20 {
+		t.Errorf("trace: got %#x, want %#x", tc, 1<<20)
 	}
 }
 
-func TestParseMemsize(t *testing.T) { // nolint:paralleltest
+func TestParsesize(t *testing.T) { // nolint:paralleltest
 	for _, tt := range []struct {
 		name string
+		unit string
 		m    string
 		amt  int
 		err  error
@@ -87,12 +88,14 @@ func TestParseMemsize(t *testing.T) { // nolint:paralleltest
 		{name: "1m", m: "1m", amt: 1 << 20, err: nil},
 		{name: "1K", m: "1K", amt: 1 << 10, err: nil},
 		{name: "1k", m: "1k", amt: 1 << 10, err: nil},
+		{name: "1 with unit k", m: "1", unit: "k", amt: 1 << 10, err: nil},
+		{name: "1 with unit \"\"", m: "1", unit: "", amt: 1, err: nil},
 		{name: "8192m", m: "8192m", amt: 8192 << 20, err: nil},
 		{name: "bogusgarbage", m: "123411;3413234134", amt: -1, err: strconv.ErrSyntax},
 		{name: "bogusgarbagemsuffix", m: "123411;3413234134m", amt: -1, err: strconv.ErrSyntax},
 		{name: "bogustoobig", m: "0xfffffffffffffffffffffff", amt: -1, err: strconv.ErrRange},
 	} {
-		amt, err := flag.ParseMemSize(tt.m)
+		amt, err := flag.ParseSize(tt.m, tt.unit)
 		if !errors.Is(err, tt.err) || amt != tt.amt {
 			t.Errorf("%s:parseMemSize(%s): got (%d, %v), want (%d, %v)", tt.name, tt.m, amt, err, tt.amt, tt.err)
 		}

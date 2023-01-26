@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-func ParseMemSize(s string) (int, error) {
+// ParseSize parses a size string as number[gGmMkK]. The multiplier is optional,
+// and if not set, the unit passed in is used. The number can be any base and
+// size.
+func ParseSize(s, unit string) (int, error) {
 	sz := strings.TrimRight(s, "gGmMkK")
 	if len(sz) == 0 {
 		return -1, fmt.Errorf("%q:can't parse as num[gGmMkK]:%w", s, strconv.ErrSyntax)
@@ -18,17 +21,19 @@ func ParseMemSize(s string) (int, error) {
 		return -1, err
 	}
 
-	if len(sz) == len(s) {
-		return int(amt) << 30, nil
+	if len(s) > len(sz) {
+		unit = s[len(sz):]
 	}
 
-	switch s[len(sz):] {
+	switch unit {
 	case "G", "g":
 		return int(amt) << 30, nil
 	case "M", "m":
 		return int(amt) << 20, nil
 	case "K", "k":
 		return int(amt) << 10, nil
+	case "":
+		return int(amt), nil
 	}
 
 	return -1, fmt.Errorf("can not parse %q as num[gGmMkK]:%w", s, strconv.ErrSyntax)
@@ -38,8 +43,7 @@ func ParseMemSize(s string) (int, error) {
 // device, kernel, initrd, bootparams, tapIfName, disk, memSize, and nCpus.
 // another coding anti-pattern from golangci-lint.
 func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
-	tapIfName, disk string, nCpus, memSize int,
-	trace bool,
+	tapIfName, disk string, nCpus, memSize, traceCount int,
 	err error,
 ) {
 	flag.StringVar(&kvmPath, "D", "/dev/kvm", "path of kvm device")
@@ -53,11 +57,10 @@ func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
 	flag.StringVar(&tapIfName, "t", "tap", "name of tap interface")
 	flag.StringVar(&disk, "d", "/dev/zero", "path of disk file (for /dev/vda)")
 
-	flag.BoolVar(&trace, "T", false, "single-step process and print each step")
-
 	flag.IntVar(&nCpus, "c", 1, "number of cpus")
 
 	msize := flag.String("m", "1G", "memory size: as number[gGmM], optional units, defaults to G")
+	tc := flag.String("T", "0", "how many instructions to skip between trace prints -- 0 means tracing disabled")
 
 	flag.Parse()
 
@@ -65,7 +68,11 @@ func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
 		return
 	}
 
-	if memSize, err = ParseMemSize(*msize); err != nil {
+	if memSize, err = ParseSize(*msize, "g"); err != nil {
+		return
+	}
+
+	if traceCount, err = ParseSize(*tc, ""); err != nil {
 		return
 	}
 
@@ -73,6 +80,8 @@ func ParseArgs(args []string) (kvmPath, kernel, initrd, params,
 	// getting things in the wrong order. But, in fact, there are
 	// too many returns to this function, I think it needs
 	// a config struct.
+	// And, weirdly, it accepts the naked return on all previous return
+	// statements. Go figure.
 	return kvmPath, kernel, initrd, params,
-		tapIfName, disk, nCpus, memSize, trace, nil
+		tapIfName, disk, nCpus, memSize, traceCount, nil
 }
