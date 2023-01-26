@@ -18,40 +18,39 @@ func main() {
 	// This line break is required by golangci-lint but
 	// such breaks are considered an anti-pattern
 	// at Google.
-	kvmPath, kernelPath, initrdPath, params, tapIfName,
-		diskPath, nCpus, memSize, tracecount, err := flag.ParseArgs(os.Args)
+	c, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatalf("ParseArgs: %v", err)
 	}
 
-	m, err := machine.New(kvmPath, nCpus, tapIfName, diskPath, memSize)
+	m, err := machine.New(c.Dev, c.NCPUs, c.TapIfName, c.Disk, c.MemSize)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
-	kern, err := os.Open(kernelPath)
+	kern, err := os.Open(c.Kernel)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	initrd, err := os.Open(initrdPath)
+	initrd, err := os.Open(c.Initrd)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := m.LoadLinux(kern, initrd, params); err != nil {
+	if err := m.LoadLinux(kern, initrd, c.Params); err != nil {
 		log.Fatalf("%v", err)
 	}
 
 	var wg sync.WaitGroup
 
-	trace := tracecount > 0
+	trace := c.TraceCount > 0
 	if err := m.SingleStep(trace); err != nil {
 		log.Fatalf("Setting trace to %v:%v", trace, err)
 	}
 
-	for cpu := 0; cpu < nCpus; cpu++ {
-		fmt.Printf("Start CPU %d of %d\r\n", cpu, nCpus)
+	for cpu := 0; cpu < c.NCPUs; cpu++ {
+		fmt.Printf("Start CPU %d of %d\r\n", cpu, c.NCPUs)
 		wg.Add(1)
 
 		go func(cpu int) {
@@ -72,7 +71,7 @@ func main() {
 					log.Fatalf("Setting trace to %v:%v", trace, err)
 				}
 
-				if tc%tracecount != 0 {
+				if tc%c.TraceCount != 0 {
 					continue
 				}
 
