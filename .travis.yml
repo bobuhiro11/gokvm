@@ -28,6 +28,7 @@ before_script:
   - sudo -E env "PATH=$PATH" make golangci-lint initrd vda.img
   - sudo -E env "PATH=$PATH" make -j $(nproc) bzImage
 script:
+  - sudo -E env "PATH=$PATH" go mod tidy && git diff --no-patch --exit-code go.sum
   - sudo -E env "PATH=$PATH" make gokvm
   - sudo -E env "PATH=$PATH" make test
 after_script:
