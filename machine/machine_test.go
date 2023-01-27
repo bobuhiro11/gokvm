@@ -26,7 +26,7 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap string) { // nolint:thelper
 
 	param := `console=ttyS0 earlyprintk=serial noapic noacpi notsc ` +
 		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 ` +
-		`rdinit=/init init=/init`
+		`rdinit=/init init=/init gokvm.ipv4_addr=192.168.20.1/24`
 
 	kern, err := os.Open(kernel)
 	if err != nil {
