@@ -106,7 +106,9 @@ func TestNewAndLoadLinuxWithVmlinux(t *testing.T) { // nolint:paralleltest
 }
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
-func TestHalt(t *testing.T) { // nolint:paralleltest
+func TestHalt(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -176,7 +178,9 @@ func TestHalt(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
+func TestReadWriteAt(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -216,7 +220,9 @@ func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
+func TestSingleStepOffOn(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -235,7 +241,9 @@ func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
+func TestSetupGetSetRegs(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -288,7 +296,9 @@ func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
 	t.Logf("r.RIP %#x", r.RIP)
 }
 
-func TestSingleStep(t *testing.T) { // nolint:paralleltest
+func TestSingleStep(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -363,7 +373,9 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestTranslate32(t *testing.T) { // nolint:paralleltest
+func TestTranslate32(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -420,7 +432,9 @@ func TestTranslate32(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestCPUtoFD(t *testing.T) { // nolint:paralleltest
+func TestCPUtoFD(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -435,7 +449,9 @@ func TestCPUtoFD(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestVtoP(t *testing.T) { // nolint:paralleltest
+func TestVtoP(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -458,7 +474,9 @@ func TestVtoP(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestMemTooSmall(t *testing.T) { // nolint:paralleltest
+func TestMemTooSmall(t *testing.T) {
+	t.Parallel()
+
 	if _, err := machine.New("/dev/kvm", 1, "", "", 1<<16); !errors.Is(err, machine.ErrMemTooSmall) {
 		t.Fatalf(`machine.New("/dev/kvm", 1, "", "", 1<<16): got nil, want %v`, machine.ErrMemTooSmall)
 	}
