@@ -14,12 +14,12 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
-func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
+func testNewAndLoadLinux(t *testing.T, kernel, tap string) { // nolint:thelper
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	m, err := machine.New("/dev/kvm", 1, "tap", "../vda.img", 1<<29)
+	m, err := machine.New("/dev/kvm", 1, tap, "../vda.img", 1<<29)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 ` +
 		`rdinit=/init init=/init`
 
-	kern, err := os.Open("../bzImage")
+	kern, err := os.Open(kernel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,11 +56,14 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		}
 	}()
 
-	if err := exec.Command("ip", "link", "set", "tap", "up").Run(); err != nil {
+	if err := exec.Command("ip", "link", "set", tap, "up").Run(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := exec.Command("ip", "addr", "add", "192.168.20.2/24", "dev", "tap").Run(); err != nil {
+	// To run tests in parallel, IP addresses must be unique for each test case.
+	// To do so, it is necessary to control the IP address of the guest,
+	// e.g. via the Linux boot parameter.
+	if err := exec.Command("ip", "addr", "add", "192.168.20.2/24", "dev", tap).Run(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,6 +87,22 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 	if string(output) != "index.html: this message is from /dev/vda in guest\n" {
 		t.Fatal(string(output))
 	}
+
+	if err := exec.Command("ip", "addr", "del", "192.168.20.2/24", "dev", tap).Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := exec.Command("ip", "link", "set", tap, "down").Run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNewAndLoadLinuxWithBzImage(t *testing.T) { // nolint:paralleltest
+	testNewAndLoadLinux(t, "../bzImage", "tap0")
+}
+
+func TestNewAndLoadLinuxWithVmlinux(t *testing.T) { // nolint:paralleltest
+	testNewAndLoadLinux(t, "../vmlinux", "tap1")
 }
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
