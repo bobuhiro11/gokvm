@@ -66,7 +66,7 @@ const (
 
 	pageTableBase = 0x30_000
 
-	MinMemSize = 1 << 20
+	MinMemSize = 1 << 25
 )
 
 const (
