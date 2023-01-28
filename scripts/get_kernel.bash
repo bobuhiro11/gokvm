@@ -30,7 +30,7 @@ if [ $? -ne 0 ]; then
 
   tar Jxf ./linux.tar.xz --one-top-level=_linux --strip-components 1
   cp linux.config _linux/.config
-  make -C _linux
+  make -j$(nproc) -C _linux
   cp _linux/arch/x86/boot/bzImage .
 fi
 
