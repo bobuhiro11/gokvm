@@ -1,6 +1,5 @@
 GOLANGCI_LINT_VERSION = v1.46.0
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
-GUEST_IPV4_ADDR = 192.168.20.1/24
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)
 	$(MAKE) generate
@@ -24,7 +23,6 @@ vda.img:
 # GOPATH needs to be set.
 # Something weird here: if I use $SHELL in this it expands to /bin/sh *in this makefile*, but not outside. WTF?
 initrd:
-	sed -i -e 's|{{ GUEST_IPV4_ADDR }}|$(GUEST_IPV4_ADDR)|g' .bashrc
 	(cd $(GOPATH)/src/github.com/u-root/u-root && \
 			u-root \
 			-defaultsh `which bash` \
@@ -38,6 +36,9 @@ initrd:
 			-files `which nohup` \
 			-files `which clear` \
 			-files `which tic` \
+			-files `which awk` \
+			-files `which grep` \
+			-files `which cut` \
 			-files "/usr/share/terminfo/l/linux-c:/usr/share/terminfo/l/linux" \
 			-files "/usr/share/misc/pci.ids" \
 			-files "$(PWD)/.bashrc:.bashrc" \

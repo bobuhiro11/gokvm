@@ -3,6 +3,7 @@ package machine_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -14,21 +15,21 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
-func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
+func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixLen string) { // nolint:thelper
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	m, err := machine.New("/dev/kvm", 1, "tap", "../vda.img", 1<<29)
+	m, err := machine.New("/dev/kvm", 1, tap, "../vda.img", 1<<29)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	param := `console=ttyS0 earlyprintk=serial noapic noacpi notsc ` +
-		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 ` +
-		`rdinit=/init init=/init`
+	param := fmt.Sprintf(`console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
+		`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 `+
+		`rdinit=/init init=/init gokvm.ipv4_addr=%s/%s`, guestIPv4, prefixLen)
 
-	kern, err := os.Open("../bzImage")
+	kern, err := os.Open(kernel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,25 +57,25 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 		}
 	}()
 
-	if err := exec.Command("ip", "link", "set", "tap", "up").Run(); err != nil {
+	if err := exec.Command("ip", "link", "set", tap, "up").Run(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := exec.Command("ip", "addr", "add", "192.168.20.2/24", "dev", "tap").Run(); err != nil {
+	if err := exec.Command("ip", "addr", "add", hostIPv4+"/"+prefixLen, "dev", tap).Run(); err != nil { //nolint:gosec
 		t.Fatal(err)
 	}
 
 	time.Sleep(15 * time.Second)
 
-	output, err := exec.Command("ping", "192.168.20.1", "-c", "3", "-i", "0.1").Output()
+	output, err := exec.Command("ping", guestIPv4, "-c", "3", "-i", "0.1").Output()
 	t.Logf("ping output: %s\n", output)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L",
-		"192.168.20.1/mnt/dev_vda/index.html").Output()
+	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L", //nolint:gosec
+		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4)).Output()
 	t.Logf("curl output: %s\n", output)
 
 	if err != nil {
@@ -86,9 +87,19 @@ func TestNewAndLoadLinux(t *testing.T) { // nolint:paralleltest
 	}
 }
 
+func TestNewAndLoadLinuxWithBzImage(t *testing.T) { // nolint:paralleltest
+	testNewAndLoadLinux(t, "../bzImage", "tap0", "192.168.20.1", "192.168.20.2", "24")
+}
+
+func TestNewAndLoadLinuxWithVmlinux(t *testing.T) { // nolint:paralleltest
+	testNewAndLoadLinux(t, "../vmlinux", "tap1", "192.168.30.1", "192.168.30.2", "24")
+}
+
 // TestHalt tries to run a Halt instruction in 64-bit mode.
-func TestHalt(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestHalt(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -157,8 +168,10 @@ func TestHalt(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestReadWriteAt(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -197,8 +210,10 @@ func TestReadWriteAt(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestSingleStepOffOn(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -216,8 +231,10 @@ func TestSingleStepOffOn(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestSetupGetSetRegs(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -269,8 +286,10 @@ func TestSetupGetSetRegs(t *testing.T) { // nolint:paralleltest
 	t.Logf("r.RIP %#x", r.RIP)
 }
 
-func TestSingleStep(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestSingleStep(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -344,8 +363,10 @@ func TestSingleStep(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestTranslate32(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestTranslate32(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -401,8 +422,10 @@ func TestTranslate32(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestCPUtoFD(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+func TestCPUtoFD(t *testing.T) {
+	t.Parallel()
+
+	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}
@@ -416,7 +439,9 @@ func TestCPUtoFD(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestVtoP(t *testing.T) { // nolint:paralleltest
+func TestVtoP(t *testing.T) {
+	t.Parallel()
+
 	m, err := machine.New("/dev/kvm", 1, "", "", machine.MinMemSize)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
@@ -439,7 +464,9 @@ func TestVtoP(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestMemTooSmall(t *testing.T) { // nolint:paralleltest
+func TestMemTooSmall(t *testing.T) {
+	t.Parallel()
+
 	if _, err := machine.New("/dev/kvm", 1, "", "", 1<<16); !errors.Is(err, machine.ErrMemTooSmall) {
 		t.Fatalf(`machine.New("/dev/kvm", 1, "", "", 1<<16): got nil, want %v`, machine.ErrMemTooSmall)
 	}

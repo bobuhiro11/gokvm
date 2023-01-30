@@ -63,7 +63,8 @@ func ParseArgs(args []string) (*Config, error) {
 	flag.StringVar(&c.Params, "p", `console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
 		`debug apic=debug show_lapic=all mitigations=off lapic tsc_early_khz=2000 `+
 		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" pci=realloc=off `+
-		`virtio_pci.force_legacy=1 rdinit=/init init=/init`, "kernel command-line parameters")
+		`virtio_pci.force_legacy=1 rdinit=/init init=/init `+
+		`gokvm.ipv4_addr=192.168.20.1/24`, "kernel command-line parameters")
 	flag.StringVar(&c.TapIfName, "t", "tap", "name of tap interface")
 	flag.StringVar(&c.Disk, "d", "/dev/zero", "path of disk file (for /dev/vda)")
 
