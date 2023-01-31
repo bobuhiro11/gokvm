@@ -115,19 +115,6 @@ func (r *UserspaceMemoryRegion) SetMemReadonly() {
 	r.Flags |= 1 << 1
 }
 
-// Ioctl is a convenience function to call ioctl.
-// Its main purpose is to format arguments
-// and return values to make things easier for
-// programmers.
-func Ioctl(fd, op, arg uintptr) (uintptr, error) {
-	res, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, op, arg)
-	if errno != 0 {
-		return res, errno
-	}
-
-	return res, nil
-}
-
 // GetAPIVersion gets the qemu API version, which changes rarely if at all.
 func GetAPIVersion(kvmFd uintptr) (uintptr, error) {
 	return Ioctl(kvmFd, uintptr(kvmGetAPIVersion), uintptr(0))

@@ -1,6 +1,21 @@
 // constants for creating ioctl commands.
 package kvm
 
+import "syscall"
+
+// Ioctl is a convenience function to call ioctl.
+// Its main purpose is to format arguments
+// and return values to make things easier for
+// programmers.
+func Ioctl(fd, op, arg uintptr) (uintptr, error) {
+	res, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, op, arg)
+	if errno != 0 {
+		return res, errno
+	}
+
+	return res, nil
+}
+
 const (
 	nrbits   = 8
 	typebits = 8
