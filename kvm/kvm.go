@@ -3,7 +3,6 @@ package kvm
 import (
 	"errors"
 	"syscall"
-	"unsafe"
 )
 
 const (
@@ -132,45 +131,4 @@ func Run(vcpuFd uintptr) error {
 // over time.
 func GetVCPUMMmapSize(kvmFd uintptr) (uintptr, error) {
 	return Ioctl(kvmFd, uintptr(kvmGetVCPUMMapSize), uintptr(0))
-}
-
-// IRQLevel defines an IRQ as Level? Not sure.
-type IRQLevel struct {
-	IRQ   uint32
-	Level uint32
-}
-
-// IRQLines sets the interrupt line for an IRQ.
-func IRQLine(vmFd uintptr, irq, level uint32) error {
-	irqLevel := IRQLevel{
-		IRQ:   irq,
-		Level: level,
-	}
-
-	_, err := Ioctl(vmFd, kvmIRQLine, uintptr(unsafe.Pointer(&irqLevel)))
-
-	return err
-}
-
-// CreateIRQChip creates an IRQ device (chip) to which to attach interrupts?
-func CreateIRQChip(vmFd uintptr) error {
-	_, err := Ioctl(vmFd, kvmCreateIRQChip, 0)
-
-	return err
-}
-
-// PitConfig defines properties of a programmable interrupt timer.
-type PitConfig struct {
-	Flags uint32
-	_     [15]uint32
-}
-
-// CreatePIT2 creates a PIT type 2. Just having one was not enough.
-func CreatePIT2(vmFd uintptr) error {
-	pit := PitConfig{
-		Flags: 0,
-	}
-	_, err := Ioctl(vmFd, kvmCreatePIT2, uintptr(unsafe.Pointer(&pit)))
-
-	return err
 }
