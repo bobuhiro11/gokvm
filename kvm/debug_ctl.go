@@ -3,7 +3,7 @@ package kvm
 import "unsafe"
 
 // debugControl controls guest debug.
-type debugControl struct {
+type debugControl struct { // nolint:unused
 	Control  uint32
 	_        uint32
 	DebugReg [8]uint64
