@@ -8,6 +8,7 @@ import (
 const (
 	kvmGetAPIVersion     = 0x00
 	kvmCreateVM          = 0x1
+	kvmCheckExtension    = 0x03
 	kvmGetVCPUMMapSize   = 0x04
 	kvmGetSupportedCPUID = 0x05
 

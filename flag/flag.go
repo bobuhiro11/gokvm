@@ -10,6 +10,7 @@ import (
 // Config defines the configuration of the
 // virtual machine, as determined by flags.
 type Config struct {
+	Debug      bool
 	Dev        string
 	Kernel     string
 	Initrd     string
@@ -56,6 +57,7 @@ func ParseSize(s, unit string) (int, error) {
 // ParseArgs calls flag.Parse and a *Config or error.
 func ParseArgs(args []string) (*Config, error) {
 	c := &Config{}
+	flag.BoolVar(&c.Debug, "debug", false, "This flag provides a list of KVM capabilities and nothing more")
 	flag.StringVar(&c.Dev, "D", "/dev/kvm", "path of kvm device")
 	flag.StringVar(&c.Kernel, "k", "./bzImage", "kernel image path")
 	flag.StringVar(&c.Initrd, "i", "./initrd", "initrd path")
