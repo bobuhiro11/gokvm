@@ -854,11 +854,11 @@ func (m *Machine) initIOPortHandlers() {
 
 // InjectSerialIRQ injects a serial interrupt.
 func (m *Machine) InjectSerialIRQ() error {
-	if err := kvm.IRQLine(m.vmFd, serialIRQ, 0); err != nil {
+	if err := kvm.IRQLineStatus(m.vmFd, serialIRQ, 0); err != nil {
 		return err
 	}
 
-	if err := kvm.IRQLine(m.vmFd, serialIRQ, 1); err != nil {
+	if err := kvm.IRQLineStatus(m.vmFd, serialIRQ, 1); err != nil {
 		return err
 	}
 
@@ -867,11 +867,11 @@ func (m *Machine) InjectSerialIRQ() error {
 
 // InjectViortNetIRQ injects a virtio net interrupt.
 func (m *Machine) InjectVirtioNetIRQ() error {
-	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 0); err != nil {
+	if err := kvm.IRQLineStatus(m.vmFd, virtioNetIRQ, 0); err != nil {
 		return err
 	}
 
-	if err := kvm.IRQLine(m.vmFd, virtioNetIRQ, 1); err != nil {
+	if err := kvm.IRQLineStatus(m.vmFd, virtioNetIRQ, 1); err != nil {
 		return err
 	}
 
@@ -880,11 +880,11 @@ func (m *Machine) InjectVirtioNetIRQ() error {
 
 // InjectViortNetIRQ injects a virtio block interrupt.
 func (m *Machine) InjectVirtioBlkIRQ() error {
-	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 0); err != nil {
+	if err := kvm.IRQLineStatus(m.vmFd, virtioBlkIRQ, 0); err != nil {
 		return err
 	}
 
-	if err := kvm.IRQLine(m.vmFd, virtioBlkIRQ, 1); err != nil {
+	if err := kvm.IRQLineStatus(m.vmFd, virtioBlkIRQ, 1); err != nil {
 		return err
 	}
 

@@ -1,6 +1,8 @@
 package kvm
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 // irqLevel defines an IRQ as Level? Not sure.
 type irqLevel struct {
@@ -9,20 +11,21 @@ type irqLevel struct {
 }
 
 // IRQLines sets the interrupt line for an IRQ.
-func IRQLine(vmFd uintptr, irq, level uint32) error {
+func IRQLineStatus(vmFd uintptr, irq, level uint32) error {
 	irqLev := irqLevel{
 		IRQ:   irq,
 		Level: level,
 	}
-
-	_, err := Ioctl(vmFd, kvmIRQLine, uintptr(unsafe.Pointer(&irqLev)))
+	_, err := Ioctl(vmFd,
+		IIOWR(kvmIRQLineStatus, unsafe.Sizeof(irqLevel{})),
+		uintptr(unsafe.Pointer(&irqLev)))
 
 	return err
 }
 
 // CreateIRQChip creates an IRQ device (chip) to which to attach interrupts?
 func CreateIRQChip(vmFd uintptr) error {
-	_, err := Ioctl(vmFd, kvmCreateIRQChip, 0)
+	_, err := Ioctl(vmFd, IIO(kvmCreateIRQChip), 0)
 
 	return err
 }
@@ -38,7 +41,9 @@ func CreatePIT2(vmFd uintptr) error {
 	pit := pitConfig{
 		Flags: 0,
 	}
-	_, err := Ioctl(vmFd, kvmCreatePIT2, uintptr(unsafe.Pointer(&pit)))
+	_, err := Ioctl(vmFd,
+		IIOW(kvmCreatePIT2, unsafe.Sizeof(pitConfig{})),
+		uintptr(unsafe.Pointer(&pit)))
 
 	return err
 }
