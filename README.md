@@ -45,6 +45,7 @@ Thanks to the many useful resources on KVM, this project was able to boot Linux 
 - [kvmtest.c, lwn.net](https://lwn.net/Articles/658512/)
 - [KVM tool](https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/about/)
 - [kvm-hello-world](https://github.com/dpw/kvm-hello-world)
+- [linux kvm-api: types,structures, consts](https://github.com/torvalds/linux/blob/master/include/uapi/linux/kvm.h)
 - [aghosn/kvm.go](https://gist.github.com/aghosn/f72c8e8f53bf99c3c4117f49677ab0b9)
 - [KVM HOST IN A FEW LINES OF CODE](https://zserge.com/posts/kvm/)
 - [zserge/kvm-host.c](https://gist.github.com/zserge/ae9098a75b2b83a1299d19b79b5fe488)
