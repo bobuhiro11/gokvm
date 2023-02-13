@@ -24,14 +24,15 @@ func (r *UserspaceMemoryRegion) SetMemReadonly() {
 
 // SetUserMemoryRegion adds a memory region to a vm -- not a vcpu, a vm.
 func SetUserMemoryRegion(vmFd uintptr, region *UserspaceMemoryRegion) error {
-	_, err := Ioctl(vmFd, uintptr(kvmSetUserMemoryRegion), uintptr(unsafe.Pointer(region)))
+	_, err := Ioctl(vmFd, IIOW(kvmSetUserMemoryRegion, unsafe.Sizeof(UserspaceMemoryRegion{})),
+		uintptr(unsafe.Pointer(region)))
 
 	return err
 }
 
 // SetTSSAddr sets the Task Segment Selector for a vm.
 func SetTSSAddr(vmFd uintptr) error {
-	_, err := Ioctl(vmFd, kvmSetTSSAddr, 0xffffd000)
+	_, err := Ioctl(vmFd, IIO(kvmSetTSSAddr), 0xffffd000)
 
 	return err
 }
@@ -39,7 +40,7 @@ func SetTSSAddr(vmFd uintptr) error {
 // SetIdentityMapAddr sets the address of a 4k-sized-page for a vm.
 func SetIdentityMapAddr(vmFd uintptr) error {
 	var mapAddr uint64 = 0xffffc000
-	_, err := Ioctl(vmFd, kvmSetIdentityMapAddr, uintptr(unsafe.Pointer(&mapAddr)))
+	_, err := Ioctl(vmFd, IIOW(kvmSetIdentityMapAddr, 8), uintptr(unsafe.Pointer(&mapAddr)))
 
 	return err
 }

@@ -1,6 +1,8 @@
 package kvm
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 // CPUID is the set of CPUID entries returned by GetCPUID.
 type CPUID struct {
@@ -24,7 +26,9 @@ type CPUIDEntry2 struct {
 
 // GetSupportedCPUID gets all supported CPUID entries for a vm.
 func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
-	_, err := Ioctl(kvmFd, kvmGetSupportedCPUID, uintptr(unsafe.Pointer(kvmCPUID)))
+	_, err := Ioctl(kvmFd,
+		IIOWR(kvmGetSupportedCPUID, unsafe.Sizeof(kvmCPUID)),
+		uintptr(unsafe.Pointer(kvmCPUID)))
 
 	return err
 }
@@ -34,7 +38,9 @@ func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
 // individual vCPUs. This seems odd, but in fact lets code tailor CPUID entries
 // as needed.
 func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
-	_, err := Ioctl(vcpuFd, kvmSetCPUID2, uintptr(unsafe.Pointer(kvmCPUID)))
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetCPUID2, unsafe.Sizeof(kvmCPUID)),
+		uintptr(unsafe.Pointer(kvmCPUID)))
 
 	return err
 }

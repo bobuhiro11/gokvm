@@ -28,14 +28,14 @@ type Regs struct {
 // GetRegs gets the general purpose registers for a vcpu.
 func GetRegs(vcpuFd uintptr) (*Regs, error) {
 	regs := &Regs{}
-	_, err := Ioctl(vcpuFd, uintptr(kvmGetRegs), uintptr(unsafe.Pointer(regs)))
+	_, err := Ioctl(vcpuFd, IIOR(kvmGetRegs, unsafe.Sizeof(Regs{})), uintptr(unsafe.Pointer(regs)))
 
 	return regs, err
 }
 
 // SetRegs sets the general purpose registers for a vcpu.
 func SetRegs(vcpuFd uintptr, regs *Regs) error {
-	_, err := Ioctl(vcpuFd, uintptr(kvmSetRegs), uintptr(unsafe.Pointer(regs)))
+	_, err := Ioctl(vcpuFd, IIOW(kvmSetRegs, unsafe.Sizeof(Regs{})), uintptr(unsafe.Pointer(regs)))
 
 	return err
 }
@@ -65,14 +65,14 @@ type Sregs struct {
 // GetSRegs gets the special registers for a vcpu.
 func GetSregs(vcpuFd uintptr) (*Sregs, error) {
 	sregs := &Sregs{}
-	_, err := Ioctl(vcpuFd, uintptr(kvmGetSregs), uintptr(unsafe.Pointer(sregs)))
+	_, err := Ioctl(vcpuFd, IIOR(kvmGetSregs, unsafe.Sizeof(Sregs{})), uintptr(unsafe.Pointer(sregs)))
 
 	return sregs, err
 }
 
 // SetSRegs sets the special registers for a vcpu.
 func SetSregs(vcpuFd uintptr, sregs *Sregs) error {
-	_, err := Ioctl(vcpuFd, uintptr(kvmSetSregs), uintptr(unsafe.Pointer(sregs)))
+	_, err := Ioctl(vcpuFd, IIOW(kvmSetSregs, unsafe.Sizeof(Sregs{})), uintptr(unsafe.Pointer(sregs)))
 
 	return err
 }

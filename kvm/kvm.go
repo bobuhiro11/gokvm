@@ -6,23 +6,27 @@ import (
 )
 
 const (
-	kvmGetAPIVersion       = 44544
-	kvmCreateVM            = 44545
-	kvmCreateVCPU          = 44609
-	kvmRun                 = 44672
-	kvmGetVCPUMMapSize     = 44548
-	kvmGetSregs            = 0x8138ae83
-	kvmSetSregs            = 0x4138ae84
-	kvmGetRegs             = 0x8090ae81
-	kvmSetRegs             = 0x4090ae82
-	kvmSetUserMemoryRegion = 1075883590
-	kvmSetTSSAddr          = 0xae47
-	kvmSetIdentityMapAddr  = 0x4008AE48
-	kvmCreateIRQChip       = 0xAE60
-	kvmCreatePIT2          = 0x4040AE77
-	kvmGetSupportedCPUID   = 0xC008AE05
-	kvmSetCPUID2           = 0x4008AE90
-	kvmIRQLine             = 0xc008ae67
+	kvmGetAPIVersion     = 0x00
+	kvmCreateVM          = 0x1
+	kvmGetVCPUMMapSize   = 0x04
+	kvmGetSupportedCPUID = 0x05
+
+	kvmCreateVCPU          = 0x41
+	kvmSetUserMemoryRegion = 0x46
+	kvmSetTSSAddr          = 0x47
+	kvmSetIdentityMapAddr  = 0x48
+
+	kvmCreateIRQChip = 0x60
+	kvmIRQLineStatus = 0x67
+	kvmCreatePIT2    = 0x77
+
+	kvmRun      = 0x80
+	kvmGetRegs  = 0x81
+	kvmSetRegs  = 0x82
+	kvmGetSregs = 0x83
+	kvmSetSregs = 0x84
+
+	kvmSetCPUID2 = 0x90
 )
 
 // ExitType is a virtual machine exit type.
@@ -96,12 +100,12 @@ func (r *RunData) IO() (uint64, uint64, uint64, uint64, uint64) {
 
 // GetAPIVersion gets the qemu API version, which changes rarely if at all.
 func GetAPIVersion(kvmFd uintptr) (uintptr, error) {
-	return Ioctl(kvmFd, uintptr(kvmGetAPIVersion), uintptr(0))
+	return Ioctl(kvmFd, IIO(kvmGetAPIVersion), uintptr(0))
 }
 
 // CreateVM creates a KVM from the KVM device fd, i.e. /dev/kvm.
 func CreateVM(kvmFd uintptr) (uintptr, error) {
-	return Ioctl(kvmFd, uintptr(kvmCreateVM), uintptr(0))
+	return Ioctl(kvmFd, IIO(kvmCreateVM), uintptr(0))
 }
 
 // CreateVCPU creates a single virtual CPU from the virtual machine FD.
@@ -110,12 +114,12 @@ func CreateVM(kvmFd uintptr) (uintptr, error) {
 // vmfd from creating a vm from the fd
 // vcpu fd from the vmfd.
 func CreateVCPU(vmFd uintptr, vcpuID int) (uintptr, error) {
-	return Ioctl(vmFd, uintptr(kvmCreateVCPU), uintptr(vcpuID))
+	return Ioctl(vmFd, IIO(kvmCreateVCPU), uintptr(vcpuID))
 }
 
 // Run runs a single vcpu from the vcpufd from createvcpu.
 func Run(vcpuFd uintptr) error {
-	_, err := Ioctl(vcpuFd, uintptr(kvmRun), uintptr(0))
+	_, err := Ioctl(vcpuFd, IIO(kvmRun), uintptr(0))
 	if err != nil {
 		// refs: https://github.com/kvmtool/kvmtool/blob/415f92c33a227c02f6719d4594af6fad10f07abf/kvm-cpu.c#L44
 		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
@@ -130,5 +134,5 @@ func Run(vcpuFd uintptr) error {
 // required for interacting with the vcpu, as the struct size can change
 // over time.
 func GetVCPUMMmapSize(kvmFd uintptr) (uintptr, error) {
-	return Ioctl(kvmFd, uintptr(kvmGetVCPUMMapSize), uintptr(0))
+	return Ioctl(kvmFd, IIO(kvmGetVCPUMMapSize), uintptr(0))
 }

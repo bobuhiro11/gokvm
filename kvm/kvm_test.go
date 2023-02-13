@@ -374,7 +374,7 @@ func TestIRQLine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := kvm.IRQLine(vmFd, 4, 0); err != nil {
+	if err := kvm.IRQLineStatus(vmFd, 4, 0); err != nil {
 		t.Fatal(err)
 	}
 }
