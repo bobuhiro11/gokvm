@@ -5,6 +5,7 @@
 *.so
 *.dylib
 gokvm
+gokvm-caps
 golangci-lint
 initrd
 bzImage
