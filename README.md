@@ -41,6 +41,7 @@ https://pkg.go.dev/github.com/bobuhiro11/gokvm
 
 Thanks to the many useful resources on KVM, this project was able to boot Linux on a virtual machine.
 
+- [The Definitive KVM API Documentation](https://docs.kernel.org/virt/kvm/api.html#)
 - [Using the KVM API, lwn.net](https://lwn.net/Articles/658511/)
 - [kvmtest.c, lwn.net](https://lwn.net/Articles/658512/)
 - [KVM tool](https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/about/)
