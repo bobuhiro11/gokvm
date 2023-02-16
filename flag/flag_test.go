@@ -13,6 +13,7 @@ func TestParseArg(t *testing.T) {
 
 	args := []string{
 		"gokvm",
+		"-debug",
 		"-i",
 		"initrd_path",
 		"-k",
@@ -34,6 +35,10 @@ func TestParseArg(t *testing.T) {
 	c, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !c.Debug {
+		t.Error("undesired debug value")
 	}
 
 	if c.Dev != "/dev/kvm" {

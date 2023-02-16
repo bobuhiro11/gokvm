@@ -12,6 +12,7 @@ import (
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/term"
+	"github.com/bobuhiro11/gokvm/tools"
 )
 
 func main() {
@@ -21,6 +22,12 @@ func main() {
 	c, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatalf("ParseArgs: %v", err)
+	}
+
+	if c.Debug {
+		if err := tools.TestCaps(); err != nil {
+			log.Fatalf("TestCaps: %v", err)
+		}
 	}
 
 	m, err := machine.New(c.Dev, c.NCPUs, c.TapIfName, c.Disk, c.MemSize)
