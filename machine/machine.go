@@ -156,11 +156,11 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 		return m, fmt.Errorf("CreateVM: %w", err)
 	}
 
-	if err := kvm.SetTSSAddr(m.vmFd); err != nil {
+	if err := kvm.SetTSSAddr(m.vmFd, 0xffffd000); err != nil {
 		return m, err
 	}
 
-	if err := kvm.SetIdentityMapAddr(m.vmFd); err != nil {
+	if err := kvm.SetIdentityMapAddr(m.vmFd, 0xffffc000); err != nil {
 		return m, err
 	}
 
