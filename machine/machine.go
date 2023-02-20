@@ -175,18 +175,6 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 		return m, err
 	}
 
-	e, err := ebda.New(nCpus)
-	if err != nil {
-		return m, err
-	}
-
-	bytes, err := e.Bytes()
-	if err != nil {
-		return m, err
-	}
-
-	copy(m.mem[bootparam.EBDAStart:], bytes)
-
 	// Poison memory.
 	// 0 is valid instruction and if you start running in the middle of all those
 	// 0's it is impossible to diagnore.
@@ -271,6 +259,18 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		err               error
 	)
 
+	e, err := ebda.New(len(m.vcpuFds))
+	if err != nil {
+		return err
+	}
+
+	bytes, err := e.Bytes()
+	if err != nil {
+		return err
+	}
+
+	copy(m.mem[bootparam.EBDAStart:], bytes)
+
 	// Load initrd
 	initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
 	if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
@@ -333,7 +333,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	bootParam.Hdr.CmdlinePtr = cmdlineAddr                                                          // Proto 2.06+
 	bootParam.Hdr.CmdlineSize = uint32(len(params) + 1)                                             // Proto 2.06+
 
-	bytes, err := bootParam.Bytes()
+	bytes, err = bootParam.Bytes()
 	if err != nil {
 		return err
 	}
