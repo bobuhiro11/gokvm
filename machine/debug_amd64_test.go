@@ -8,7 +8,7 @@ import (
 )
 
 func TestDebug(t *testing.T) { // nolint:paralleltest
-	m, err := machine.New("/dev/kvm", 1, "", "", 1<<29)
+	m, err := machine.New("/dev/kvm", 1, 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
 	}

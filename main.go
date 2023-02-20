@@ -30,9 +30,21 @@ func main() {
 		}
 	}
 
-	m, err := machine.New(c.Dev, c.NCPUs, c.TapIfName, c.Disk, c.MemSize)
+	m, err := machine.New(c.Dev, c.NCPUs, c.MemSize)
 	if err != nil {
 		log.Fatalf("%v", err)
+	}
+
+	if len(c.TapIfName) > 0 {
+		if err := m.AddTapIf(c.TapIfName); err != nil {
+			log.Fatalf("%v", err)
+		}
+	}
+
+	if len(c.Disk) > 0 {
+		if err := m.AddDisk(c.Disk); err != nil {
+			log.Fatalf("%v", err)
+		}
 	}
 
 	kern, err := os.Open(c.Kernel)

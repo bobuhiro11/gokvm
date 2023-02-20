@@ -136,12 +136,14 @@ type Machine struct {
 
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
 // vCPUs, and attaching memory, disk (if needed), and tap (if needed).
-func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize int) (*Machine, error) {
+func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 	if memSize < MinMemSize {
 		return nil, fmt.Errorf("memory size %d:%w", memSize, ErrMemTooSmall)
 	}
 
 	m := &Machine{}
+
+	m.pci = pci.New(pci.NewBridge())
 
 	var err error
 
@@ -185,31 +187,6 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
-	m.pci = pci.New(pci.NewBridge()) // 00:00.0 for PCI bridge
-
-	if len(tapIfName) > 0 {
-		t, err := tap.New(tapIfName)
-		if err != nil {
-			return nil, err
-		}
-
-		v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
-		go v.TxThreadEntry()
-		go v.RxThreadEntry()
-		// 00:01.0 for Virtio net
-		m.pci.Devices = append(m.pci.Devices, v)
-	}
-
-	if len(diskPath) > 0 {
-		v, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem)
-		if err != nil {
-			return nil, err
-		}
-
-		go v.IOThreadEntry()
-		// 00:02.0 for Virtio blk
-		m.pci.Devices = append(m.pci.Devices, v)
-	}
 	// Poison memory.
 	// 0 is valid instruction and if you start running in the middle of all those
 	// 0's it is impossible to diagnore.
@@ -218,6 +195,34 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 	}
 
 	return m, nil
+}
+
+func (m *Machine) AddTapIf(tapIfName string) error {
+	t, err := tap.New(tapIfName)
+	if err != nil {
+		return err
+	}
+
+	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+	go v.TxThreadEntry()
+	go v.RxThreadEntry()
+	// 00:01.0 for Virtio net
+	m.pci.Devices = append(m.pci.Devices, v)
+
+	return nil
+}
+
+func (m *Machine) AddDisk(diskPath string) error {
+	v, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem)
+	if err != nil {
+		return err
+	}
+
+	go v.IOThreadEntry()
+	// 00:02.0 for Virtio blk
+	m.pci.Devices = append(m.pci.Devices, v)
+
+	return nil
 }
 
 // Translate translates a virtual address for all active CPUs
