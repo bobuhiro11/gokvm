@@ -143,60 +143,18 @@ func New(kvmPath string, nCpus int, tapIfName string, diskPath string, memSize i
 
 	m := &Machine{}
 
-	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
+	var err error
+
+	m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, 0xffffd000, 0xffffc000, nCpus)
 	if err != nil {
-		return m, err
+		return nil, err
 	}
 
-	m.kvmFd = devKVM.Fd()
-	m.vcpuFds = make([]uintptr, nCpus)
-	m.runs = make([]*kvm.RunData, nCpus)
-
-	if m.vmFd, err = kvm.CreateVM(m.kvmFd); err != nil {
-		return m, fmt.Errorf("CreateVM: %w", err)
-	}
-
-	if err := kvm.SetTSSAddr(m.vmFd); err != nil {
-		return m, err
-	}
-
-	if err := kvm.SetIdentityMapAddr(m.vmFd); err != nil {
-		return m, err
-	}
-
-	if err := kvm.CreateIRQChip(m.vmFd); err != nil {
-		return m, err
-	}
-
-	if err := kvm.CreatePIT2(m.vmFd); err != nil {
-		return m, err
-	}
-
-	mmapSize, err := kvm.GetVCPUMMmapSize(m.kvmFd)
-	if err != nil {
-		return m, err
-	}
-
-	for cpu := 0; cpu < nCpus; cpu++ {
-		// Create vCPU
-		m.vcpuFds[cpu], err = kvm.CreateVCPU(m.vmFd, cpu)
-		if err != nil {
-			return m, err
+	// initCPUIDs here manually
+	for cpuNr := range m.runs {
+		if err := m.initCPUID(cpuNr); err != nil {
+			return nil, err
 		}
-
-		// init CPUID
-		if err := m.initCPUID(cpu); err != nil {
-			return m, err
-		}
-
-		// init kvm_run structure
-		r, err := syscall.Mmap(int(m.vcpuFds[cpu]), 0, int(mmapSize),
-			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-		if err != nil {
-			return m, err
-		}
-
-		m.runs[cpu] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
 	// Another coding anti-pattern reguired by golangci-lint.
@@ -1074,4 +1032,67 @@ func GetReg(r *kvm.Regs, reg x86asm.Reg) (*uint64, error) {
 	}
 
 	return nil, fmt.Errorf("register %v%w", reg, ErrUnsupported)
+}
+
+// InitKVM takes care of the general kvm setup without dependencies to runtime target.
+func initVMandVCPU(
+	kvmPath string,
+	tssaddr, identmapaddr uint32,
+	nCpus int,
+) (uintptr, uintptr, []uintptr, []*kvm.RunData, error) {
+	var err error
+
+	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
+	if err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	kvmFd := devKVM.Fd()
+	vmFd := uintptr(0)
+	vcpuFds := make([]uintptr, nCpus)
+	runs := make([]*kvm.RunData, nCpus)
+
+	if vmFd, err = kvm.CreateVM(kvmFd); err != nil {
+		return 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
+	}
+
+	if err := kvm.SetTSSAddr(vmFd, tssaddr); err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	if err := kvm.SetIdentityMapAddr(vmFd, identmapaddr); err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	if err := kvm.CreatePIT2(vmFd); err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	mmapSize, err := kvm.GetVCPUMMmapSize(kvmFd)
+	if err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	for cpu := 0; cpu < nCpus; cpu++ {
+		// Create vCPU
+		vcpuFds[cpu], err = kvm.CreateVCPU(vmFd, cpu)
+		if err != nil {
+			return 0, 0, nil, nil, err
+		}
+
+		// init kvm_run structure
+		r, err := syscall.Mmap(int(vcpuFds[cpu]), 0, int(mmapSize),
+			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		if err != nil {
+			return 0, 0, nil, nil, err
+		}
+
+		runs[cpu] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
+	}
+
+	return kvmFd, vmFd, vcpuFds, runs, nil
 }

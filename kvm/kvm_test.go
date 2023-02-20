@@ -48,11 +48,11 @@ func TestCreateVM(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := kvm.SetTSSAddr(vmFd); err != nil {
+	if err := kvm.SetTSSAddr(vmFd, 0xffffd000); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := kvm.SetIdentityMapAddr(vmFd); err != nil {
+	if err := kvm.SetIdentityMapAddr(vmFd, 0xffffc000); err != nil {
 		t.Fatal(err)
 	}
 

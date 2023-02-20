@@ -31,16 +31,15 @@ func SetUserMemoryRegion(vmFd uintptr, region *UserspaceMemoryRegion) error {
 }
 
 // SetTSSAddr sets the Task Segment Selector for a vm.
-func SetTSSAddr(vmFd uintptr) error {
-	_, err := Ioctl(vmFd, IIO(kvmSetTSSAddr), 0xffffd000)
+func SetTSSAddr(vmFd uintptr, addr uint32) error {
+	_, err := Ioctl(vmFd, IIO(kvmSetTSSAddr), uintptr(addr))
 
 	return err
 }
 
 // SetIdentityMapAddr sets the address of a 4k-sized-page for a vm.
-func SetIdentityMapAddr(vmFd uintptr) error {
-	var mapAddr uint64 = 0xffffc000
-	_, err := Ioctl(vmFd, IIOW(kvmSetIdentityMapAddr, 8), uintptr(unsafe.Pointer(&mapAddr)))
+func SetIdentityMapAddr(vmFd uintptr, addr uint32) error {
+	_, err := Ioctl(vmFd, IIOW(kvmSetIdentityMapAddr, 8), uintptr(unsafe.Pointer(&addr)))
 
 	return err
 }
