@@ -20,6 +20,11 @@ const (
 	nrbits   = 8
 	typebits = 8
 	sizebits = 14
+	dirbits  = 2
+
+	nrmask   = (1 << nrbits) - 1
+	sizemask = (1 << sizebits) - 1
+	dirmask  = (1 << dirbits) - 1
 
 	none      = 0
 	write     = 1
@@ -58,6 +63,6 @@ func IIO(nr uintptr) uintptr {
 // IIOC creates an IIOC ioctl from a direction, nr, and size.
 func IIOC(dir, nr, size uintptr) uintptr {
 	// This is another case of forced wrapping which is considered an anti-pattern in Google.
-	return (dir << dirshift) | (KVMIO << typeshift) |
-		(nr << nrshift) | (size << sizeshift)
+	return ((dir & dirmask) << dirshift) | (KVMIO << typeshift) |
+		((nr & nrmask) << nrshift) | ((size & sizemask) << sizeshift)
 }
