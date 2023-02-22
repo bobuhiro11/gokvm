@@ -11,8 +11,8 @@ import (
 	"github.com/bobuhiro11/gokvm/flag"
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/probe"
 	"github.com/bobuhiro11/gokvm/term"
-	"github.com/bobuhiro11/gokvm/tools"
 )
 
 func main() {
@@ -25,8 +25,8 @@ func main() {
 	}
 
 	if c.Debug {
-		if err := tools.TestCaps(); err != nil {
-			log.Fatalf("TestCaps: %v", err)
+		if err := probe.KVMCapabilities(); err != nil {
+			log.Fatalf("kvm capabilities: %v", err)
 		}
 	}
 
