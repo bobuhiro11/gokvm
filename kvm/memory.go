@@ -43,3 +43,39 @@ func SetIdentityMapAddr(vmFd uintptr, addr uint32) error {
 
 	return err
 }
+
+type coalescedMMIOZone struct {
+	Addr   uint64
+	Size   uint32
+	PadPio uint32
+}
+
+// RegisterCoalescedMMIO registers a address space for Coalesced MMIO.
+func RegisterCoalescedMMIO(vmFd uintptr, addr uint64, size uint32) error {
+	zone := &coalescedMMIOZone{
+		Addr:   addr,
+		Size:   size,
+		PadPio: 0,
+	}
+
+	_, err := Ioctl(vmFd,
+		IIOW(kvmResgisterCoalescedMMIO, unsafe.Sizeof(coalescedMMIOZone{})),
+		uintptr(unsafe.Pointer(zone)))
+
+	return err
+}
+
+// UNregisterCoaloescedMMIO unregister a address space from Coalesced MMIO.
+func UnregisterCoalescedMMIO(vmFd uintptr, addr uint64, size uint32) error {
+	zone := &coalescedMMIOZone{
+		Addr:   addr,
+		Size:   size,
+		PadPio: 0,
+	}
+
+	_, err := Ioctl(vmFd,
+		IIOW(kvmUnResgisterCoalescedMMIO, unsafe.Sizeof(coalescedMMIOZone{})),
+		uintptr(unsafe.Pointer(zone)))
+
+	return err
+}

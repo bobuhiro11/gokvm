@@ -19,8 +19,13 @@ const (
 
 	kvmCreateIRQChip = 0x60
 	kvmIRQLineStatus = 0x67
+
+	kvmResgisterCoalescedMMIO   = 0x67
+	kvmUnResgisterCoalescedMMIO = 0x68
+
 	kvmSetGSIRouting = 0x6A
-	kvmCreatePIT2    = 0x77
+
+	kvmCreatePIT2 = 0x77
 
 	kvmRun      = 0x80
 	kvmGetRegs  = 0x81
