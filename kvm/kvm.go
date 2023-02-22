@@ -21,6 +21,8 @@ const (
 	kvmSetIdentityMapAddr  = 0x48
 
 	kvmCreateIRQChip = 0x60
+	kvmGetIRQChip    = 0x62
+	kvmSetIRQChip    = 0x63
 	kvmIRQLineStatus = 0x67
 
 	kvmResgisterCoalescedMMIO   = 0x67

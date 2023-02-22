@@ -581,3 +581,40 @@ func TestGetDirtyLog(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetGetIRQChip(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	irqc := &kvm.IRQChip{
+		ChipID: 0,
+		Chip:   [512]byte{},
+	}
+
+	if err := kvm.GetIRQChip(vmFd, irqc); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetIRQChip(vmFd, irqc); err != nil {
+		t.Fatal(err)
+	}
+}

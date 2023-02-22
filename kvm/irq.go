@@ -88,6 +88,50 @@ func SetPIT2(vmFd uintptr, pstate *PITState2) error {
 	return err
 }
 
+type PICState struct {
+	LastIRR                uint8 /* edge detection */
+	IRR                    uint8 /* interrupt request register */
+	IMR                    uint8 /* interrupt mask register */
+	ISR                    uint8 /* interrupt service register */
+	PriorityAdd            uint8 /* highest irq priority */
+	IRQBase                uint8
+	ReadRegSelect          uint8
+	Poll                   uint8
+	SpecialMask            uint8
+	InitState              uint8
+	AutoEOI                uint8
+	RotateOnAutoEOI        uint8
+	SpecialFullyNestedMode uint8
+	Init4                  uint8 /* true if 4 byte init */
+	ELCR                   uint8 /* PIIX edge/trigger selection */
+	ELCRMask               uint8
+}
+
+type IRQChip struct {
+	ChipID uint32
+	_      uint32
+	Chip   [512]byte
+}
+
+// GetIRQChip reads the state of a kernel interrupt controller created with
+// KVM_CREATE_IRQCHIP into a buffer provided by the caller.
+func GetIRQChip(vmFd uintptr, irqc *IRQChip) error {
+	_, err := Ioctl(vmFd,
+		IIOWR(kvmGetIRQChip, unsafe.Sizeof(IRQChip{})),
+		uintptr(unsafe.Pointer(irqc)))
+
+	return err
+}
+
+// SetIRQChip sets the state of a kernel interrupt controller created with
+// KVM_CREATE_IRQCHIP from a buffer provided by the caller.
+func SetIRQChip(vmFd uintptr, irqc *IRQChip) error {
+	_, err := Ioctl(vmFd,
+		IIOR(kvmSetIRQChip, unsafe.Sizeof(IRQChip{})), uintptr(unsafe.Pointer(irqc)))
+
+	return err
+}
+
 type IRQRoutingIRQChip struct {
 	IRQChip uint32
 	Pin     uint32
