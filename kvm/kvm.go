@@ -19,6 +19,7 @@ const (
 
 	kvmCreateIRQChip = 0x60
 	kvmIRQLineStatus = 0x67
+	kvmSetGSIRouting = 0x6A
 	kvmCreatePIT2    = 0x77
 
 	kvmRun      = 0x80

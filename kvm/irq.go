@@ -87,3 +87,31 @@ func SetPIT2(vmFd uintptr, pstate *PITState2) error {
 
 	return err
 }
+
+type IRQRoutingIRQChip struct {
+	IRQChip uint32
+	Pin     uint32
+}
+
+type IRQRoutingEntry struct {
+	GSI   uint32
+	Type  uint32
+	Flags uint32
+	_     uint32
+	IRQRoutingIRQChip
+}
+
+type IRQRouting struct {
+	Nr      uint32
+	Flags   uint32
+	Entries []IRQRoutingEntry
+}
+
+// SetGSIRouting sets the GSI routing table entries, overwriting any previously set entries.
+func SetGSIRouting(vmFd uintptr, irqR *IRQRouting) error {
+	_, err := Ioctl(vmFd,
+		IIOW(kvmSetGSIRouting, unsafe.Sizeof(irqR)),
+		uintptr(unsafe.Pointer(irqR)))
+
+	return err
+}

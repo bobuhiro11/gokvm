@@ -445,3 +445,37 @@ func TestGetSetPID2(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetGSIRouting(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	irqR := &kvm.IRQRouting{
+		Nr:      0,
+		Flags:   0,
+		Entries: make([]kvm.IRQRoutingEntry, 1),
+	}
+
+	if err := kvm.SetGSIRouting(vmFd, irqR); err != nil {
+		t.Fatal(err)
+	}
+}
