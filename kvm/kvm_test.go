@@ -507,3 +507,33 @@ func TestCoalescedMMIO(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetNrMMUPages(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetNrMMUPages(vmFd, 0x1000); err != nil {
+		t.Fatal(err)
+	}
+
+	retval := uint64(0)
+
+	if err := kvm.GetNrMMUPages(vmFd, &retval); err != nil {
+		t.Fatal(err)
+	}
+}

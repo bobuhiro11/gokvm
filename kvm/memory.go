@@ -44,6 +44,22 @@ func SetIdentityMapAddr(vmFd uintptr, addr uint32) error {
 	return err
 }
 
+func SetNrMMUPages(vmFd uintptr, shadowMem uint64) error {
+	_, err := Ioctl(vmFd,
+		IIO(kvmSetNrMMUPages),
+		uintptr(shadowMem))
+
+	return err
+}
+
+func GetNrMMUPages(vmFd uintptr, shadowMem *uint64) error {
+	_, err := Ioctl(vmFd,
+		IIO(kvmGetNrMMUPages),
+		uintptr(unsafe.Pointer(shadowMem)))
+
+	return err
+}
+
 type coalescedMMIOZone struct {
 	Addr   uint64
 	Size   uint32

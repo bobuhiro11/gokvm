@@ -13,6 +13,8 @@ const (
 	kvmGetSupportedCPUID = 0x05
 
 	kvmCreateVCPU          = 0x41
+	kvmSetNrMMUPages       = 0x44
+	kvmGetNrMMUPages       = 0x45
 	kvmSetUserMemoryRegion = 0x46
 	kvmSetTSSAddr          = 0x47
 	kvmSetIdentityMapAddr  = 0x48
