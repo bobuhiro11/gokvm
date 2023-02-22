@@ -56,6 +56,31 @@ func TestCreateVM(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, err = kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCPUID(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -76,26 +101,6 @@ func TestCreateVM(t *testing.T) {
 	}
 
 	if err := kvm.SetCPUID2(vcpuFd, &CPUID); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestCPUID(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	t.Parallel()
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	_, err = kvm.CreateVM(devKVM.Fd())
-	if err != nil {
 		t.Fatal(err)
 	}
 }
