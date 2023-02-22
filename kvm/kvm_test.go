@@ -618,3 +618,27 @@ func TestSetGetIRQChip(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetEmulatedCPUID(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	kvmCPUID := &kvm.CPUID{
+		Nent:    100,
+		Entries: [100]kvm.CPUIDEntry2{},
+	}
+
+	if err := kvm.GetEmulatedCPUID(devKVM.Fd(), kvmCPUID); err != nil {
+		t.Fatal(err)
+	}
+}
