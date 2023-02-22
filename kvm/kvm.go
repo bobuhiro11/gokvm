@@ -28,6 +28,9 @@ const (
 	kvmSetSregs = 0x84
 
 	kvmSetCPUID2 = 0x90
+
+	kvmGetPIT2 = 0x9F
+	kvmSetPIT2 = 0xA0
 )
 
 // ExitType is a virtual machine exit type.

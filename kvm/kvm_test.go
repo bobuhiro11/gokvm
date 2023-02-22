@@ -407,3 +407,41 @@ func TestIoctlStringer(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSetPID2(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreatePIT2(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	pstate := &kvm.PITState2{}
+
+	if err := kvm.GetPIT2(vmFd, pstate); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetPIT2(vmFd, pstate); err != nil {
+		t.Fatal(err)
+	}
+}

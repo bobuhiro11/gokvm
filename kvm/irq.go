@@ -47,3 +47,43 @@ func CreatePIT2(vmFd uintptr) error {
 
 	return err
 }
+
+type PITChannelState struct {
+	Count         uint32
+	LatchedCount  uint16
+	CountLatched  uint8
+	StatusLatched uint8
+	Status        uint8
+	ReadState     uint8
+	WriteState    uint8
+	WriteLatch    uint8
+	RWMode        uint8
+	Mode          uint8
+	BCD           uint8
+	Gate          uint8
+	CountLoadTime int64
+}
+
+type PITState2 struct {
+	Channels [3]PITChannelState
+	Flags    uint32
+	_        [9]uint32
+}
+
+// GetPIT2 retrieves the state of the in-kernel PIT model. Only valid after KVM_CREATE_PIT2.
+func GetPIT2(vmFd uintptr, pstate *PITState2) error {
+	_, err := Ioctl(vmFd,
+		IIOR(kvmGetPIT2, unsafe.Sizeof(PITState2{})),
+		uintptr(unsafe.Pointer(pstate)))
+
+	return err
+}
+
+// SetPIT2 sets the state of the in-kernel PIT model. Only valid after KVM_CREATE_PIT2.
+func SetPIT2(vmFd uintptr, pstate *PITState2) error {
+	_, err := Ioctl(vmFd,
+		IIOW(kvmSetPIT2, unsafe.Sizeof(PITState2{})),
+		uintptr(unsafe.Pointer(pstate)))
+
+	return err
+}
