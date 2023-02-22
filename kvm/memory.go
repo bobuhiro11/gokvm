@@ -1,6 +1,10 @@
 package kvm
 
-import "unsafe"
+import (
+	"errors"
+	"syscall"
+	"unsafe"
+)
 
 // UserSpaceMemoryRegion defines Memory Regions.
 type UserspaceMemoryRegion struct {
@@ -40,6 +44,27 @@ func SetTSSAddr(vmFd uintptr, addr uint32) error {
 // SetIdentityMapAddr sets the address of a 4k-sized-page for a vm.
 func SetIdentityMapAddr(vmFd uintptr, addr uint32) error {
 	_, err := Ioctl(vmFd, IIOW(kvmSetIdentityMapAddr, 8), uintptr(unsafe.Pointer(&addr)))
+
+	return err
+}
+
+type DirtyLog struct {
+	Slot   uint32
+	_      uint32
+	BitMap uint64
+}
+
+// GetDirtyLog provides a memory slot and return a bitmap containing any pages dirtied since the
+// last call to this ioctl. Bit 0 is the first page in the memory slot.
+// Ensure the entire structure is cleared to avoid padding issues.
+func GetDirtyLog(vmFd uintptr, dirtlog *DirtyLog) error {
+	_, err := Ioctl(vmFd,
+		IIOW(kvmGetDirtyLog, unsafe.Sizeof(DirtyLog{})),
+		uintptr(unsafe.Pointer(dirtlog)))
+
+	if errors.Is(err, syscall.ENOENT) {
+		return nil
+	}
 
 	return err
 }

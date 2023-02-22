@@ -537,3 +537,47 @@ func TestSetNrMMUPages(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetDirtyLog(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mem, err := syscall.Mmap(-1, 0, 0x1000, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = kvm.SetUserMemoryRegion(vmFd, &kvm.UserspaceMemoryRegion{
+		Slot:          0,
+		Flags:         0,
+		GuestPhysAddr: 0x1000,
+		MemorySize:    0x1000,
+		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&mem[0]))),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dl := &kvm.DirtyLog{
+		Slot:   0,
+		BitMap: 0,
+	}
+
+	if err := kvm.GetDirtyLog(vmFd, dl); err != nil {
+		t.Fatal(err)
+	}
+}
