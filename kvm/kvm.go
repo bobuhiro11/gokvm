@@ -49,6 +49,8 @@ const (
 
 	kvmSetTSCKHz = 0xA2
 	kvmGetTSCKHz = 0xA3
+
+	kvmCreateDev = 0xE0
 )
 
 // ExitType is a virtual machine exit type.
@@ -209,6 +211,38 @@ func GetClock(vmFd uintptr, cd *ClockData) error {
 	_, err := Ioctl(vmFd,
 		IIOR(kvmGetClock, unsafe.Sizeof(ClockData{})),
 		uintptr(unsafe.Pointer(cd)))
+
+	return err
+}
+
+type DevType uint32
+
+const (
+	DevFSLMPIC20 DevType = 1 + iota
+	DevFSLMPIC42
+	DevXICS
+	DevVFIO
+	_
+	DevFLIC
+	_
+	_
+	DevXIVE
+	_
+	DevMAX
+)
+
+type Device struct {
+	Type  uint32
+	Fd    uint32
+	Flags uint32
+}
+
+// CreateDev creates an emulated device in the kernel.
+// The file descriptor returned in fd can be used with KVM_SET/GET/HAS_DEVICE_ATTR.
+func CreateDev(vmFd uintptr, dev *Device) error {
+	_, err := Ioctl(vmFd,
+		IIOWR(kvmCreateDev, unsafe.Sizeof(Device{})),
+		uintptr(unsafe.Pointer(dev)))
 
 	return err
 }

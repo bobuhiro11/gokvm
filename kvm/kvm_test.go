@@ -706,3 +706,37 @@ func TestSetGetClock(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCreateDev(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dev := &kvm.Device{
+		Type:  uint32(kvm.DevVFIO),
+		Fd:    0,
+		Flags: 1,
+	}
+
+	for i := 0; i <= int(kvm.DevMAX); i++ {
+		if err = kvm.CreateDev(vmFd, dev); err != nil {
+			if !errors.Is(err, syscall.ENODEV) {
+				t.Fatal(err)
+			}
+		}
+	}
+}
