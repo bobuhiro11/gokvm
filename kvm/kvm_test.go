@@ -740,3 +740,33 @@ func TestCreateDev(t *testing.T) {
 		}
 	}
 }
+
+func TestInjectInterrpt(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pass an invalid value, because the vm is empty and error out for every other error
+	if err := kvm.InjectInterrupt(vcpuFd, 0xFFF0); !errors.Is(err, syscall.EFAULT) {
+		t.Fatal(err)
+	}
+}

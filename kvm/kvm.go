@@ -42,6 +42,8 @@ const (
 	kvmGetSregs = 0x83
 	kvmSetSregs = 0x84
 
+	kvmInterrupt = 0x86
+
 	kvmSetCPUID2 = 0x90
 
 	kvmGetPIT2 = 0x9F

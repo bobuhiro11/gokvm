@@ -159,3 +159,12 @@ func SetGSIRouting(vmFd uintptr, irqR *IRQRouting) error {
 
 	return err
 }
+
+// InjectInterrupt queues a hardware interrupt vector to be injected.
+func InjectInterrupt(vcpuFd uintptr, intr uint32) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmInterrupt, 4),
+		uintptr(intr))
+
+	return err
+}
