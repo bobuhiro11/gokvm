@@ -43,6 +43,9 @@ const (
 
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
+
+	kvmSetTSCKHz = 0xA2
+	kvmGetTSCKHz = 0xA3
 )
 
 // ExitType is a virtual machine exit type.
@@ -151,4 +154,21 @@ func Run(vcpuFd uintptr) error {
 // over time.
 func GetVCPUMMmapSize(kvmFd uintptr) (uintptr, error) {
 	return Ioctl(kvmFd, IIO(kvmGetVCPUMMapSize), uintptr(0))
+}
+
+func SetTSCKHz(vcpuFd uintptr, freq uint64) error {
+	_, err := Ioctl(vcpuFd,
+		IIO(kvmSetTSCKHz), uintptr(freq))
+
+	return err
+}
+
+func GetTSCKHz(vcpuFd uintptr) (uint64, error) {
+	ret, err := Ioctl(vcpuFd,
+		IIO(kvmGetTSCKHz), 0)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(ret), nil
 }
