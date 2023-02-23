@@ -676,3 +676,33 @@ func TestSetGetTSCKHz(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetGetClock(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cd := &kvm.ClockData{}
+
+	if err := kvm.GetClock(vmFd, cd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetClock(vmFd, cd); err != nil {
+		t.Fatal(err)
+	}
+}

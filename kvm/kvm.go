@@ -3,6 +3,7 @@ package kvm
 import (
 	"errors"
 	"syscall"
+	"unsafe"
 )
 
 const (
@@ -32,6 +33,8 @@ const (
 	kvmSetGSIRouting = 0x6A
 
 	kvmCreatePIT2 = 0x77
+	kvmSetClock   = 0x7B
+	kvmGetClock   = 0x7C
 
 	kvmRun      = 0x80
 	kvmGetRegs  = 0x81
@@ -171,4 +174,41 @@ func GetTSCKHz(vcpuFd uintptr) (uint64, error) {
 	}
 
 	return uint64(ret), nil
+}
+
+type ClockFlag uint32
+
+const (
+	TSCStable ClockFlag = 2
+	Realtime  ClockFlag = (1 << 2)
+	HostTSC   ClockFlag = (1 << 3)
+)
+
+type ClockData struct {
+	Clock    uint64
+	Flags    uint32
+	_        uint32
+	Realtime uint64
+	HostTSC  uint64
+	_        [4]uint32
+}
+
+// SetClock sets the current timestamp of kvmclock to the value specified in its parameter.
+// In conjunction with KVM_GET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+func SetClock(vmFd uintptr, cd *ClockData) error {
+	_, err := Ioctl(vmFd,
+		IIOW(kvmSetClock, unsafe.Sizeof(ClockData{})),
+		uintptr(unsafe.Pointer(cd)))
+
+	return err
+}
+
+// GetClock gets the current timestamp of kvmclock as seen by the current guest.
+// In conjunction with KVM_SET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+func GetClock(vmFd uintptr, cd *ClockData) error {
+	_, err := Ioctl(vmFd,
+		IIOR(kvmGetClock, unsafe.Sizeof(ClockData{})),
+		uintptr(unsafe.Pointer(cd)))
+
+	return err
 }
