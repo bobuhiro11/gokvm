@@ -770,3 +770,34 @@ func TestInjectInterrpt(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetMSRIndexList(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapGETMSRFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapGETMSRFeatures is disable")
+	}
+
+	list := kvm.MSRList{}
+	list.NMSRs = 100
+
+	if err := kvm.GetMSRIndexList(devKVM.Fd(), &list); err != nil {
+		t.Fatal(err)
+	}
+}
