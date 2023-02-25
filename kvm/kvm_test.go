@@ -801,3 +801,46 @@ func TestGetMSRIndexList(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetMSRFeatureIndexList(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapGETMSRFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapGETMSRFeatures is disable")
+	}
+
+	list := kvm.MSRList{}
+	list.NMSRs = 100
+
+	if err = kvm.GetMSRFeatureIndexList(devKVM.Fd(), &list); err != nil {
+		t.Fatal(err)
+	}
+
+	var entryFound bool
+
+	for _, msr := range list.Indicies {
+		if msr != 0 {
+			entryFound = true
+		}
+	}
+
+	if !entryFound {
+		t.Log("no entry has been found and no error occurred. That's odd")
+	}
+}

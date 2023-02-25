@@ -26,3 +26,19 @@ func GetMSRIndexList(kvmFd uintptr, list *MSRList) error {
 
 	return err
 }
+
+// GetMSRFeatureIndexList returns the list of MSRs that can be passed to the KVM_GET_MSRS system ioctl.
+// This lets userspace probe host capabilities and processor features that are exposed via MSRs
+// (e.g., VMX capabilities). This list also varies by kvm version and host processor, but does not change otherwise.
+func GetMSRFeatureIndexList(kvmFd uintptr, list *MSRList) error {
+	tmp := struct {
+		NMSRs uint32
+	}{
+		NMSRs: 100,
+	}
+	_, err := Ioctl(kvmFd,
+		IIOWR(kvmGetMSRFeatureIndexList, unsafe.Sizeof(tmp)),
+		uintptr(unsafe.Pointer(list)))
+
+	return err
+}

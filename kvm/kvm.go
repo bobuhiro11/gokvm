@@ -14,7 +14,9 @@ const (
 	kvmGetVCPUMMapSize   = 0x04
 	kvmGetSupportedCPUID = 0x05
 
-	kvmGetEmulatedCPUID    = 0x09
+	kvmGetEmulatedCPUID       = 0x09
+	kvmGetMSRFeatureIndexList = 0x0A
+
 	kvmCreateVCPU          = 0x41
 	kvmGetDirtyLog         = 0x42
 	kvmSetNrMMUPages       = 0x44
