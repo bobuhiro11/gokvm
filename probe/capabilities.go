@@ -1,4 +1,4 @@
-package tools
+package probe
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 	"github.com/bobuhiro11/gokvm/kvm"
 )
 
-// TestCaps probes the system for kvm capabilities.
-func TestCaps() error {
+// KVMCapabilities probes the system for kvm capabilities.
+func KVMCapabilities() error {
 	X86tests := []kvm.Capability{
 		kvm.CapIRQChip,
 		kvm.CapUserMemory,
@@ -63,6 +63,7 @@ func TestCaps() error {
 	if err != nil {
 		return err
 	}
+	defer kvmFile.Close()
 
 	kvmfd := kvmFile.Fd()
 
