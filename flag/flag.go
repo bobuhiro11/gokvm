@@ -67,7 +67,8 @@ func ParseArgs(args []string) (*Config, error) {
 		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" pci=realloc=off `+
 		`virtio_pci.force_legacy=1 rdinit=/init init=/init `+
 		`gokvm.ipv4_addr=192.168.20.1/24`, "kernel command-line parameters")
-	flag.StringVar(&c.TapIfName, "t", "tap", "name of tap interface")
+	flag.StringVar(&c.TapIfName, "t", "", `name of tap interface. `+
+		`If the string is an empty, no tap intarface is created. (default "")`)
 	flag.StringVar(&c.Disk, "d", "/dev/zero", "path of disk file (for /dev/vda)")
 
 	flag.IntVar(&c.NCPUs, "c", 1, "number of cpus")
