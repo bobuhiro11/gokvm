@@ -47,6 +47,9 @@ const (
 
 	kvmInterrupt = 0x86
 
+	kvmGetLAPIC = 0x8e
+	kvmSetLAPIC = 0x8f
+
 	kvmSetCPUID2 = 0x90
 
 	kvmGetPIT2 = 0x9F

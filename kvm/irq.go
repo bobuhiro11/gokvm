@@ -168,3 +168,27 @@ func InjectInterrupt(vcpuFd uintptr, intr uint32) error {
 
 	return err
 }
+
+const LAPICRegSize = 0x400
+
+type LAPICState struct {
+	Regs [LAPICRegSize]byte
+}
+
+// GetLocalAPIC reads the Local APIC registers and copies them into the input argument.
+func GetLocalAPIC(vcpuFd uintptr, lapic *LAPICState) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetLAPIC, unsafe.Sizeof(LAPICState{})),
+		uintptr(unsafe.Pointer(lapic)))
+
+	return err
+}
+
+// SetLocalAPIC copies the input argument into the Local APIC registers.
+func SetLocalAPIC(vcpuFd uintptr, lapic *LAPICState) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetLAPIC, unsafe.Sizeof(LAPICState{})),
+		uintptr(unsafe.Pointer(lapic)))
+
+	return err
+}
