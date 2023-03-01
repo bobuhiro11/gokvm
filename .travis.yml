@@ -21,9 +21,11 @@ before_script:
   - sudo lscpu || true
   - sudo modinfo kvm || true
   - sudo modprobe kvm || true
+  - sudo modprobe kvm_amd || true
   - sudo lsmod | grep kvm || true
-  - ls -la /dev/kvm || true
   - sudo ls -la /dev/kvm || true
+  - sudo dmesg | grep -i kvm || true
+  - sudo dmesg
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
   - curl --retry 5 -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod a+x ./cc-test-reporter
