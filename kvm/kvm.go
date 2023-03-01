@@ -3,23 +3,41 @@ package kvm
 import (
 	"errors"
 	"syscall"
+	"unsafe"
 )
 
 const (
 	kvmGetAPIVersion     = 0x00
 	kvmCreateVM          = 0x1
+	kvmGetMSRIndexList   = 0x02
 	kvmCheckExtension    = 0x03
 	kvmGetVCPUMMapSize   = 0x04
 	kvmGetSupportedCPUID = 0x05
 
+	kvmGetEmulatedCPUID       = 0x09
+	kvmGetMSRFeatureIndexList = 0x0A
+
 	kvmCreateVCPU          = 0x41
+	kvmGetDirtyLog         = 0x42
+	kvmSetNrMMUPages       = 0x44
+	kvmGetNrMMUPages       = 0x45
 	kvmSetUserMemoryRegion = 0x46
 	kvmSetTSSAddr          = 0x47
 	kvmSetIdentityMapAddr  = 0x48
 
 	kvmCreateIRQChip = 0x60
+	kvmGetIRQChip    = 0x62
+	kvmSetIRQChip    = 0x63
 	kvmIRQLineStatus = 0x67
-	kvmCreatePIT2    = 0x77
+
+	kvmResgisterCoalescedMMIO   = 0x67
+	kvmUnResgisterCoalescedMMIO = 0x68
+
+	kvmSetGSIRouting = 0x6A
+
+	kvmCreatePIT2 = 0x77
+	kvmSetClock   = 0x7B
+	kvmGetClock   = 0x7C
 
 	kvmRun      = 0x80
 	kvmGetRegs  = 0x81
@@ -27,7 +45,20 @@ const (
 	kvmGetSregs = 0x83
 	kvmSetSregs = 0x84
 
+	kvmInterrupt = 0x86
+
+	kvmGetLAPIC = 0x8e
+	kvmSetLAPIC = 0x8f
+
 	kvmSetCPUID2 = 0x90
+
+	kvmGetPIT2 = 0x9F
+	kvmSetPIT2 = 0xA0
+
+	kvmSetTSCKHz = 0xA2
+	kvmGetTSCKHz = 0xA3
+
+	kvmCreateDev = 0xE0
 )
 
 // ExitType is a virtual machine exit type.
@@ -136,4 +167,90 @@ func Run(vcpuFd uintptr) error {
 // over time.
 func GetVCPUMMmapSize(kvmFd uintptr) (uintptr, error) {
 	return Ioctl(kvmFd, IIO(kvmGetVCPUMMapSize), uintptr(0))
+}
+
+func SetTSCKHz(vcpuFd uintptr, freq uint64) error {
+	_, err := Ioctl(vcpuFd,
+		IIO(kvmSetTSCKHz), uintptr(freq))
+
+	return err
+}
+
+func GetTSCKHz(vcpuFd uintptr) (uint64, error) {
+	ret, err := Ioctl(vcpuFd,
+		IIO(kvmGetTSCKHz), 0)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(ret), nil
+}
+
+type ClockFlag uint32
+
+const (
+	TSCStable ClockFlag = 2
+	Realtime  ClockFlag = (1 << 2)
+	HostTSC   ClockFlag = (1 << 3)
+)
+
+type ClockData struct {
+	Clock    uint64
+	Flags    uint32
+	_        uint32
+	Realtime uint64
+	HostTSC  uint64
+	_        [4]uint32
+}
+
+// SetClock sets the current timestamp of kvmclock to the value specified in its parameter.
+// In conjunction with KVM_GET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+func SetClock(vmFd uintptr, cd *ClockData) error {
+	_, err := Ioctl(vmFd,
+		IIOW(kvmSetClock, unsafe.Sizeof(ClockData{})),
+		uintptr(unsafe.Pointer(cd)))
+
+	return err
+}
+
+// GetClock gets the current timestamp of kvmclock as seen by the current guest.
+// In conjunction with KVM_SET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+func GetClock(vmFd uintptr, cd *ClockData) error {
+	_, err := Ioctl(vmFd,
+		IIOR(kvmGetClock, unsafe.Sizeof(ClockData{})),
+		uintptr(unsafe.Pointer(cd)))
+
+	return err
+}
+
+type DevType uint32
+
+const (
+	DevFSLMPIC20 DevType = 1 + iota
+	DevFSLMPIC42
+	DevXICS
+	DevVFIO
+	_
+	DevFLIC
+	_
+	_
+	DevXIVE
+	_
+	DevMAX
+)
+
+type Device struct {
+	Type  uint32
+	Fd    uint32
+	Flags uint32
+}
+
+// CreateDev creates an emulated device in the kernel.
+// The file descriptor returned in fd can be used with KVM_SET/GET/HAS_DEVICE_ATTR.
+func CreateDev(vmFd uintptr, dev *Device) error {
+	_, err := Ioctl(vmFd,
+		IIOWR(kvmCreateDev, unsafe.Sizeof(Device{})),
+		uintptr(unsafe.Pointer(dev)))
+
+	return err
 }

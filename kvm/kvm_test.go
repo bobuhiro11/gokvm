@@ -407,3 +407,481 @@ func TestIoctlStringer(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSetPID2(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreatePIT2(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	pstate := &kvm.PITState2{}
+
+	if err := kvm.GetPIT2(vmFd, pstate); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetPIT2(vmFd, pstate); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetGSIRouting(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	irqR := &kvm.IRQRouting{
+		Nr:      0,
+		Flags:   0,
+		Entries: make([]kvm.IRQRoutingEntry, 1),
+	}
+
+	if err := kvm.SetGSIRouting(vmFd, irqR); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCoalescedMMIO(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.RegisterCoalescedMMIO(vmFd, 0xFFFE000, 0x1000); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.UnregisterCoalescedMMIO(vmFd, 0xFFFE000, 0x1000); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetNrMMUPages(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetNrMMUPages(vmFd, 0x1000); err != nil {
+		t.Fatal(err)
+	}
+
+	retval := uint64(0)
+
+	if err := kvm.GetNrMMUPages(vmFd, &retval); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetDirtyLog(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mem, err := syscall.Mmap(-1, 0, 0x1000, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = kvm.SetUserMemoryRegion(vmFd, &kvm.UserspaceMemoryRegion{
+		Slot:          0,
+		Flags:         0,
+		GuestPhysAddr: 0x1000,
+		MemorySize:    0x1000,
+		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&mem[0]))),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dl := &kvm.DirtyLog{
+		Slot:   0,
+		BitMap: 0,
+	}
+
+	if err := kvm.GetDirtyLog(vmFd, dl); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetGetIRQChip(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	irqc := &kvm.IRQChip{
+		ChipID: 0,
+		Chip:   [512]byte{},
+	}
+
+	if err := kvm.GetIRQChip(vmFd, irqc); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetIRQChip(vmFd, irqc); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetEmulatedCPUID(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	kvmCPUID := &kvm.CPUID{
+		Nent:    100,
+		Entries: [100]kvm.CPUIDEntry2{},
+	}
+
+	if err := kvm.GetEmulatedCPUID(devKVM.Fd(), kvmCPUID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetGetTSCKHz(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	freq, err := kvm.GetTSCKHz(vcpuFd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetTSCKHz(vcpuFd, freq); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetGetClock(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cd := &kvm.ClockData{}
+
+	if err := kvm.GetClock(vmFd, cd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetClock(vmFd, cd); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateDev(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dev := &kvm.Device{
+		Type:  uint32(kvm.DevVFIO),
+		Fd:    0,
+		Flags: 1,
+	}
+
+	for i := 0; i <= int(kvm.DevMAX); i++ {
+		if err = kvm.CreateDev(vmFd, dev); err != nil {
+			if !errors.Is(err, syscall.ENODEV) {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestInjectInterrpt(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pass an invalid value, because the vm is empty and error out for every other error
+	if err := kvm.InjectInterrupt(vcpuFd, 0xFFF0); !errors.Is(err, syscall.EFAULT) {
+		t.Fatal(err)
+	}
+}
+
+func TestGetMSRIndexList(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapGETMSRFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapGETMSRFeatures is disable")
+	}
+
+	list := kvm.MSRList{}
+	list.NMSRs = 100
+
+	if err := kvm.GetMSRIndexList(devKVM.Fd(), &list); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetMSRFeatureIndexList(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapGETMSRFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapGETMSRFeatures is disable")
+	}
+
+	list := kvm.MSRList{}
+	list.NMSRs = 100
+
+	if err = kvm.GetMSRFeatureIndexList(devKVM.Fd(), &list); err != nil {
+		t.Fatal(err)
+	}
+
+	var entryFound bool
+
+	for _, msr := range list.Indicies {
+		if msr != 0 {
+			entryFound = true
+		}
+	}
+
+	if !entryFound {
+		t.Log("no entry has been found and no error occurred. That's odd")
+	}
+}
+
+func TestGetSetLocalAPIC(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lapic := &kvm.LAPICState{
+		Regs: [1024]byte{},
+	}
+
+	if err := kvm.SetLocalAPIC(vcpuFd, lapic); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.GetLocalAPIC(vcpuFd, lapic); err != nil {
+		t.Fatal(err)
+	}
+}
