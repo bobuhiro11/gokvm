@@ -18,6 +18,10 @@ env:
   - GOFLAGS="-buildvcs=false"
 
 before_script:
+  - sudo lscpu || true
+  - sudo modinfo kvm || true
+  - sudo modprobe kvm || true
+  - sudo lsmod | grep kvm || true
   - ls -la /dev/kvm || true
   - sudo ls -la /dev/kvm || true
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
