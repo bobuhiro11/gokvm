@@ -18,6 +18,8 @@ env:
   - GOFLAGS="-buildvcs=false"
 
 before_script:
+  - ls -la /dev/kvm || true
+  - sudo ls -la /dev/kvm || true
   # See https://github.com/codeclimate/test-reporter/blob/master/examples/go_examples.md
   - curl --retry 5 -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod a+x ./cc-test-reporter
