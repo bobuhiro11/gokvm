@@ -1,6 +1,5 @@
 GOLANGCI_LINT_VERSION = v1.46.0
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
-GOPATH=`go env GOPATH`
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)
 	$(MAKE) generate
