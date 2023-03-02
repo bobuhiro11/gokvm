@@ -795,8 +795,13 @@ func TestGetMSRIndexList(t *testing.T) {
 	}
 
 	list := kvm.MSRList{}
-	list.NMSRs = 100
 
+	// The first time we probe the number of MSRs.
+	if err := kvm.GetMSRIndexList(devKVM.Fd(), &list); !errors.Is(err, syscall.E2BIG) {
+		t.Fatal(err)
+	}
+
+	// The second time we get the contents of the entries.
 	if err := kvm.GetMSRIndexList(devKVM.Fd(), &list); err != nil {
 		t.Fatal(err)
 	}
@@ -826,9 +831,14 @@ func TestGetMSRFeatureIndexList(t *testing.T) {
 	}
 
 	list := kvm.MSRList{}
-	list.NMSRs = 100
 
-	if err = kvm.GetMSRFeatureIndexList(devKVM.Fd(), &list); err != nil {
+	// The first time we probe the number of MSRs.
+	if err := kvm.GetMSRFeatureIndexList(devKVM.Fd(), &list); !errors.Is(err, syscall.E2BIG) {
+		t.Fatal(err)
+	}
+
+	// The second time we get the contents of the entries.
+	if err := kvm.GetMSRFeatureIndexList(devKVM.Fd(), &list); err != nil {
 		t.Fatal(err)
 	}
 
@@ -841,7 +851,7 @@ func TestGetMSRFeatureIndexList(t *testing.T) {
 	}
 
 	if !entryFound {
-		t.Log("no entry has been found and no error occurred. That's odd")
+		t.Fatalf("no entry has been found and no error occurred. That's odd")
 	}
 }
 
