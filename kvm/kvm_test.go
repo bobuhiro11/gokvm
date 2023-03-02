@@ -86,14 +86,16 @@ func TestCPUID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	CPUID := kvm.CPUID{}
-	CPUID.Nent = 100
+	CPUID := kvm.CPUID{
+		Nent:    100,
+		Entries: make([]kvm.CPUIDEntry2, 100),
+	}
 
 	if err := kvm.GetSupportedCPUID(devKVM.Fd(), &CPUID); err != nil {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < len(CPUID.Entries); i++ {
 		CPUID.Entries[i].Eax = kvm.CPUIDFeatures
 		CPUID.Entries[i].Ebx = 0x4b4d564b // KVMK
 		CPUID.Entries[i].Ecx = 0x564b4d56 // VMKV
@@ -635,7 +637,7 @@ func TestGetEmulatedCPUID(t *testing.T) {
 
 	kvmCPUID := &kvm.CPUID{
 		Nent:    100,
-		Entries: [100]kvm.CPUIDEntry2{},
+		Entries: make([]kvm.CPUIDEntry2, 100),
 	}
 
 	if err := kvm.GetEmulatedCPUID(devKVM.Fd(), kvmCPUID); err != nil {
