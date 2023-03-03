@@ -980,3 +980,45 @@ func TestTranslate(t *testing.T) {
 		t.Errorf("m.VtoP(0, 0): got (%#x, %v), want 0, nil", tOk.PhysicalAddress, err)
 	}
 }
+
+func TestTRPAccessReporting(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapVAPIC)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skip("Skipping test since CapVAPIC is disable")
+	}
+
+	ctl := &kvm.TRPAccessCtl{
+		Enable: 1,
+	}
+
+	if err := kvm.TRPAccessReporting(vcpuFd, ctl); err != nil {
+		t.Fatal(err)
+	}
+}

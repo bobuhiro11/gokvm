@@ -51,8 +51,9 @@ const (
 	kvmGetLAPIC = 0x8e
 	kvmSetLAPIC = 0x8f
 
-	kvmSetCPUID2 = 0x90
-	kvmGetCPUID2 = 0x91
+	kvmSetCPUID2          = 0x90
+	kvmGetCPUID2          = 0x91
+	kvmTRPAccessReporting = 0x92
 
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
