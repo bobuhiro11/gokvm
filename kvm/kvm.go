@@ -35,9 +35,10 @@ const (
 
 	kvmSetGSIRouting = 0x6A
 
-	kvmCreatePIT2 = 0x77
-	kvmSetClock   = 0x7B
-	kvmGetClock   = 0x7C
+	kvmReinjectControl = 0x71
+	kvmCreatePIT2      = 0x77
+	kvmSetClock        = 0x7B
+	kvmGetClock        = 0x7C
 
 	kvmRun      = 0x80
 	kvmGetRegs  = 0x81

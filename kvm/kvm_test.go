@@ -895,3 +895,35 @@ func TestGetSetLocalAPIC(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReinjectControl(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreateIRQChip(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.CreatePIT2(vmFd); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.ReinjectControl(vmFd, 1); err != nil {
+		t.Fatal(err)
+	}
+}
