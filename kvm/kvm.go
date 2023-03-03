@@ -58,6 +58,9 @@ const (
 	kvmGetMPState = 0x98
 	kvmSetMPState = 0x99
 
+	kvmX86SetupMCE           = 0x9C
+	kvmX86GetMCECapSupported = 0x9D
+
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
 
