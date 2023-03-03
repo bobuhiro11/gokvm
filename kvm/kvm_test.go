@@ -1022,3 +1022,49 @@ func TestTRPAccessReporting(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetSetMPState(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapMPState)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skip("Skipping test since CapMPState is disable")
+	}
+
+	mps := &kvm.MPState{
+		State: kvm.MPStateUninitialized,
+	}
+
+	if err := kvm.GetMPState(vcpuFd, mps); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetMPState(vcpuFd, mps); err != nil {
+		t.Fatal(err)
+	}
+}

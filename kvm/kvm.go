@@ -55,6 +55,9 @@ const (
 	kvmGetCPUID2          = 0x91
 	kvmTRPAccessReporting = 0x92
 
+	kvmGetMPState = 0x98
+	kvmSetMPState = 0x99
+
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
 
@@ -207,7 +210,7 @@ type ClockData struct {
 }
 
 // SetClock sets the current timestamp of kvmclock to the value specified in its parameter.
-// In conjunction with KVM_GET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+// In conjunction with GET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
 func SetClock(vmFd uintptr, cd *ClockData) error {
 	_, err := Ioctl(vmFd,
 		IIOW(kvmSetClock, unsafe.Sizeof(ClockData{})),
@@ -217,7 +220,7 @@ func SetClock(vmFd uintptr, cd *ClockData) error {
 }
 
 // GetClock gets the current timestamp of kvmclock as seen by the current guest.
-// In conjunction with KVM_SET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+// In conjunction with SET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
 func GetClock(vmFd uintptr, cd *ClockData) error {
 	_, err := Ioctl(vmFd,
 		IIOR(kvmGetClock, unsafe.Sizeof(ClockData{})),
@@ -249,7 +252,7 @@ type Device struct {
 }
 
 // CreateDev creates an emulated device in the kernel.
-// The file descriptor returned in fd can be used with KVM_SET/GET/HAS_DEVICE_ATTR.
+// The file descriptor returned in fd can be used with SET/GET/HAS_DEVICE_ATTR.
 func CreateDev(vmFd uintptr, dev *Device) error {
 	_, err := Ioctl(vmFd,
 		IIOWR(kvmCreateDev, unsafe.Sizeof(Device{})),
@@ -258,7 +261,7 @@ func CreateDev(vmFd uintptr, dev *Device) error {
 	return err
 }
 
-// Translation is a struct for KVM_TRANSLATE queries.
+// Translation is a struct for TRANSLATE queries.
 type Translation struct {
 	// LinearAddress is input.
 	// Most people call this a "virtual address"
@@ -278,6 +281,42 @@ func Translate(vcpuFd uintptr, t *Translation) error {
 	_, err := Ioctl(vcpuFd,
 		IIOWR(kvmTranslate, unsafe.Sizeof(Translation{})),
 		uintptr(unsafe.Pointer(t)))
+
+	return err
+}
+
+type MPState struct {
+	State uint32
+}
+
+const (
+	MPStateRunnable      uint32 = 0 + iota // x86, arm64, riscv
+	MPStateUninitialized                   // x86
+	MPStateInitReceived                    // x86
+	MPStateHalted                          // x86
+	MPStateSipiReceived                    // x86
+	MPStateStopped                         // x86
+	MPStateCheckStop                       // s390, arm64, riscv
+	MPStateOperating                       // s390
+	MPStateLoad                            // s390
+	MPStateApResetHold                     // s390
+	MPStateSuspended                       // arm64
+)
+
+// GetMPState returns the vcpu’s current multiprocessing state.
+func GetMPState(vcpuFd uintptr, mps *MPState) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetMPState, unsafe.Sizeof(MPState{})),
+		uintptr(unsafe.Pointer(mps)))
+
+	return err
+}
+
+// SetMPState sets the vcpu’s current multiprocessing state.
+func SetMPState(vcpuFd uintptr, mps *MPState) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetMPState, unsafe.Sizeof(MPState{})),
+		uintptr(unsafe.Pointer(mps)))
 
 	return err
 }
