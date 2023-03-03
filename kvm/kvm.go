@@ -64,6 +64,9 @@ const (
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
 
+	kvmGetVCPUEvents = 0x9F
+	kvmSetVCPUEvents = 0xA0
+
 	kvmSetTSCKHz = 0xA2
 	kvmGetTSCKHz = 0xA3
 
@@ -320,6 +323,66 @@ func SetMPState(vcpuFd uintptr, mps *MPState) error {
 	_, err := Ioctl(vcpuFd,
 		IIOW(kvmSetMPState, unsafe.Sizeof(MPState{})),
 		uintptr(unsafe.Pointer(mps)))
+
+	return err
+}
+
+type Exception struct {
+	Inject       uint8
+	Nr           uint8
+	HadErrorCode uint8
+	Pending      uint8
+	ErrorCode    uint32
+}
+
+type Interrupt struct {
+	Inject uint8
+	Nr     uint8
+	Soft   uint8
+	Shadow uint8
+}
+
+type NMI struct {
+	Inject  uint8
+	Pending uint8
+	Masked  uint8
+	_       uint8
+}
+
+type SMI struct {
+	SMM          uint8
+	Pening       uint8
+	SMMInsideNMI uint8
+	LatchedInit  uint8
+}
+
+type VCPUEvents struct {
+	E                   Exception
+	I                   Interrupt
+	N                   NMI
+	SipiVector          uint32
+	Flags               uint32
+	S                   SMI
+	TripleFault         uint8
+	_                   [26]uint8
+	ExceptionHasPayload uint8
+	ExceptionPayload    uint64
+}
+
+// GetVCPUEvents gets currently pending exceptions, interrupts, and NMIs as well as related states of the vcpu.
+func GetVCPUEvents(vcpuFd uintptr, event *VCPUEvents) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetVCPUEvents, unsafe.Sizeof(VCPUEvents{})),
+		uintptr(unsafe.Pointer(event)))
+
+	return err
+}
+
+// SetVCPUEvents sets spending exceptions, interrupts, and NMIs as well as related states of the vcpu.
+func SetVCPUEvents(vcpuFd uintptr, event *VCPUEvents) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetVCPUEvents, unsafe.Sizeof(VCPUEvents{})),
+		uintptr(unsafe.Pointer(event)))
 
 	return err
 }
