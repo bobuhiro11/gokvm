@@ -40,12 +40,12 @@ const (
 	kvmSetClock        = 0x7B
 	kvmGetClock        = 0x7C
 
-	kvmRun      = 0x80
-	kvmGetRegs  = 0x81
-	kvmSetRegs  = 0x82
-	kvmGetSregs = 0x83
-	kvmSetSregs = 0x84
-
+	kvmRun       = 0x80
+	kvmGetRegs   = 0x81
+	kvmSetRegs   = 0x82
+	kvmGetSregs  = 0x83
+	kvmSetSregs  = 0x84
+	kvmTranslate = 0x85
 	kvmInterrupt = 0x86
 
 	kvmGetLAPIC = 0x8e
@@ -252,6 +252,30 @@ func CreateDev(vmFd uintptr, dev *Device) error {
 	_, err := Ioctl(vmFd,
 		IIOWR(kvmCreateDev, unsafe.Sizeof(Device{})),
 		uintptr(unsafe.Pointer(dev)))
+
+	return err
+}
+
+// Translation is a struct for KVM_TRANSLATE queries.
+type Translation struct {
+	// LinearAddress is input.
+	// Most people call this a "virtual address"
+	// Intel has their own name.
+	LinearAddress uint64
+
+	// This is output
+	PhysicalAddress uint64
+	Valid           uint8
+	Writeable       uint8
+	Usermode        uint8
+	_               [5]uint8
+}
+
+// Translate translates a virtual address according to the vcpu’s current address translation mode.
+func Translate(vcpuFd uintptr, t *Translation) error {
+	_, err := Ioctl(vcpuFd,
+		IIOWR(kvmTranslate, unsafe.Sizeof(Translation{})),
+		uintptr(unsafe.Pointer(t)))
 
 	return err
 }

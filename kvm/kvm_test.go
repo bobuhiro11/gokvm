@@ -927,3 +927,52 @@ func TestReinjectControl(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTranslate(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mem, err := syscall.Mmap(-1, 0, 0x1000, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_ANONYMOUS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = kvm.SetUserMemoryRegion(vmFd, &kvm.UserspaceMemoryRegion{
+		Slot:          0,
+		Flags:         0,
+		GuestPhysAddr: 0x1000,
+		MemorySize:    0x1000,
+		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&mem[0]))),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test a good address
+	tOk := &kvm.Translation{
+		LinearAddress: 0,
+	}
+
+	if err := kvm.Translate(vcpuFd, tOk); err != nil || tOk.PhysicalAddress != 0 {
+		t.Errorf("m.VtoP(0, 0): got (%#x, %v), want 0, nil", tOk.PhysicalAddress, err)
+	}
+}
