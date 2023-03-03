@@ -103,6 +103,10 @@ func TestCPUID(t *testing.T) {
 	if err := kvm.SetCPUID2(vcpuFd, &CPUID); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := kvm.GetCPUID2(vcpuFd, &CPUID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCreateVCPU(t *testing.T) {

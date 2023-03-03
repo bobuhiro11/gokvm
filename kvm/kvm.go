@@ -52,6 +52,7 @@ const (
 	kvmSetLAPIC = 0x8f
 
 	kvmSetCPUID2 = 0x90
+	kvmGetCPUID2 = 0x91
 
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
