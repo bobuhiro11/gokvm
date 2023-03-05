@@ -67,6 +67,9 @@ const (
 	kvmGetVCPUEvents = 0x9F
 	kvmSetVCPUEvents = 0xA0
 
+	kvmGetDebugRegs = 0xA1
+	kvmSetDebugRegs = 0xA2
+
 	kvmSetTSCKHz = 0xA2
 	kvmGetTSCKHz = 0xA3
 
