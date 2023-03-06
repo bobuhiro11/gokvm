@@ -583,8 +583,10 @@ func (m *Machine) initSregs(vcpufd uintptr, amd64 bool) error {
 }
 
 func (m *Machine) initCPUID(cpu int) error {
-	cpuid := kvm.CPUID{}
-	cpuid.Nent = 100
+	cpuid := kvm.CPUID{
+		Nent:    100,
+		Entries: make([]kvm.CPUIDEntry2, 100),
+	}
 
 	if err := kvm.GetSupportedCPUID(m.kvmFd, &cpuid); err != nil {
 		return err

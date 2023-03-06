@@ -1,6 +1,10 @@
 package kvm
 
 import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"io"
 	"unsafe"
 )
 
@@ -8,7 +12,50 @@ import (
 type CPUID struct {
 	Nent    uint32
 	Padding uint32
-	Entries [100]CPUIDEntry2
+	Entries []CPUIDEntry2
+}
+
+func (c *CPUID) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+
+	if err := binary.Write(&buf, binary.LittleEndian, c.Nent); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(&buf, binary.LittleEndian, c.Padding); err != nil {
+		return nil, err
+	}
+
+	for _, entry := range c.Entries {
+		if err := binary.Write(&buf, binary.LittleEndian, entry); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (c *CPUID) Deserialize(data []byte) error {
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.LittleEndian, data); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
+	if err := binary.Read(&buf, binary.LittleEndian, &c.Nent); err != nil {
+		return err
+	}
+
+	if err := binary.Read(&buf, binary.LittleEndian, &c.Padding); err != nil {
+		return err
+	}
+
+	c.Entries = make([]CPUIDEntry2, c.Nent)
+
+	if err := binary.Read(&buf, binary.LittleEndian, &c.Entries); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
+	return nil
 }
 
 // CPUIDEntry2 is one entry for CPUID. It took 2 tries to get it right :-)
@@ -26,9 +73,22 @@ type CPUIDEntry2 struct {
 
 // GetSupportedCPUID gets all supported CPUID entries for a vm.
 func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
-	_, err := Ioctl(kvmFd,
+	var data []byte
+
+	data, err := kvmCPUID.Serialize()
+	if err != nil {
+		return err
+	}
+
+	if _, err = Ioctl(kvmFd,
 		IIOWR(kvmGetSupportedCPUID, unsafe.Sizeof(kvmCPUID)),
-		uintptr(unsafe.Pointer(kvmCPUID)))
+		uintptr(unsafe.Pointer(&data[0]))); err != nil {
+		return err
+	}
+
+	if err := kvmCPUID.Deserialize(data); err != nil {
+		return err
+	}
 
 	return err
 }
@@ -38,18 +98,44 @@ func GetSupportedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
 // individual vCPUs. This seems odd, but in fact lets code tailor CPUID entries
 // as needed.
 func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
-	_, err := Ioctl(vcpuFd,
+	var data []byte
+
+	data, err := kvmCPUID.Serialize()
+	if err != nil {
+		return err
+	}
+
+	if _, err := Ioctl(vcpuFd,
 		IIOW(kvmSetCPUID2, unsafe.Sizeof(kvmCPUID)),
-		uintptr(unsafe.Pointer(kvmCPUID)))
+		uintptr(unsafe.Pointer(&data[0]))); err != nil {
+		return err
+	}
+
+	if err := kvmCPUID.Deserialize(data); err != nil {
+		return err
+	}
 
 	return err
 }
 
 // GetEmulatedCPUID returns x86 cpuid features which are emulated by kvm.
 func GetEmulatedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
-	_, err := Ioctl(kvmFd,
-		IIOWR(kvmGetEmulatedCPUID, unsafe.Sizeof(kvmCPUID)),
-		uintptr(unsafe.Pointer(kvmCPUID)))
+	var data []byte
 
-	return err
+	data, err := kvmCPUID.Serialize()
+	if err != nil {
+		return err
+	}
+
+	if _, err = Ioctl(kvmFd,
+		IIOWR(kvmGetEmulatedCPUID, unsafe.Sizeof(kvmCPUID)),
+		uintptr(unsafe.Pointer(&data[0]))); err != nil {
+		return err
+	}
+
+	if err := kvmCPUID.Deserialize(data); err != nil {
+		return err
+	}
+
+	return nil
 }
