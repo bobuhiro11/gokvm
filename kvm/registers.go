@@ -126,3 +126,34 @@ func SetDebugRegs(vcpuFd uintptr, dregs *DebugRegs) error {
 
 	return err
 }
+
+type XRC struct {
+	XRC   uint32
+	_     uint32
+	Value uint64
+}
+
+type XCRS struct {
+	NrXRCS    uint32
+	Flags     uint32
+	Registers [16]XRC
+	_         [16]uint64
+}
+
+// GetXCRS copys current vcpu’s xcrs to the userspace.
+func GetXCRS(vcpuFd uintptr, xcrs *XCRS) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetXCRS, unsafe.Sizeof(XCRS{})),
+		uintptr(unsafe.Pointer(xcrs)))
+
+	return err
+}
+
+// SetXCRS sets vcpu’s xcr to the value userspace specified.
+func SetXCRS(vcpuFd uintptr, xcrs *XCRS) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetXCRS, unsafe.Sizeof(XCRS{})),
+		uintptr(unsafe.Pointer(xcrs)))
+
+	return err
+}
