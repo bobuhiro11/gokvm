@@ -192,3 +192,17 @@ func SetLocalAPIC(vcpuFd uintptr, lapic *LAPICState) error {
 
 	return err
 }
+
+// ReinjectControl sets i8254 Inject mode.
+func ReinjectControl(vmFd uintptr, mode uint8) error {
+	tmp := struct {
+		pitReinject uint8
+		_           [31]byte
+	}{
+		pitReinject: mode,
+	}
+	_, err := Ioctl(vmFd,
+		IIO(kvmReinjectControl), uintptr(unsafe.Pointer(&tmp)))
+
+	return err
+}

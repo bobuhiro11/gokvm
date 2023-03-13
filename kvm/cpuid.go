@@ -118,6 +118,14 @@ func SetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
 	return err
 }
 
+func GetCPUID2(vcpuFd uintptr, kvmCPUID *CPUID) error {
+	_, err := Ioctl(vcpuFd,
+		IIOWR(kvmGetCPUID2, 8),
+		uintptr(unsafe.Pointer(kvmCPUID)))
+
+	return err
+}
+
 // GetEmulatedCPUID returns x86 cpuid features which are emulated by kvm.
 func GetEmulatedCPUID(kvmFd uintptr, kvmCPUID *CPUID) error {
 	var data []byte

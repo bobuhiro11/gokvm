@@ -32,7 +32,7 @@ func (m *Machine) Args(cpu int, r *kvm.Regs, nargs int) ([]uintptr, error) {
 		return nil, err
 	}
 
-	sp := uintptr(r.RSP)
+	sp := r.RSP
 
 	switch nargs {
 	case 6:
@@ -111,7 +111,7 @@ func (m *Machine) Pointer(inst *x86asm.Inst, r *kvm.Regs, arg uint) (uintptr, er
 // Pop pops the stack and returns what was at TOS.
 // It is most often used to get the caller PC (cpc).
 func (m *Machine) Pop(cpu int, r *kvm.Regs) (uint64, error) {
-	cpc, err := m.ReadWord(cpu, uintptr(r.RSP))
+	cpc, err := m.ReadWord(cpu, r.RSP)
 	if err != nil {
 		return 0, err
 	}
@@ -130,7 +130,7 @@ func (m *Machine) Inst(cpu int) (*x86asm.Inst, *kvm.Regs, string, error) {
 		return nil, nil, "", fmt.Errorf("Inst:Getregs:%w", err)
 	}
 
-	pc := uintptr(r.RIP)
+	pc := r.RIP
 
 	// debug("Inst: pc %#x, sp %#x", pc, sp)
 	// We know the PC; grab a bunch of bytes there, then decode and print
@@ -165,7 +165,7 @@ func CallInfo(inst *x86asm.Inst, r *kvm.Regs) string {
 }
 
 // WriteWord writes the given word into the guest's virtual address space.
-func (m *Machine) WriteWord(cpu int, vaddr uintptr, word uint64) error {
+func (m *Machine) WriteWord(cpu int, vaddr uint64, word uint64) error {
 	pa, err := m.VtoP(cpu, vaddr)
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (m *Machine) WriteWord(cpu int, vaddr uintptr, word uint64) error {
 }
 
 // ReadBytes reads bytes from the CPUs virtual address space.
-func (m *Machine) ReadBytes(cpu int, b []byte, vaddr uintptr) (int, error) {
+func (m *Machine) ReadBytes(cpu int, b []byte, vaddr uint64) (int, error) {
 	pa, err := m.VtoP(cpu, vaddr)
 	if err != nil {
 		return -1, err
@@ -190,7 +190,7 @@ func (m *Machine) ReadBytes(cpu int, b []byte, vaddr uintptr) (int, error) {
 }
 
 // ReadWord reads the given word from the cpu's virtual address space.
-func (m *Machine) ReadWord(cpu int, vaddr uintptr) (uint64, error) {
+func (m *Machine) ReadWord(cpu int, vaddr uint64) (uint64, error) {
 	var b [8]byte
 	if _, err := m.ReadBytes(cpu, b[:], vaddr); err != nil {
 		return 0, err

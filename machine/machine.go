@@ -215,16 +215,18 @@ func (m *Machine) AddDisk(diskPath string) error {
 
 // Translate translates a virtual address for all active CPUs
 // and returns a []*Translate or error.
-func (m *Machine) Translate(vaddr uint64) ([]*Translate, error) {
-	t := make([]*Translate, 0, len(m.vcpuFds))
+func (m *Machine) Translate(vaddr uint64) ([]*kvm.Translation, error) {
+	t := make([]*kvm.Translation, 0, len(m.vcpuFds))
 
 	for cpu := range m.vcpuFds {
-		tt, err := GetTranslate(m.vcpuFds[cpu], vaddr)
-		if err != nil {
+		tr := &kvm.Translation{
+			LinearAddress: vaddr,
+		}
+		if err := kvm.Translate(m.vcpuFds[cpu], tr); err != nil {
 			return t, err
 		}
 
-		t = append(t, tt)
+		t = append(t, tr)
 	}
 
 	return t, nil
@@ -901,40 +903,6 @@ func show(indent string, l ...interface{}) string {
 	return ret
 }
 
-// Translate is a struct for KVM_TRANSLATE queries.
-type Translate struct {
-	// LinearAddress is input.
-	// Most people call this a "virtual address"
-	// Intel has their own name.
-	LinearAddress uint64
-
-	// This is output
-	PhysicalAddress uint64
-	Valid           uint8
-	Writeable       uint8
-	Usermode        uint8
-	_               [5]uint8
-}
-
-// GetTranslate returns the virtual to physical mapping across all vCPUs.
-// It is incredibly helpful for debugging at startup and detecting
-// corrupted page tables.
-// N.B.: on x86 it appears to ignore vcpufd.
-// And, further, it always says the address is valid.
-// I've no idea why.
-func GetTranslate(vcpuFd uintptr, vaddr uint64) (*Translate, error) {
-	var (
-		kvmTranslate = kvm.IIOWR(0x85, 3*8)
-		t            = &Translate{LinearAddress: vaddr}
-	)
-
-	if _, err := kvm.Ioctl(vcpuFd, kvmTranslate, uintptr(unsafe.Pointer(t))); err != nil {
-		return t, fmt.Errorf("translate %#x:%w", vaddr, err)
-	}
-
-	return t, nil
-}
-
 // CPUToFD translates a CPU number to an fd.
 func (m *Machine) CPUToFD(cpu int) (uintptr, error) {
 	if cpu > len(m.vcpuFds) {
@@ -945,14 +913,16 @@ func (m *Machine) CPUToFD(cpu int) (uintptr, error) {
 }
 
 // VtoP returns the physical address for a vCPU virtual address.
-func (m *Machine) VtoP(cpu int, vaddr uintptr) (int64, error) {
+func (m *Machine) VtoP(cpu int, vaddr uint64) (int64, error) {
 	fd, err := m.CPUToFD(cpu)
 	if err != nil {
 		return 0, err
 	}
 
-	t, err := GetTranslate(fd, uint64(vaddr))
-	if err != nil {
+	t := &kvm.Translation{
+		LinearAddress: vaddr,
+	}
+	if err := kvm.Translate(fd, t); err != nil {
 		return -1, err
 	}
 

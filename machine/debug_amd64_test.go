@@ -34,7 +34,7 @@ func TestDebug(t *testing.T) { // nolint:paralleltest
 		t.Fatalf("TestDebug: r.RIP is %#x, want %#x", r.RIP, rip)
 	}
 
-	rsp := uintptr(rip)
+	rsp := rip
 
 	t.Logf("r.RIP %#x, r.RSP %#x", r.RIP, r.RSP)
 

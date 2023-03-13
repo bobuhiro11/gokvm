@@ -100,3 +100,29 @@ type Descriptor struct {
 	Limit uint16
 	_     [3]uint16
 }
+
+type DebugRegs struct {
+	DB    [4]uint64
+	DR6   uint64
+	DR7   uint64
+	Flags uint64
+	_     [9]uint64
+}
+
+// GetDebugRegs reads debug registers from a vcpu.
+func GetDebugRegs(vcpuFd uintptr, dregs *DebugRegs) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetDebugRegs, unsafe.Sizeof(DebugRegs{})),
+		uintptr(unsafe.Pointer(dregs)))
+
+	return err
+}
+
+// SetDebugRegs sets debug registers on a vcpu.
+func SetDebugRegs(vcpuFd uintptr, dregs *DebugRegs) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetDebugRegs, unsafe.Sizeof(DebugRegs{})),
+		uintptr(unsafe.Pointer(dregs)))
+
+	return err
+}

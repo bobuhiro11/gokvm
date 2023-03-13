@@ -35,25 +35,40 @@ const (
 
 	kvmSetGSIRouting = 0x6A
 
-	kvmCreatePIT2 = 0x77
-	kvmSetClock   = 0x7B
-	kvmGetClock   = 0x7C
+	kvmReinjectControl = 0x71
+	kvmCreatePIT2      = 0x77
+	kvmSetClock        = 0x7B
+	kvmGetClock        = 0x7C
 
-	kvmRun      = 0x80
-	kvmGetRegs  = 0x81
-	kvmSetRegs  = 0x82
-	kvmGetSregs = 0x83
-	kvmSetSregs = 0x84
-
+	kvmRun       = 0x80
+	kvmGetRegs   = 0x81
+	kvmSetRegs   = 0x82
+	kvmGetSregs  = 0x83
+	kvmSetSregs  = 0x84
+	kvmTranslate = 0x85
 	kvmInterrupt = 0x86
 
 	kvmGetLAPIC = 0x8e
 	kvmSetLAPIC = 0x8f
 
-	kvmSetCPUID2 = 0x90
+	kvmSetCPUID2          = 0x90
+	kvmGetCPUID2          = 0x91
+	kvmTRPAccessReporting = 0x92
+
+	kvmGetMPState = 0x98
+	kvmSetMPState = 0x99
+
+	kvmX86SetupMCE           = 0x9C
+	kvmX86GetMCECapSupported = 0x9D
 
 	kvmGetPIT2 = 0x9F
 	kvmSetPIT2 = 0xA0
+
+	kvmGetVCPUEvents = 0x9F
+	kvmSetVCPUEvents = 0xA0
+
+	kvmGetDebugRegs = 0xA1
+	kvmSetDebugRegs = 0xA2
 
 	kvmSetTSCKHz = 0xA2
 	kvmGetTSCKHz = 0xA3
@@ -204,7 +219,7 @@ type ClockData struct {
 }
 
 // SetClock sets the current timestamp of kvmclock to the value specified in its parameter.
-// In conjunction with KVM_GET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+// In conjunction with GET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
 func SetClock(vmFd uintptr, cd *ClockData) error {
 	_, err := Ioctl(vmFd,
 		IIOW(kvmSetClock, unsafe.Sizeof(ClockData{})),
@@ -214,7 +229,7 @@ func SetClock(vmFd uintptr, cd *ClockData) error {
 }
 
 // GetClock gets the current timestamp of kvmclock as seen by the current guest.
-// In conjunction with KVM_SET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
+// In conjunction with SET_CLOCK, it is used to ensure monotonicity on scenarios such as migration.
 func GetClock(vmFd uintptr, cd *ClockData) error {
 	_, err := Ioctl(vmFd,
 		IIOR(kvmGetClock, unsafe.Sizeof(ClockData{})),
@@ -246,11 +261,131 @@ type Device struct {
 }
 
 // CreateDev creates an emulated device in the kernel.
-// The file descriptor returned in fd can be used with KVM_SET/GET/HAS_DEVICE_ATTR.
+// The file descriptor returned in fd can be used with SET/GET/HAS_DEVICE_ATTR.
 func CreateDev(vmFd uintptr, dev *Device) error {
 	_, err := Ioctl(vmFd,
 		IIOWR(kvmCreateDev, unsafe.Sizeof(Device{})),
 		uintptr(unsafe.Pointer(dev)))
+
+	return err
+}
+
+// Translation is a struct for TRANSLATE queries.
+type Translation struct {
+	// LinearAddress is input.
+	// Most people call this a "virtual address"
+	// Intel has their own name.
+	LinearAddress uint64
+
+	// This is output
+	PhysicalAddress uint64
+	Valid           uint8
+	Writeable       uint8
+	Usermode        uint8
+	_               [5]uint8
+}
+
+// Translate translates a virtual address according to the vcpu’s current address translation mode.
+func Translate(vcpuFd uintptr, t *Translation) error {
+	_, err := Ioctl(vcpuFd,
+		IIOWR(kvmTranslate, unsafe.Sizeof(Translation{})),
+		uintptr(unsafe.Pointer(t)))
+
+	return err
+}
+
+type MPState struct {
+	State uint32
+}
+
+const (
+	MPStateRunnable      uint32 = 0 + iota // x86, arm64, riscv
+	MPStateUninitialized                   // x86
+	MPStateInitReceived                    // x86
+	MPStateHalted                          // x86
+	MPStateSipiReceived                    // x86
+	MPStateStopped                         // x86
+	MPStateCheckStop                       // s390, arm64, riscv
+	MPStateOperating                       // s390
+	MPStateLoad                            // s390
+	MPStateApResetHold                     // s390
+	MPStateSuspended                       // arm64
+)
+
+// GetMPState returns the vcpu’s current multiprocessing state.
+func GetMPState(vcpuFd uintptr, mps *MPState) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetMPState, unsafe.Sizeof(MPState{})),
+		uintptr(unsafe.Pointer(mps)))
+
+	return err
+}
+
+// SetMPState sets the vcpu’s current multiprocessing state.
+func SetMPState(vcpuFd uintptr, mps *MPState) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetMPState, unsafe.Sizeof(MPState{})),
+		uintptr(unsafe.Pointer(mps)))
+
+	return err
+}
+
+type Exception struct {
+	Inject       uint8
+	Nr           uint8
+	HadErrorCode uint8
+	Pending      uint8
+	ErrorCode    uint32
+}
+
+type Interrupt struct {
+	Inject uint8
+	Nr     uint8
+	Soft   uint8
+	Shadow uint8
+}
+
+type NMI struct {
+	Inject  uint8
+	Pending uint8
+	Masked  uint8
+	_       uint8
+}
+
+type SMI struct {
+	SMM          uint8
+	Pening       uint8
+	SMMInsideNMI uint8
+	LatchedInit  uint8
+}
+
+type VCPUEvents struct {
+	E                   Exception
+	I                   Interrupt
+	N                   NMI
+	SipiVector          uint32
+	Flags               uint32
+	S                   SMI
+	TripleFault         uint8
+	_                   [26]uint8
+	ExceptionHasPayload uint8
+	ExceptionPayload    uint64
+}
+
+// GetVCPUEvents gets currently pending exceptions, interrupts, and NMIs as well as related states of the vcpu.
+func GetVCPUEvents(vcpuFd uintptr, event *VCPUEvents) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetVCPUEvents, unsafe.Sizeof(VCPUEvents{})),
+		uintptr(unsafe.Pointer(event)))
+
+	return err
+}
+
+// SetVCPUEvents sets spending exceptions, interrupts, and NMIs as well as related states of the vcpu.
+func SetVCPUEvents(vcpuFd uintptr, event *VCPUEvents) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetVCPUEvents, unsafe.Sizeof(VCPUEvents{})),
+		uintptr(unsafe.Pointer(event)))
 
 	return err
 }
