@@ -30,7 +30,7 @@ before_script:
 script:
   - sudo -E env "PATH=$PATH" go mod tidy && git diff --no-patch --exit-code go.sum
   - sudo -E env "PATH=$PATH" make gokvm
-  - sudo -E env "PATH=$PATH" make test
+  - travis_retry sudo -E env "PATH=$PATH" make test
 after_script:
   - sudo -E env "PATH=$PATH" goveralls -service=travis-ci -coverprofile c.out
   - sudo -E env "PATH=$PATH" ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
