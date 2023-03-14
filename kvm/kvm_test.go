@@ -1,3 +1,4 @@
+//nolint:dupl
 package kvm_test
 
 import (
@@ -1201,6 +1202,132 @@ func TestGetSetDebugRegs(t *testing.T) {
 	}
 
 	if err := kvm.SetDebugRegs(vcpuFd, dregs); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetSetXCRS(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapXCRS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapXCRS is disable")
+	}
+
+	xcrs := &kvm.XCRS{}
+
+	if err := kvm.GetXCRS(vcpuFd, xcrs); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetXCRS(vcpuFd, xcrs); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMI(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapX86SMM)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapX86SMM is disable")
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.PutSMI(vcpuFd); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetSetSRegs2(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapSREGS2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapSREGS2 is disable")
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sregs2 := &kvm.SRegs2{}
+
+	if err := kvm.GetSRegs2(vcpuFd, sregs2); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := kvm.SetSRegs2(vcpuFd, sregs2); err != nil {
 		t.Fatal(err)
 	}
 }

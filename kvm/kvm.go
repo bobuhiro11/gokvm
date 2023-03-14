@@ -73,6 +73,14 @@ const (
 	kvmSetTSCKHz = 0xA2
 	kvmGetTSCKHz = 0xA3
 
+	kvmGetXCRS = 0xA6
+	kvmSetXCRS = 0xA7
+
+	kvmSMI = 0xB7
+
+	kvmGetSRegs2 = 0xCC
+	kvmSetSRegs2 = 0xCD
+
 	kvmCreateDev = 0xE0
 )
 
@@ -386,6 +394,13 @@ func SetVCPUEvents(vcpuFd uintptr, event *VCPUEvents) error {
 	_, err := Ioctl(vcpuFd,
 		IIOW(kvmSetVCPUEvents, unsafe.Sizeof(VCPUEvents{})),
 		uintptr(unsafe.Pointer(event)))
+
+	return err
+}
+
+// SMI queues an SMI on the thread’s vcpu.
+func PutSMI(vcpuFd uintptr) error {
+	_, err := Ioctl(vcpuFd, IIO(kvmSMI), 0)
 
 	return err
 }

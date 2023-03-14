@@ -126,3 +126,74 @@ func SetDebugRegs(vcpuFd uintptr, dregs *DebugRegs) error {
 
 	return err
 }
+
+type XRC struct {
+	XRC   uint32
+	_     uint32
+	Value uint64
+}
+
+type XCRS struct {
+	NrXRCS    uint32
+	Flags     uint32
+	Registers [16]XRC
+	_         [16]uint64
+}
+
+// GetXCRS copys current vcpu’s xcrs to the userspace.
+func GetXCRS(vcpuFd uintptr, xcrs *XCRS) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetXCRS, unsafe.Sizeof(XCRS{})),
+		uintptr(unsafe.Pointer(xcrs)))
+
+	return err
+}
+
+// SetXCRS sets vcpu’s xcr to the value userspace specified.
+func SetXCRS(vcpuFd uintptr, xcrs *XCRS) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetXCRS, unsafe.Sizeof(XCRS{})),
+		uintptr(unsafe.Pointer(xcrs)))
+
+	return err
+}
+
+type SRegs2 struct {
+	CS       Segment
+	DS       Segment
+	ES       Segment
+	FS       Segment
+	GS       Segment
+	SS       Segment
+	TR       Segment
+	LDT      Segment
+	GDT      Descriptor
+	IDT      Descriptor
+	CR0      uint64
+	CR2      uint64
+	CR3      uint64
+	CR4      uint64
+	CR8      uint64
+	EFER     uint64
+	APICBase uint64
+	Flags    uint64
+	PDptrs   [4]uint64
+}
+
+// GetSRegs2 retrieves special registers from the VCPU.
+func GetSRegs2(vcpuFd uintptr, sreg *SRegs2) error {
+	_, err := Ioctl(vcpuFd,
+		IIOR(kvmGetSRegs2, unsafe.Sizeof(SRegs2{})),
+		uintptr(unsafe.Pointer(sreg)))
+
+	return err
+}
+
+// SetSRegs2 sets special registers of VCPU.
+func SetSRegs2(vcpuFd uintptr, sreg *SRegs2) error {
+	_, err := Ioctl(vcpuFd,
+		IIOW(kvmSetSRegs2, unsafe.Sizeof(SRegs2{})),
+		uintptr(unsafe.Pointer(sreg)))
+
+	return err
+}
