@@ -78,6 +78,9 @@ const (
 
 	kvmSMI = 0xB7
 
+	kvmGetSRegs2 = 0xCC
+	kvmSetSRegs2 = 0xCD
+
 	kvmCreateDev = 0xE0
 )
 
