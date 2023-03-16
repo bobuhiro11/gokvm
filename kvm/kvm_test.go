@@ -303,7 +303,7 @@ func TestAddNum(t *testing.T) {
 			if direction == uint64(kvm.EXITIOOUT) && size == 1 && port == 0x3f8 && count == 1 {
 				p := uintptr(unsafe.Pointer(run))
 				c := *(*byte)(unsafe.Pointer(p + uintptr(offset)))
-				t.Logf("output from IO port: \"%c\"\n", c)
+				// t.Logf("output from IO port: \"%c\"\n", c)
 
 				if c != '4' && c != '\n' {
 					t.Fatal("Unexpected Output")
