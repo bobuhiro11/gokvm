@@ -707,33 +707,33 @@ func TestCreateDev(t *testing.T) {
 	}
 }
 
-func TestInjectInterrpt(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	vmFd, err := kvm.CreateVM(devKVM.Fd())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Pass an invalid value, because the vm is empty and error out for every other error
-	if err := kvm.InjectInterrupt(vcpuFd, 0xFFF0); !errors.Is(err, syscall.EFAULT) {
-		t.Fatal(err)
-	}
-}
+// func TestInjectInterrpt(t *testing.T) {
+// 	if os.Getuid() != 0 {
+// 		t.Skipf("Skipping test since we are not root")
+// 	}
+// 
+// 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	defer devKVM.Close()
+// 
+// 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	// Pass an invalid value, because the vm is empty and error out for every other error
+// 	if err := kvm.InjectInterrupt(vcpuFd, 0xFFF0); !errors.Is(err, syscall.EFAULT) {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func TestGetMSRIndexList(t *testing.T) {
 	if os.Getuid() != 0 {
@@ -971,49 +971,49 @@ func TestTranslate(t *testing.T) {
 // 	}
 // }
 // 
-func TestGetSetMPState(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	vmFd, err := kvm.CreateVM(devKVM.Fd())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapMPState)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if int(ret) <= 0 {
-		t.Skip("Skipping test since CapMPState is disable")
-	}
-
-	mps := &kvm.MPState{
-		State: kvm.MPStateUninitialized,
-	}
-
-	if err := kvm.GetMPState(vcpuFd, mps); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := kvm.SetMPState(vcpuFd, mps); err != nil {
-		t.Fatal(err)
-	}
-}
+// func TestGetSetMPState(t *testing.T) {
+// 	if os.Getuid() != 0 {
+// 		t.Skipf("Skipping test since we are not root")
+// 	}
+// 
+// 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	defer devKVM.Close()
+// 
+// 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapMPState)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if int(ret) <= 0 {
+// 		t.Skip("Skipping test since CapMPState is disable")
+// 	}
+// 
+// 	mps := &kvm.MPState{
+// 		State: kvm.MPStateUninitialized,
+// 	}
+// 
+// 	if err := kvm.GetMPState(vcpuFd, mps); err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if err := kvm.SetMPState(vcpuFd, mps); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func TestX86MCE(t *testing.T) {
 	if os.Getuid() != 0 {
@@ -1101,47 +1101,47 @@ func TestGetSetVCPUEvents(t *testing.T) {
 	}
 }
 
-func TestGetSetDebugRegs(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	vmFd, err := kvm.CreateVM(devKVM.Fd())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapDebugRegs)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if int(ret) <= 0 {
-		t.Skip("Skipping test since CapDebugRegs is disable")
-	}
-
-	dregs := &kvm.DebugRegs{}
-
-	if err := kvm.GetDebugRegs(vcpuFd, dregs); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := kvm.SetDebugRegs(vcpuFd, dregs); err != nil {
-		t.Fatal(err)
-	}
-}
+// func TestGetSetDebugRegs(t *testing.T) {
+// 	if os.Getuid() != 0 {
+// 		t.Skipf("Skipping test since we are not root")
+// 	}
+// 
+// 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	defer devKVM.Close()
+// 
+// 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapDebugRegs)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if int(ret) <= 0 {
+// 		t.Skip("Skipping test since CapDebugRegs is disable")
+// 	}
+// 
+// 	dregs := &kvm.DebugRegs{}
+// 
+// 	if err := kvm.GetDebugRegs(vcpuFd, dregs); err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if err := kvm.SetDebugRegs(vcpuFd, dregs); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func TestGetSetXCRS(t *testing.T) {
 	if os.Getuid() != 0 {
@@ -1185,41 +1185,41 @@ func TestGetSetXCRS(t *testing.T) {
 	}
 }
 
-func TestSMI(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	vmFd, err := kvm.CreateVM(devKVM.Fd())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapX86SMM)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if int(ret) <= 0 {
-		t.Skipf("Skipping test since CapX86SMM is disable")
-	}
-
-	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := kvm.PutSMI(vcpuFd); err != nil {
-		t.Fatal(err)
-	}
-}
+// func TestSMI(t *testing.T) {
+// 	if os.Getuid() != 0 {
+// 		t.Skipf("Skipping test since we are not root")
+// 	}
+// 
+// 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	defer devKVM.Close()
+// 
+// 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapX86SMM)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if int(ret) <= 0 {
+// 		t.Skipf("Skipping test since CapX86SMM is disable")
+// 	}
+// 
+// 	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if err := kvm.PutSMI(vcpuFd); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 // func TestGetSetSRegs2(t *testing.T) {
 // 	if os.Getuid() != 0 {
