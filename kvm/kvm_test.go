@@ -17,8 +17,6 @@ func TestGetAPIVersion(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	t.Parallel()
-
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -36,8 +34,6 @@ func TestCreateVM(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
@@ -67,8 +63,6 @@ func TestCPUID(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
@@ -116,8 +110,6 @@ func TestCreateVCPU(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
@@ -172,8 +164,6 @@ func TestGetVCPUMMapSize(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	t.Parallel()
-
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -192,8 +182,6 @@ func TestCreateVCPUWithNoVmFd(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	t.Parallel()
-
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -210,8 +198,6 @@ func TestAddNum(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
@@ -354,8 +340,6 @@ func TestSetMemLogDirtyPages(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
-	t.Parallel()
-
 	u := kvm.UserspaceMemoryRegion{}
 	u.SetMemLogDirtyPages()
 	u.SetMemReadonly()
@@ -369,8 +353,6 @@ func TestIRQLine(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
 	if err != nil {
@@ -392,8 +374,6 @@ func TestIRQLine(t *testing.T) {
 }
 
 func TestIoctlStringer(t *testing.T) {
-	t.Parallel()
-
 	for _, test := range []struct {
 		name string
 		val  kvm.ExitType
@@ -406,7 +386,6 @@ func TestIoctlStringer(t *testing.T) {
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			got := test.val.String()
 			if got != test.want {
 				t.Errorf("%s:%s != %s", test.name, test.want, got)

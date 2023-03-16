@@ -82,8 +82,13 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
+	// Sleep here to mitigate "curl: (7) Failed to connect" error.
+	// But I don't know exact reason.
+	time.Sleep(3 * time.Second)
+
 	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L", //nolint:gosec
 		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4)).Output()
+
 	t.Logf("curl output: %s\n", output)
 
 	if err != nil {
