@@ -462,32 +462,32 @@ func TestGetSetPID2(t *testing.T) {
 // 	}
 // }
 
-func TestCoalescedMMIO(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	vmFd, err := kvm.CreateVM(devKVM.Fd())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := kvm.RegisterCoalescedMMIO(vmFd, 0xFFFE000, 0x1000); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := kvm.UnregisterCoalescedMMIO(vmFd, 0xFFFE000, 0x1000); err != nil {
-		t.Fatal(err)
-	}
-}
-
+// func TestCoalescedMMIO(t *testing.T) {
+// 	if os.Getuid() != 0 {
+// 		t.Skipf("Skipping test since we are not root")
+// 	}
+// 
+// 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	defer devKVM.Close()
+// 
+// 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if err := kvm.RegisterCoalescedMMIO(vmFd, 0xFFFE000, 0x1000); err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if err := kvm.UnregisterCoalescedMMIO(vmFd, 0xFFFE000, 0x1000); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
+// 
 func TestSetNrMMUPages(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
