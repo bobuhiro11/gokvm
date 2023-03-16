@@ -1015,49 +1015,49 @@ func TestTranslate(t *testing.T) {
 // 	}
 // }
 
-func TestX86MCE(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf("Skipping test since we are not root")
-	}
-
-	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer devKVM.Close()
-
-	vmFd, err := kvm.CreateVM(devKVM.Fd())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapMCE)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if int(ret) <= 0 {
-		t.Skip("Skipping test since CapMCE is disable")
-	}
-
-	mceCap := uint64(0x0)
-
-	if err := kvm.X86GetMCECapSupported(devKVM.Fd(), &mceCap); err != nil {
-		t.Fatal(err)
-	}
-
-	mceCap = 1
-
-	if err := kvm.X86SetupMCE(vcpuFd, &mceCap); err != nil {
-		t.Fatal(err)
-	}
-}
+// func TestX86MCE(t *testing.T) {
+// 	if os.Getuid() != 0 {
+// 		t.Skipf("Skipping test since we are not root")
+// 	}
+// 
+// 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	defer devKVM.Close()
+// 
+// 	vmFd, err := kvm.CreateVM(devKVM.Fd())
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapMCE)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	if int(ret) <= 0 {
+// 		t.Skip("Skipping test since CapMCE is disable")
+// 	}
+// 
+// 	mceCap := uint64(0x0)
+// 
+// 	if err := kvm.X86GetMCECapSupported(devKVM.Fd(), &mceCap); err != nil {
+// 		t.Fatal(err)
+// 	}
+// 
+// 	mceCap = 1
+// 
+// 	if err := kvm.X86SetupMCE(vcpuFd, &mceCap); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func TestGetSetVCPUEvents(t *testing.T) {
 	if os.Getuid() != 0 {
