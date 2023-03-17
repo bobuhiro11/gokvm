@@ -2,6 +2,10 @@
 package kvm
 
 import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"io"
 	"unsafe"
 )
 
@@ -152,11 +156,61 @@ type IRQRouting struct {
 	Entries []IRQRoutingEntry
 }
 
+func (r *IRQRouting) Bytes() ([]byte, error) {
+	var buf bytes.Buffer
+
+	if err := binary.Write(&buf, binary.LittleEndian, r.Nr); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(&buf, binary.LittleEndian, r.Flags); err != nil {
+		return nil, err
+	}
+
+	for _, entry := range r.Entries {
+		if err := binary.Write(&buf, binary.LittleEndian, entry); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+func NewIRQRouting(data []byte) (*IRQRouting, error) {
+	r := IRQRouting{}
+
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.LittleEndian, data); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	if err := binary.Read(&buf, binary.LittleEndian, &r.Nr); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Read(&buf, binary.LittleEndian, &r.Flags); err != nil {
+		return nil, err
+	}
+
+	r.Entries = make([]IRQRoutingEntry, r.Nr)
+
+	if err := binary.Read(&buf, binary.LittleEndian, &r.Entries); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	return &r, nil
+}
+
 // SetGSIRouting sets the GSI routing table entries, overwriting any previously set entries.
 func SetGSIRouting(vmFd uintptr, irqR *IRQRouting) error {
-	_, err := Ioctl(vmFd,
+	data, err := irqR.Bytes()
+	if err != nil {
+		return err
+	}
+
+	_, err = Ioctl(vmFd,
 		IIOW(kvmSetGSIRouting, unsafe.Sizeof(irqR)),
-		uintptr(unsafe.Pointer(irqR)))
+		uintptr(unsafe.Pointer(&data[0])))
 
 	return err
 }
