@@ -12,6 +12,54 @@ import (
 	"github.com/bobuhiro11/gokvm/kvm"
 )
 
+func TestIRQRouting(t *testing.T) {
+	t.Parallel()
+
+	irqR := kvm.IRQRouting{
+		Nr:    0x00000002,
+		Flags: 0x55667788,
+		Entries: []kvm.IRQRoutingEntry{
+			{GSI: 0x99aabbcc},
+			{GSI: 0xdaedbeef},
+		},
+	}
+
+	data, err := irqR.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want, got := uint32(0x00000002), *(*uint32)(unsafe.Pointer((uintptr(unsafe.Pointer(&data[0])) + uintptr(4*0))))
+	if want != got {
+		t.Fatalf("got: %d, want: %d", got, want)
+	}
+
+	want, got = uint32(0x55667788), *(*uint32)(unsafe.Pointer((uintptr(unsafe.Pointer(&data[0])) + uintptr(4*1))))
+	if want != got {
+		t.Fatalf("got: %d, want: %d", got, want)
+	}
+
+	want, got = uint32(0x99aabbcc), *(*uint32)(unsafe.Pointer((uintptr(unsafe.Pointer(&data[0])) + uintptr(4*2))))
+	if want != got {
+		t.Fatalf("got: %d, want: %d", got, want)
+	}
+
+	irqR2, err := kvm.NewIRQRouting(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want, got = uint32(0x99aabbcc), irqR2.Entries[0].GSI
+	if want != got {
+		t.Fatalf("got: %d, want: %d", got, want)
+	}
+
+	want, got = uint32(0xdaedbeef), irqR2.Entries[1].GSI
+	if want != got {
+		t.Fatalf("got: %d, want: %d", got, want)
+	}
+}
+
 func TestGetAPIVersion(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
