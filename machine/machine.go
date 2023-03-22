@@ -17,6 +17,7 @@ import (
 	"github.com/bobuhiro11/gokvm/bootparam"
 	"github.com/bobuhiro11/gokvm/ebda"
 	"github.com/bobuhiro11/gokvm/kvm"
+	"github.com/bobuhiro11/gokvm/memory"
 	"github.com/bobuhiro11/gokvm/pci"
 	"github.com/bobuhiro11/gokvm/serial"
 	"github.com/bobuhiro11/gokvm/tap"
@@ -95,18 +96,6 @@ const (
 	PDE64xG        = (1 << 8)
 )
 
-const (
-	// Poison is an instruction that should force a vmexit.
-	// it fills memory to make catching guest errors easier.
-	// vmcall, nop is this pattern
-	// Poison = []byte{0x0f, 0x0b, } //0x01, 0xC1, 0x90}
-	// Disassembly:
-	// 0:  b8 be ba fe ca          mov    eax,0xcafebabe
-	// 5:  90                      nop
-	// 6:  0f 0b                   ud2
-	Poison = "\xB8\xBE\xBA\xFE\xCA\x90\x0F\x0B"
-)
-
 var ErrZeroSizeKernel = errors.New("kernel is 0 bytes")
 
 // ErrWriteToCF9 indicates a write to cf9, the standard x86 reset port.
@@ -127,7 +116,7 @@ var ErrMemTooSmall = fmt.Errorf("mem request must be at least 1<<20")
 type Machine struct {
 	kvmFd, vmFd    uintptr
 	vcpuFds        []uintptr
-	mem            []byte
+	mem            *memory.Memory
 	runs           []*kvm.RunData
 	pci            *pci.PCI
 	serial         *serial.Serial
@@ -161,25 +150,17 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 
 	// Another coding anti-pattern reguired by golangci-lint.
 	// Would not pass review in Google.
-	if m.mem, err = syscall.Mmap(-1, 0, memSize,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_SHARED|syscall.MAP_ANONYMOUS); err != nil {
+	if m.mem, err = memory.New(m.kvmFd, memSize); err != nil {
 		return m, err
 	}
 
+	// Slot0 is the only slot right now, so we can place it directly.
 	err = kvm.SetUserMemoryRegion(m.vmFd, &kvm.UserspaceMemoryRegion{
 		Slot: 0, Flags: 0, GuestPhysAddr: 0, MemorySize: uint64(memSize),
-		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&m.mem[0]))),
+		UserspaceAddr: (m.mem.Slots[0].PhysAddr),
 	})
 	if err != nil {
 		return m, err
-	}
-
-	// Poison memory.
-	// 0 is valid instruction and if you start running in the middle of all those
-	// 0's it is impossible to diagnore.
-	for i := highMemBase; i < len(m.mem); i += len(Poison) {
-		copy(m.mem[i:], Poison)
 	}
 
 	return m, nil
@@ -191,7 +172,7 @@ func (m *Machine) AddTapIf(tapIfName string) error {
 		return err
 	}
 
-	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem.Slots[0].Buf)
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 	// 00:01.0 for Virtio net
@@ -201,7 +182,7 @@ func (m *Machine) AddTapIf(tapIfName string) error {
 }
 
 func (m *Machine) AddDisk(diskPath string) error {
-	v, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem)
+	v, err := virtio.NewBlk(diskPath, virtioBlkIRQ, m, m.mem.Slots[0].Buf)
 	if err != nil {
 		return err
 	}
@@ -271,17 +252,17 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		return err
 	}
 
-	copy(m.mem[bootparam.EBDAStart:], bytes)
+	copy(m.mem.Slots[0].Buf[ebdaAS.Start:], bytes)
 
 	// Load initrd
-	initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
+	initrdSize, err := initrd.ReadAt(m.mem.Slots[0].Buf[initrdAddr:], 0)
 	if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
 	}
 
 	// Load kernel command-line parameters
-	copy(m.mem[cmdlineAddr:], params)
-	m.mem[cmdlineAddr+len(params)] = 0 // for null terminated string
+	copy(m.mem.Slots[0].Buf[cmdlineAddr:], params)
+	m.mem.Slots[0].Buf[cmdlineAddr+len(params)] = 0 // for null terminated string
 
 	// try to read as ELF. If it fails, no problem,
 	// next effort is to read as a bzimage.
@@ -321,7 +302,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	)
 	bootParam.AddE820Entry(
 		highMemBase,
-		uint64(len(m.mem)-highMemBase),
+		uint64(len(m.mem.Slots[0].Buf)-highMemBase),
 		bootparam.E820Ram,
 	)
 
@@ -340,7 +321,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		return err
 	}
 
-	copy(m.mem[bootParamAddr:], bytes)
+	copy(m.mem.Slots[0].Buf[bootParamAddr:], bytes)
 
 	var (
 		amd64    bool
@@ -359,7 +340,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		// refs: https://www.kernel.org/doc/html/latest/x86/boot.html#loading-the-rest-of-the-kernel
 		setupsz := int(bootParam.Hdr.SetupSects+1) * 512
 
-		kernSize, err = kernel.ReadAt(m.mem[DefaultKernelAddr:], int64(setupsz))
+		kernSize, err = kernel.ReadAt(m.mem.Slots[0].Buf[DefaultKernelAddr:], int64(setupsz))
 
 		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("kernel: (%v, %w)", kernSize, err)
@@ -378,7 +359,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 
 			log.Printf("Load elf segment @%#x from file %#x %#x bytes", p.Paddr, p.Off, p.Filesz)
 
-			n, err := p.ReadAt(m.mem[p.Paddr:], 0)
+			n, err := p.ReadAt(m.mem.Slots[0].Buf[p.Paddr:], 0)
 			if !errors.Is(err, io.EOF) || uint64(n) != p.Filesz {
 				return fmt.Errorf("reading ELF prog %d@%#x: %d/%d bytes, err %w", i, p.Paddr, n, p.Filesz, err)
 			}
@@ -493,7 +474,7 @@ func (m *Machine) initSregs(vcpufd uintptr, amd64 bool) error {
 		return nil
 	}
 
-	high64k := m.mem[pageTableBase : pageTableBase+0x6000]
+	high64k := m.mem.Slots[0].Buf[pageTableBase : pageTableBase+0x6000]
 
 	// zero out the page tables.
 	// but we might in fact want to poison them?
@@ -549,7 +530,7 @@ func (m *Machine) initSregs(vcpufd uintptr, amd64 bool) error {
 
 	// set to true to debug.
 	if false {
-		log.Printf("Page tables: %s", hex.Dump(m.mem[pageTableBase:pageTableBase+0x3000]))
+		log.Printf("Page tables: %s", hex.Dump(m.mem.Slots[0].Buf[pageTableBase:pageTableBase+0x3000]))
 	}
 
 	sregs.CR3 = uint64(pageTableBase)
@@ -860,18 +841,18 @@ func (m *Machine) InjectVirtioBlkIRQ() error {
 
 // ReadAt implements io.ReadAt for the kvm guest memory.
 func (m *Machine) ReadAt(b []byte, off int64) (int, error) {
-	mem := bytes.NewReader(m.mem)
+	mem := bytes.NewReader(m.mem.Slots[0].Buf)
 
 	return mem.ReadAt(b, off)
 }
 
 // WriteAt implements io.WriteAt for the kvm guest memory.
 func (m *Machine) WriteAt(b []byte, off int64) (int, error) {
-	if off > int64(len(m.mem)) {
+	if off > int64(len(m.mem.Slots[0].Buf)) {
 		return 0, syscall.EFBIG
 	}
 
-	n := copy(m.mem[off:], b)
+	n := copy(m.mem.Slots[0].Buf[off:], b)
 
 	return n, nil
 }
@@ -928,7 +909,7 @@ func (m *Machine) VtoP(cpu int, vaddr uint64) (int64, error) {
 
 	// There can exist a valid translation for memory that does not exist.
 	// For now, we call that an error.
-	if t.Valid == 0 || t.PhysicalAddress > uint64(len(m.mem)) {
+	if t.Valid == 0 || t.PhysicalAddress > uint64(len(m.mem.Slots[0].Buf)) {
 		return -1, fmt.Errorf("%#x:valid not set:%w", vaddr, ErrBadVA)
 	}
 

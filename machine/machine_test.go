@@ -12,6 +12,7 @@ import (
 
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/memory"
 	"golang.org/x/arch/x86/x86asm"
 )
 
@@ -193,8 +194,8 @@ func TestReadWriteAt(t *testing.T) {
 		t.Fatalf("ReedAt(b, %#x): (%d,%v) != (%d,nil)", off, n, err, len(b))
 	}
 
-	if !bytes.Equal(b[:], []byte(machine.Poison)[:4]) {
-		t.Fatalf("ReadAt(b, %#x): %#x != %#x", off, b, machine.Poison)
+	if !bytes.Equal(b[:], []byte(memory.Poison)[:4]) {
+		t.Fatalf("ReadAt(b, %#x): %#x != %#x", off, b, memory.Poison)
 	}
 
 	t.Logf("%#x found at %#x", b, off)
