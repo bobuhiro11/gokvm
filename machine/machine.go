@@ -252,6 +252,12 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		return err
 	}
 
+	ebdaAS := memory.NewAddressSpace("ebda", bootparam.EBDAStart, uint32(len(bytes)))
+
+	if err := m.mem.Slots[0].AS.AddAddress(ebdaAS); err != nil {
+		return err
+	}
+
 	copy(m.mem.Slots[0].Buf[ebdaAS.Start:], bytes)
 
 	// Load initrd

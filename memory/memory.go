@@ -119,3 +119,19 @@ func (m *Memory) NewMemorySlot(addr uint64, size int, flags uint32, as *AddressS
 
 	return nil
 }
+
+func (m *MemorySlot) GetAddressSpace(name string) (*AddressSpace, error) {
+	// Check if parent AS is desired
+	if name == m.AS.Name {
+		return m.AS, nil
+	}
+
+	// If it wasnt the parent, search the subsequent address spaces
+	for _, as := range m.AS.Addresses {
+		if name == as.Name {
+			return as, nil
+		}
+	}
+
+	return nil, errAddressSpaceNotFound
+}
