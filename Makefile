@@ -15,6 +15,23 @@ vda.img:
 	genext2fs -b 1024 -d ${dir} $@
 	file $@
 
+# checkbinaries runs which on all the commands we want to include.
+# Be sure to keep it up to date if you add new commands to the initrd
+# rule below.
+checkbinaries:
+	@which ethtool
+	@which lspci
+	@which lsblk
+	@which hexdump
+	@which mount
+	@which bash
+	@which nohup
+	@which clear
+	@which tic
+	@which awk
+	@which grep
+	@which cut
+
 # because a go-based VMM deserves a go initrd.
 # but we include bash (because people like it) and other handy tools.
 # we include the local host tools; the u-root -files command will arrange to bring
@@ -22,7 +39,7 @@ vda.img:
 # You need to have installed the u-root command.
 # GOPATH needs to be set.
 # Something weird here: if I use $SHELL in this it expands to /bin/sh *in this makefile*, but not outside. WTF?
-initrd:
+initrd: checkbinaries
 	(cd $(GOPATH)/src/github.com/u-root/u-root && \
 			u-root \
 			-defaultsh `which bash` \
