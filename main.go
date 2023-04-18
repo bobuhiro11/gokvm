@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"sync"
 
 	"github.com/bobuhiro11/gokvm/flag"
@@ -13,9 +15,17 @@ import (
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/probe"
 	"github.com/bobuhiro11/gokvm/term"
+	// "github.com/pkg/profile"
 )
 
 func main() {
+	// CPU Profile
+	cpuProfile, err := os.Create("example-cpu.prof")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pprof.StartCPUProfile(cpuProfile)
+	defer pprof.StopCPUProfile()
 	// This line break is required by golangci-lint but
 	// such breaks are considered an anti-pattern
 	// at Google.
@@ -156,5 +166,16 @@ func main() {
 
 	fmt.Printf("Waiting for CPUs to exit\r\n")
 	wg.Wait()
+
+	// Memory Profile
+	runtime.GC()
+	memProfile, err := os.Create("example-mem.prof")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer memProfile.Close()
+	if err := pprof.WriteHeapProfile(memProfile); err != nil {
+		log.Fatal(err)
+	}
 	fmt.Printf("All cpus done\n\r")
 }
