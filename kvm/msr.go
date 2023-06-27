@@ -1,6 +1,10 @@
 package kvm
 
 import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"io"
 	"unsafe"
 )
 
@@ -157,6 +161,117 @@ func GetMSRFeatureIndexList(kvmFd uintptr, list *MSRList) error {
 	_, err := Ioctl(kvmFd,
 		IIOWR(kvmGetMSRFeatureIndexList, unsafe.Sizeof(list.NMSRs)),
 		uintptr(unsafe.Pointer(list)))
+
+	return err
+}
+
+type MSREntry struct {
+	Index   uint32
+	Padding uint32
+	Data    uint64
+}
+
+type MSRS struct {
+	NMSRs   uint32
+	Padding uint32
+	Entries []MSREntry
+}
+
+func (m *MSRS) Bytes() ([]byte, error) {
+	var buf bytes.Buffer
+
+	if err := binary.Write(&buf, binary.LittleEndian, m.NMSRs); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(&buf, binary.LittleEndian, m.Padding); err != nil {
+		return nil, err
+	}
+
+	for _, entry := range m.Entries {
+		if err := binary.Write(&buf, binary.LittleEndian, entry.Index); err != nil {
+			return nil, err
+		}
+
+		if err := binary.Write(&buf, binary.LittleEndian, entry.Padding); err != nil {
+			return nil, err
+		}
+
+		if err := binary.Write(&buf, binary.LittleEndian, entry.Data); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+func NewMSRS(data []byte) (*MSRS, error) {
+	m := MSRS{}
+
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.LittleEndian, data); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	if err := binary.Read(&buf, binary.LittleEndian, &m.NMSRs); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Read(&buf, binary.LittleEndian, &m.Padding); err != nil {
+		return nil, err
+	}
+
+	m.Entries = make([]MSREntry, m.NMSRs)
+
+	if err := binary.Read(&buf, binary.LittleEndian, &m.Entries); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	return &m, nil
+}
+
+func SetMSRs(vcpuFd uintptr, msrs *MSRS) error {
+	var m *MSRS
+
+	data, err := msrs.Bytes()
+	if err != nil {
+		return err
+	}
+
+	if _, err := Ioctl(vcpuFd,
+		IIOW(kvmSetMSRS, 8),
+		uintptr(unsafe.Pointer(&data[0]))); err != nil {
+		return err
+	}
+
+	if m, err = NewMSRS(data); err != nil {
+		return err
+	}
+
+	*msrs = *m
+
+	return err
+}
+
+func GetMSRs(vcpuFd uintptr, msrs *MSRS) error {
+	var m *MSRS
+
+	data, err := msrs.Bytes()
+	if err != nil {
+		return err
+	}
+
+	if _, err := Ioctl(vcpuFd,
+		IIOWR(kvmGetMSRS, 8),
+		uintptr(unsafe.Pointer(&data[0]))); err != nil {
+		return err
+	}
+
+	if m, err = NewMSRS(data); err != nil {
+		return err
+	}
+
+	*msrs = *m
 
 	return err
 }

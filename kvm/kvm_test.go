@@ -1379,3 +1379,73 @@ func TestGetSetSRegs2(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetSetMSRS(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	t.Parallel()
+
+	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer devKVM.Close()
+
+	vmFd, err := kvm.CreateVM(devKVM.Fd())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vcpuFd, err := kvm.CreateVCPU(vmFd, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err := kvm.CheckExtension(devKVM.Fd(), kvm.CapGETMSRFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int(ret) <= 0 {
+		t.Skipf("Skipping test since CapGETMSRFeatures is disable")
+	}
+
+	// Supported msr indices can be obtained using KVM_GET_MSR_INDEX_LIST in a system ioctl.
+	list := kvm.MSRList{}
+
+	// The first time we probe the number of MSRs.
+	if err := kvm.GetMSRIndexList(devKVM.Fd(), &list); !errors.Is(err, syscall.E2BIG) {
+		t.Fatal(err)
+	}
+
+	// The second time we get the contents of the entries.
+	if err := kvm.GetMSRIndexList(devKVM.Fd(), &list); err != nil {
+		t.Fatal(err)
+	}
+
+	msrs := &kvm.MSRS{
+		NMSRs: list.NMSRs,
+	}
+
+	msrs.Entries = make([]kvm.MSREntry, list.NMSRs)
+	for i := 0; i < int(list.NMSRs); i++ {
+		msrs.Entries[i] = kvm.MSREntry{
+			Index: list.Indicies[i],
+		}
+	}
+
+	if err := kvm.GetMSRs(vcpuFd, msrs); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, entry := range msrs.Entries {
+		t.Logf("%#v\n", entry)
+	}
+
+	if err := kvm.SetMSRs(vcpuFd, msrs); err != nil {
+		t.Fatal(err)
+	}
+}
