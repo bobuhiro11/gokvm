@@ -133,12 +133,8 @@ const (
 	MSRIA32VMXVMFUNC            MSR = 0x00000491
 )
 
-type MSRListBase struct {
-	NMSRs uint32
-}
-
 type MSRList struct {
-	*MSRListBase
+	NMSRs uint32
 	// Perhaps it could be generated dynamically,
 	// but if it is large enough, well it would work.
 	Indicies [1000]uint32
@@ -148,7 +144,7 @@ type MSRList struct {
 // The list varies by kvm version and host processor, but does not change otherwise.
 func GetMSRIndexList(kvmFd uintptr, list *MSRList) error {
 	_, err := Ioctl(kvmFd,
-		IIOWR(kvmGetMSRIndexList, unsafe.Sizeof(MSRListBase{})),
+		IIOWR(kvmGetMSRIndexList, unsafe.Sizeof(list.NMSRs)),
 		uintptr(unsafe.Pointer(list)))
 
 	return err
@@ -159,7 +155,7 @@ func GetMSRIndexList(kvmFd uintptr, list *MSRList) error {
 // (e.g., VMX capabilities). This list also varies by kvm version and host processor, but does not change otherwise.
 func GetMSRFeatureIndexList(kvmFd uintptr, list *MSRList) error {
 	_, err := Ioctl(kvmFd,
-		IIOWR(kvmGetMSRFeatureIndexList, unsafe.Sizeof(MSRListBase{})),
+		IIOWR(kvmGetMSRFeatureIndexList, unsafe.Sizeof(list.NMSRs)),
 		uintptr(unsafe.Pointer(list)))
 
 	return err
