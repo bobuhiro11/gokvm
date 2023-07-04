@@ -48,6 +48,9 @@ const (
 	kvmTranslate = 0x85
 	kvmInterrupt = 0x86
 
+	kvmGetMSRS = 0x88
+	kvmSetMSRS = 0x89
+
 	kvmGetLAPIC = 0x8e
 	kvmSetLAPIC = 0x8f
 
