@@ -2,81 +2,13 @@ package flag_test
 
 import (
 	"errors"
+	"os"
 	"strconv"
 	"testing"
 
+	"github.com/alecthomas/kong"
 	"github.com/bobuhiro11/gokvm/flag"
 )
-
-func TestParseArg(t *testing.T) {
-	t.Parallel()
-
-	args := []string{
-		"gokvm",
-		"-debug",
-		"-i",
-		"initrd_path",
-		"-k",
-		"kernel_path",
-		"-p",
-		"params",
-		"-t",
-		"tap_if_name",
-		"-c",
-		"2",
-		"-d",
-		"disk_path",
-		"-m",
-		"1G",
-		"-T",
-		"1M",
-	}
-
-	c, err := flag.ParseArgs(args)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !c.Debug {
-		t.Error("undesired debug value")
-	}
-
-	if c.Dev != "/dev/kvm" {
-		t.Error("invalid kvm  path")
-	}
-
-	if c.Kernel != "kernel_path" {
-		t.Error("invalid kernel image path")
-	}
-
-	if c.Initrd != "initrd_path" {
-		t.Error("invalid initrd path")
-	}
-
-	if c.Params != "params" {
-		t.Error("invalid kernel command-line parameters")
-	}
-
-	if c.TapIfName != "tap_if_name" {
-		t.Error("invalid name of tap interface")
-	}
-
-	if c.Disk != "disk_path" {
-		t.Errorf("invalid path of disk file: got %v, want %v", c.Disk, "disk_path")
-	}
-
-	if c.NCPUs != 2 {
-		t.Error("invalid number of vcpus")
-	}
-
-	if c.MemSize != 1<<30 {
-		t.Errorf("msize: got %#x, want %#x", c.MemSize, 1<<30)
-	}
-
-	if c.TraceCount != 1<<20 {
-		t.Errorf("trace: got %#x, want %#x", c.TraceCount, 1<<20)
-	}
-}
 
 func TestParsesize(t *testing.T) { // nolint:paralleltest
 	for _, tt := range []struct {
@@ -105,4 +37,40 @@ func TestParsesize(t *testing.T) { // nolint:paralleltest
 			t.Errorf("%s:parseMemSize(%s): got (%d, %v), want (%d, %v)", tt.name, tt.m, amt, err, tt.amt, tt.err)
 		}
 	}
+}
+
+func TestCmdlineParsing(t *testing.T) {
+	t.Parallel()
+
+	args := os.Args
+	defer func() {
+		os.Args = args
+	}()
+
+	var cli struct {
+		Start flag.StartCmd `cmd:"" help:"Starts a new VM"`
+	}
+
+	os.Args = []string{
+		"gokvm",
+		"start",
+		"-D",
+		"/dev/kvm",
+		"-k",
+		"kernel_path",
+		"-i",
+		"initrd_path",
+		"-m",
+		"1G",
+		"-c",
+		"2",
+		"-t",
+		"tap0",
+		"-d",
+		"/dev/null",
+		"-T",
+		"1",
+	}
+
+	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
 }

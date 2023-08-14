@@ -6,17 +6,31 @@ import (
 	"os"
 	"sync"
 
-	"github.com/bobuhiro11/gokvm/flag"
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/term"
 )
 
-type VMM struct {
-	*machine.Machine
-	flag.Config
+// Config defines the configuration of the
+// virtual machine, as determined by flags.
+type Config struct {
+	Debug      bool
+	Dev        string
+	Kernel     string
+	Initrd     string
+	Params     string
+	TapIfName  string
+	Disk       string
+	NCPUs      int
+	MemSize    int
+	TraceCount int
 }
 
-func New(c flag.Config) *VMM {
+type VMM struct {
+	*machine.Machine
+	Config
+}
+
+func New(c Config) *VMM {
 	return &VMM{
 		Machine: nil,
 		Config:  c,

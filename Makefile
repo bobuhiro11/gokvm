@@ -70,15 +70,15 @@ vmlinux: linux.config
 .PHONY: run
 run: initrd bzImage
 	$(MAKE) generate
-	go run . -c 4
+	go run . start -c 4
 
 .PHONY: run-system-kernel
 run-system-kernel:
 	$(MAKE) generate
 	# Implemented based on fedora's default path.
 	# Other distributions need to be considered.
-	go run . -p "console=ttyS0 pci=off earlyprintk=serial nokaslr rdinit=/bin/sh" \
-		-k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
+	go run . start -k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
+		-p "console=ttyS0 pci=off earlyprintk=serial nokaslr rdinit=/bin/sh" \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
 .PHONY: generate
@@ -94,7 +94,7 @@ golangci: golangci-lint
 test: bzImage vda.img
 	$(MAKE) generate
 	$(MAKE) golangci
-	go test -coverprofile c.out ./...
+	go test -coverprofile c.out -tags test ./...
 
 .PHONY: clean
 clean:
