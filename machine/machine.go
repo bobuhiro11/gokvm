@@ -1113,3 +1113,7 @@ func (m *Machine) StartVCPU(cpu, traceCount int, wg *sync.WaitGroup) {
 		fmt.Printf("CPU %d exits\n\r", cpu)
 	}(cpu)
 }
+
+func (m *Machine) GetSerial() *serial.Serial {
+	return m.serial
+}

@@ -1,15 +1,12 @@
 package vmm
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"log"
 	"os"
 	"sync"
 
 	"github.com/bobuhiro11/gokvm/flag"
-	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/term"
 )
@@ -96,40 +93,13 @@ func (v *VMM) Boot() error {
 
 	defer restoreMode()
 
-	var before byte = 0
-
-	in := bufio.NewReader(os.Stdin)
-
 	if err := v.SingleStep(trace); err != nil {
 		log.Printf("SingleStep(%v): %v", trace, err)
 
 		return err
 	}
 
-	go func() {
-		for {
-			b, err := in.ReadByte()
-			if err != nil {
-				log.Printf("%v", err)
-
-				break
-			}
-			v.GetInputChan() <- b
-
-			if len(v.GetInputChan()) > 0 {
-				if err := v.InjectSerialIRQ(); err != nil {
-					log.Printf("InjectSerialIRQ: %v", err)
-				}
-			}
-
-			if before == 0x1 && b == 'x' {
-				restoreMode()
-				os.Exit(0)
-			}
-
-			before = b
-		}
-	}()
+	v.GetSerial().StartSerial(restoreMode, v.InjectSerialIRQ)
 
 	fmt.Printf("Waiting for CPUs to exit\r\n")
 	wg.Wait()
