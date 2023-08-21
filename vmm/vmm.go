@@ -80,41 +80,8 @@ func (v *VMM) Boot() error {
 
 	for cpu := 0; cpu < v.NCPUs; cpu++ {
 		fmt.Printf("Start CPU %d of %d\r\n", cpu, v.NCPUs)
+		v.StartVCPU(cpu, v.TraceCount, &wg)
 		wg.Add(1)
-
-		go func(cpu int) {
-			// Consider ANOTHER option, maxInsCount, which would
-			// exit this loop after a certain number of instructions
-			// were run.
-			for tc := 0; ; tc++ {
-				err = v.RunInfiniteLoop(cpu)
-				if err == nil {
-					continue
-				}
-
-				if !errors.Is(err, kvm.ErrDebug) {
-					break
-				}
-
-				if err := v.SingleStep(trace); err != nil {
-					fmt.Printf("Setting trace to %v:%v", trace, err)
-				}
-
-				if tc%v.TraceCount != 0 {
-					continue
-				}
-
-				_, r, s, err := v.Inst(cpu)
-				if err != nil {
-					fmt.Printf("disassembling after debug exit:%v", err)
-				} else {
-					fmt.Printf("%#x:%s\r\n", r.RIP, s)
-				}
-			}
-
-			wg.Done()
-			fmt.Printf("CPU %d exits\n\r", cpu)
-		}(cpu)
 	}
 
 	if !term.IsTerminal() {
