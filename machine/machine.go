@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -1072,4 +1073,47 @@ func initVMandVCPU(
 	}
 
 	return kvmFd, vmFd, vcpuFds, runs, nil
+}
+
+func (m *Machine) StartVCPU(cpu, traceCount int, wg *sync.WaitGroup) {
+	trace := traceCount > 0
+
+	go func(cpu int) {
+		var err error
+		// Consider ANOTHER option, maxInsCount, which would
+		// exit this loop after a certain number of instructions
+		// were run.
+		for tc := 0; ; tc++ {
+			err = m.RunInfiniteLoop(cpu)
+			if err == nil {
+				continue
+			}
+
+			if !errors.Is(err, kvm.ErrDebug) {
+				break
+			}
+
+			if err := m.SingleStep(trace); err != nil {
+				fmt.Printf("Setting trace to %v:%v", trace, err)
+			}
+
+			if tc%traceCount != 0 {
+				continue
+			}
+
+			_, r, s, err := m.Inst(cpu)
+			if err != nil {
+				fmt.Printf("disassembling after debug exit:%v", err)
+			} else {
+				fmt.Printf("%#x:%s\r\n", r.RIP, s)
+			}
+		}
+
+		wg.Done()
+		fmt.Printf("CPU %d exits\n\r", cpu)
+	}(cpu)
+}
+
+func (m *Machine) GetSerial() *serial.Serial {
+	return m.serial
 }

@@ -1,7 +1,10 @@
 package serial
 
 import (
+	"bufio"
 	"fmt"
+	"log"
+	"os"
 )
 
 const (
@@ -114,4 +117,35 @@ func (s *Serial) Out(port uint64, values []byte) error {
 	}
 
 	return err
+}
+
+func (s *Serial) StartSerial(restoreMode func(), irqInject func() error) {
+	var before byte = 0
+
+	in := bufio.NewReader(os.Stdin)
+
+	go func() {
+		for {
+			b, err := in.ReadByte()
+			if err != nil {
+				log.Printf("%v", err)
+
+				break
+			}
+			s.GetInputChan() <- b
+
+			if len(s.GetInputChan()) > 0 {
+				if err := irqInject(); err != nil {
+					log.Printf("InjectSerialIRQ: %v", err)
+				}
+			}
+
+			if before == 0x1 && b == 'x' {
+				restoreMode()
+				os.Exit(0)
+			}
+
+			before = b
+		}
+	}()
 }
