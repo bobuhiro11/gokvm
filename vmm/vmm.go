@@ -1,6 +1,7 @@
 package vmm
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -113,7 +114,9 @@ func (v *VMM) Boot() error {
 		return err
 	}
 
-	v.GetSerial().StartSerial(restoreMode, v.InjectSerialIRQ)
+	in := bufio.NewReader(os.Stdin)
+
+	v.GetSerial().StartSerial(*in, restoreMode, v.InjectSerialIRQ)
 
 	fmt.Printf("Waiting for CPUs to exit\r\n")
 	wg.Wait()
