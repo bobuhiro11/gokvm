@@ -10,11 +10,29 @@ import (
 func TestSizeToBits(t *testing.T) {
 	t.Parallel()
 
-	expected := uint32(0xffffff00)
-	actual := pci.SizeToBits(0x100)
-
-	if expected != actual {
-		t.Fatalf("expected: %v, actual: %v", expected, actual)
+	for _, tt := range []struct {
+		name     string
+		input    uint64
+		expected uint32
+	}{
+		{
+			name:     "Success",
+			input:    0x100,
+			expected: 0xffffff00,
+		},
+		{
+			name:     "Fail",
+			input:    0x0,
+			expected: 0x0,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.expected != pci.SizeToBits(tt.input) {
+				t.Fatalf("expected: %v, actual: %v", tt.expected, tt.input)
+			}
+		})
 	}
 }
 
