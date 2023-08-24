@@ -39,7 +39,7 @@ func TestParsesize(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestCmdlineParsing(t *testing.T) {
+func TestCmdlineStartParsing(t *testing.T) {
 	t.Parallel()
 
 	args := os.Args
@@ -70,6 +70,26 @@ func TestCmdlineParsing(t *testing.T) {
 		"/dev/null",
 		"-T",
 		"1",
+	}
+
+	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
+}
+
+func TestCmdlineDebugParsing(t *testing.T) {
+	t.Parallel()
+
+	args := os.Args
+	defer func() {
+		os.Args = args
+	}()
+
+	var cli struct {
+		Debug flag.DebugCmd `cmd:"" help:"Prints KVM capabilities"`
+	}
+
+	os.Args = []string{
+		"gokvm",
+		"debug",
 	}
 
 	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
