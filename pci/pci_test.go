@@ -94,6 +94,7 @@ func TestProbingBAR0(t *testing.T) {
 	p := pci.New(br)
 	_ = p.PciConfAddrOut(0x0, pci.NumToBytes(uint32(0x80000010)))   // offset 0x10 for BAR0 with enable bit 0x80
 	_ = p.PciConfDataOut(0xCFC, pci.NumToBytes(uint32(0xffffffff))) // all 1-bits for probing size of BAR0
+	_ = p.PciConfAddrIn(0xCF8, pci.NumToBytes(uint32(0x80000010)))  // random call to PciConfAddrIn
 
 	bytes := make([]byte, 4)
 	_ = p.PciConfDataIn(0xCFC, bytes)
