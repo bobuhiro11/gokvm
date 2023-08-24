@@ -2,6 +2,7 @@ package pci_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -144,5 +145,43 @@ func TestBytes(t *testing.T) {
 
 	if b[0] != byte(dh.VendorID) {
 		t.Fatalf("invalid vendor id")
+	}
+}
+
+func TestPciConfAddrInOut(t *testing.T) {
+	t.Parallel()
+
+	p := pci.New(pci.NewBridge())
+
+	for _, tt := range []struct {
+		name string
+		port uint64
+		data []byte
+		exp  error
+	}{
+		{
+			name: "Success",
+			port: 0x0,
+			data: make([]byte, 4),
+			exp:  nil,
+		},
+		{
+			name: "Fail_DataLength",
+			port: 0x0,
+			data: make([]byte, 3),
+			exp:  nil,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := p.PciConfAddrIn(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+
+			if err := p.PciConfAddrOut(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+		})
 	}
 }
