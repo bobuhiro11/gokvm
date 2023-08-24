@@ -185,3 +185,42 @@ func TestPciConfAddrInOut(t *testing.T) {
 		})
 	}
 }
+
+func TestPciConfDataInOut(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		pci  *pci.PCI
+		port uint64
+		data []byte
+		exp  error
+	}{
+		{
+			name: "Success_1",
+			pci:  pci.New(),
+			port: 0xCFC,
+			data: make([]byte, 4),
+			exp:  nil,
+		},
+		{
+			name: "Success_2",
+			pci:  &pci.PCI{},
+			port: 0xCFC,
+			data: make([]byte, 4),
+			exp:  nil,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tt.pci.PciConfDataIn(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+
+			if err := tt.pci.PciConfDataOut(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+		})
+	}
+}
