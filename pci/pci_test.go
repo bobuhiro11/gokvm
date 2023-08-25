@@ -2,6 +2,7 @@ package pci_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -10,11 +11,29 @@ import (
 func TestSizeToBits(t *testing.T) {
 	t.Parallel()
 
-	expected := uint32(0xffffff00)
-	actual := pci.SizeToBits(0x100)
-
-	if expected != actual {
-		t.Fatalf("expected: %v, actual: %v", expected, actual)
+	for _, tt := range []struct {
+		name     string
+		input    uint64
+		expected uint32
+	}{
+		{
+			name:     "Success",
+			input:    0x100,
+			expected: 0xffffff00,
+		},
+		{
+			name:     "Fail",
+			input:    0x0,
+			expected: 0x0,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.expected != pci.SizeToBits(tt.input) {
+				t.Fatalf("expected: %v, actual: %v", tt.expected, tt.input)
+			}
+		})
 	}
 }
 
@@ -94,6 +113,7 @@ func TestProbingBAR0(t *testing.T) {
 	p := pci.New(br)
 	_ = p.PciConfAddrOut(0x0, pci.NumToBytes(uint32(0x80000010)))   // offset 0x10 for BAR0 with enable bit 0x80
 	_ = p.PciConfDataOut(0xCFC, pci.NumToBytes(uint32(0xffffffff))) // all 1-bits for probing size of BAR0
+	_ = p.PciConfAddrIn(0xCF8, pci.NumToBytes(uint32(0x80000010)))  // random call to PciConfAddrIn
 
 	bytes := make([]byte, 4)
 	_ = p.PciConfDataIn(0xCFC, bytes)
@@ -125,5 +145,82 @@ func TestBytes(t *testing.T) {
 
 	if b[0] != byte(dh.VendorID) {
 		t.Fatalf("invalid vendor id")
+	}
+}
+
+func TestPciConfAddrInOut(t *testing.T) {
+	t.Parallel()
+
+	p := pci.New(pci.NewBridge())
+
+	for _, tt := range []struct {
+		name string
+		port uint64
+		data []byte
+		exp  error
+	}{
+		{
+			name: "Success",
+			port: 0x0,
+			data: make([]byte, 4),
+			exp:  nil,
+		},
+		{
+			name: "Fail_DataLength",
+			port: 0x0,
+			data: make([]byte, 3),
+			exp:  nil,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := p.PciConfAddrIn(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+
+			if err := p.PciConfAddrOut(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+		})
+	}
+}
+
+func TestPciConfDataInOut(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		pci  *pci.PCI
+		port uint64
+		data []byte
+		exp  error
+	}{
+		{
+			name: "Success_1",
+			pci:  pci.New(),
+			port: 0xCFC,
+			data: make([]byte, 4),
+			exp:  nil,
+		},
+		{
+			name: "Success_2",
+			pci:  &pci.PCI{},
+			port: 0xCFC,
+			data: make([]byte, 4),
+			exp:  nil,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tt.pci.PciConfDataIn(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+
+			if err := tt.pci.PciConfDataOut(tt.port, tt.data); !errors.Is(err, tt.exp) {
+				t.Fatalf("%s failed: %v", tt.name, err)
+			}
+		})
 	}
 }

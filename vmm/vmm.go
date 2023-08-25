@@ -1,22 +1,37 @@
 package vmm
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"sync"
 
-	"github.com/bobuhiro11/gokvm/flag"
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/term"
 )
 
-type VMM struct {
-	*machine.Machine
-	flag.Config
+// Config defines the configuration of the
+// virtual machine, as determined by flags.
+type Config struct {
+	Debug      bool
+	Dev        string
+	Kernel     string
+	Initrd     string
+	Params     string
+	TapIfName  string
+	Disk       string
+	NCPUs      int
+	MemSize    int
+	TraceCount int
 }
 
-func New(c flag.Config) *VMM {
+type VMM struct {
+	*machine.Machine
+	Config
+}
+
+func New(c Config) *VMM {
 	return &VMM{
 		Machine: nil,
 		Config:  c,
@@ -99,7 +114,9 @@ func (v *VMM) Boot() error {
 		return err
 	}
 
-	v.GetSerial().StartSerial(restoreMode, v.InjectSerialIRQ)
+	in := bufio.NewReader(os.Stdin)
+
+	v.GetSerial().StartSerial(*in, restoreMode, v.InjectSerialIRQ)
 
 	fmt.Printf("Waiting for CPUs to exit\r\n")
 	wg.Wait()

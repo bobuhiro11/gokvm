@@ -1,6 +1,8 @@
 package serial_test
 
 import (
+	"bufio"
+	"bytes"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/serial"
@@ -54,5 +56,32 @@ func TestOut(t *testing.T) {
 		if err := s.Out(uint64(serial.COM1Addr+i), []byte{0}); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestStartSerial(t *testing.T) {
+	t.Parallel()
+
+	s, err := serial.New(&mockInjector{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	injectFunc := func() error {
+		return nil
+	}
+
+	var bufIn bytes.Buffer
+
+	if _, err := bufIn.Write([]byte{'T', 'E', 'S', 'T'}); err != nil {
+		t.Fatal(err)
+	}
+
+	in := bufio.NewReader(&bufIn)
+
+	s.StartSerial(*in, func() {}, injectFunc)
+
+	if err := s.In(serial.COM1Addr+3, []byte{0}); err != nil {
+		t.Fatal(err)
 	}
 }

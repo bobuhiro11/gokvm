@@ -119,10 +119,8 @@ func (s *Serial) Out(port uint64, values []byte) error {
 	return err
 }
 
-func (s *Serial) StartSerial(restoreMode func(), irqInject func() error) {
+func (s *Serial) StartSerial(in bufio.Reader, restoreMode func(), irqInject func() error) {
 	var before byte = 0
-
-	in := bufio.NewReader(os.Stdin)
 
 	go func() {
 		for {
