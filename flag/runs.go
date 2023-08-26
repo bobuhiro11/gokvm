@@ -23,12 +23,12 @@ func Parse() error {
 			Summary: true,
 		}))
 
-	err := ctx.Run(&context{})
+	err := ctx.Run()
 
 	return err
 }
 
-func (d *ProbeCMD) Run(_ *context) error {
+func (d *ProbeCMD) Run() error {
 	if err := probe.KVMCapabilities(); err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (d *ProbeCMD) Run(_ *context) error {
 	return nil
 }
 
-func (s *BootCMD) Run(_ *context) error {
+func (s *BootCMD) Run() error {
 	defparams := `console=ttyS0 earlyprintk=serial noapic noacpi notsc ` +
 		`debug apic=debug show_lapic=all mitigations=off lapic tsc_early_khz=2000 ` +
 		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" pci=realloc=off ` +
