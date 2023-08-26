@@ -94,7 +94,7 @@ golangci: golangci-lint
 test: bzImage vda.img
 	$(MAKE) generate
 	$(MAKE) golangci
-	go test -coverprofile c.out -tags test ./...
+	go test -coverprofile c.out ./...
 
 .PHONY: clean
 clean:
