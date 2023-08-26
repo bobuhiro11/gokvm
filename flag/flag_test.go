@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/alecthomas/kong"
 	"github.com/bobuhiro11/gokvm/flag"
 )
 
@@ -39,9 +38,8 @@ func TestParsesize(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestCmdlineBootParsing(t *testing.T) {
-	t.Parallel()
-
+func TestCmdlineBootParsing(t *testing.T) { // nolint:paralleltest
+	// Omit t.Parallel() because it modifies os.Args.
 	args := os.Args
 	defer func() {
 		os.Args = args
@@ -68,12 +66,11 @@ func TestCmdlineBootParsing(t *testing.T) {
 		"1",
 	}
 
-	kong.Parse(&flag.CLI{}, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
+	flag.Parse()
 }
 
-func TestCmdlineProbeParsing(t *testing.T) {
-	t.Parallel()
-
+func TestCmdlineProbeParsing(t *testing.T) { // nolint:paralleltest
+	// Omit t.Parallel() because it modifies os.Args.
 	args := os.Args
 	defer func() {
 		os.Args = args
@@ -84,5 +81,5 @@ func TestCmdlineProbeParsing(t *testing.T) {
 		"probe",
 	}
 
-	kong.Parse(&flag.CLI{}, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
+	flag.Parse()
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/bobuhiro11/gokvm/vmm"
 )
 
-func Parse() error {
+func Parse() *kong.Context {
 	c := CLI{}
 
 	programName := "gokvm"
@@ -23,9 +23,7 @@ func Parse() error {
 			Summary: true,
 		}))
 
-	err := ctx.Run()
-
-	return err
+	return ctx
 }
 
 func (d *ProbeCMD) Run() error {

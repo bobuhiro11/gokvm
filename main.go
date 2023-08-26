@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	if err := flag.Parse(); err != nil {
+	if err := flag.Parse().Run(); err != nil {
 		log.Fatal(err)
 	}
 }
