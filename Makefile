@@ -70,14 +70,14 @@ vmlinux: linux.config
 .PHONY: run
 run: initrd bzImage
 	$(MAKE) generate
-	go run . start -c 4
+	go run . boot -c 4
 
 .PHONY: run-system-kernel
 run-system-kernel:
 	$(MAKE) generate
 	# Implemented based on fedora's default path.
 	# Other distributions need to be considered.
-	go run . start -k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
+	go run . boot -k $(shell ls -t /boot/vmlinuz*.x86_64 | head -n 1) \
 		-p "console=ttyS0 pci=off earlyprintk=serial nokaslr rdinit=/bin/sh" \
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 

@@ -9,11 +9,11 @@ import (
 type context struct{}
 
 type cli struct {
-	Start StartCmd `cmd:"" help:"Starts a new VM"`
-	Debug DebugCmd `cmd:"" help:"Prints KVM capabilities"`
+	Boot  BootCMD  `cmd:"" help:"Boots a new VM"`
+	Probe ProbeCMD `cmd:"" help:"Probes KVM capabilities and prints them"`
 }
 
-type StartCmd struct {
+type BootCMD struct {
 	Kernel     string `flag:"" short:"k" name:"kernel" default:"./bzImage" help:"Path to linux kernel" type:"path"`
 	MemSize    string `flag:"" short:"m" name:"memsize" default:"1G" help:"memory size: as number[gGmM]"`
 	NCPUs      int    `flag:"" short:"c" name:"ncpus" default:"1" help:"Number of cpus"`
@@ -25,7 +25,7 @@ type StartCmd struct {
 	TraceCount string `flag:"" short:"T" name:"traceCount" default:"0" help:"instructions to skip between trace prints"`
 }
 
-type DebugCmd struct{}
+type ProbeCMD struct{}
 
 // ParseSize parses a size string as number[gGmMkK]. The multiplier is optional,
 // and if not set, the unit passed in is used. The number can be any base and

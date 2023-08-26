@@ -39,7 +39,7 @@ func TestParsesize(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestCmdlineStartParsing(t *testing.T) {
+func TestCmdlineBootParsing(t *testing.T) {
 	t.Parallel()
 
 	args := os.Args
@@ -48,12 +48,12 @@ func TestCmdlineStartParsing(t *testing.T) {
 	}()
 
 	var cli struct {
-		Start flag.StartCmd `cmd:"" help:"Starts a new VM"`
+		Boot flag.BootCMD `cmd:"" help:"Boots a new VM"`
 	}
 
 	os.Args = []string{
 		"gokvm",
-		"start",
+		"boot",
 		"-D",
 		"/dev/kvm",
 		"-k",
@@ -75,7 +75,7 @@ func TestCmdlineStartParsing(t *testing.T) {
 	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
 }
 
-func TestCmdlineDebugParsing(t *testing.T) {
+func TestCmdlineProbeParsing(t *testing.T) {
 	t.Parallel()
 
 	args := os.Args
@@ -84,12 +84,12 @@ func TestCmdlineDebugParsing(t *testing.T) {
 	}()
 
 	var cli struct {
-		Debug flag.DebugCmd `cmd:"" help:"Prints KVM capabilities"`
+		Probe flag.ProbeCMD `cmd:"" help:"Probes KVM capabilities and prints them"`
 	}
 
 	os.Args = []string{
 		"gokvm",
-		"debug",
+		"probe",
 	}
 
 	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
