@@ -8,7 +8,7 @@ import (
 
 type context struct{}
 
-type cli struct {
+type CLI struct {
 	Boot  BootCMD  `cmd:"" help:"Boots a new VM"`
 	Probe ProbeCMD `cmd:"" help:"Probes KVM capabilities and prints them"`
 }

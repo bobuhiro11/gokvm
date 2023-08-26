@@ -1,5 +1,3 @@
-//go:build !test
-
 package flag
 
 import (
@@ -11,7 +9,7 @@ import (
 )
 
 func Parse() error {
-	c := cli{}
+	c := CLI{}
 
 	programName := "gokvm"
 	programDesc := "gokvm is a small Linux KVM Hypervisor which supports kernel boot"

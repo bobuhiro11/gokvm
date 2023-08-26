@@ -47,10 +47,6 @@ func TestCmdlineBootParsing(t *testing.T) {
 		os.Args = args
 	}()
 
-	var cli struct {
-		Boot flag.BootCMD `cmd:"" help:"Boots a new VM"`
-	}
-
 	os.Args = []string{
 		"gokvm",
 		"boot",
@@ -72,7 +68,7 @@ func TestCmdlineBootParsing(t *testing.T) {
 		"1",
 	}
 
-	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
+	kong.Parse(&flag.CLI{}, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
 }
 
 func TestCmdlineProbeParsing(t *testing.T) {
@@ -83,14 +79,10 @@ func TestCmdlineProbeParsing(t *testing.T) {
 		os.Args = args
 	}()
 
-	var cli struct {
-		Probe flag.ProbeCMD `cmd:"" help:"Probes KVM capabilities and prints them"`
-	}
-
 	os.Args = []string{
 		"gokvm",
 		"probe",
 	}
 
-	kong.Parse(&cli, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
+	kong.Parse(&flag.CLI{}, kong.Exit(func(_ int) { t.Fatal("parsing failed") }))
 }
