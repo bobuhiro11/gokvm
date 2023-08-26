@@ -2,7 +2,7 @@
 
 
 gokvm is a hypervisor that uses KVM as an acceleration.
-It is implemented completely in the Go language and has no dependencies other than the standard library.
+It is implemented completely in the Go language.
 With **only 1.5k lines of code**, it can **boot Linux 5.10**, the latest version at the time, without any modifications
 (see [v0.0.1](https://github.com/bobuhiro11/gokvm/releases/tag/v0.0.1)).
 It includes naive and simple device emulation for serial console, virtio-net, and virtio-blk.
@@ -28,7 +28,7 @@ You can use existing bzImage and initrd, or you can create them using the Makefi
 
 ```bash
 tar zxvf gokvm*.tar.gz
-./gokvm -k ./bzImage -i ./initrd  # To exit, press Ctrl-a x.
+./gokvm boot -k ./bzImage -i ./initrd  # To exit, press Ctrl-a x.
 ```
 
 ## Go package
