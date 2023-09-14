@@ -8,7 +8,7 @@ type bridge struct{}
 
 func (br bridge) GetDeviceHeader() DeviceHeader {
 	return DeviceHeader{
-		DeviceID:      0x6000,
+		DeviceID:      0x0d57,
 		VendorID:      0x8086,
 		HeaderType:    1,
 		SubsystemID:   0,

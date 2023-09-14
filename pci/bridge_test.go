@@ -11,7 +11,7 @@ func TestGetDeviceHeader(t *testing.T) {
 	t.Parallel()
 
 	br := pci.NewBridge()
-	expected := uint16(0x6000)
+	expected := uint16(0x0d57)
 	actual := br.GetDeviceHeader().DeviceID
 
 	if actual != expected {
