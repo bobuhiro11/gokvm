@@ -29,8 +29,14 @@ const (
 
 	// see Table 4-4. Processor Entry Fields in Intel MP Configuration
 	// https://pdos.csail.mit.edu/6.828/2014/readings/ia32/MPspec.pdf
-	cpuFlagEnabled       = 1
-	cpuFlagBootProcessor = 3
+	cpuFlagEnabled = 1
+	cpuFlagBP      = 2
+
+	cpuStepping    = uint32(0x600)
+	cpuFeatureAPIC = uint32(0x200)
+	cpuFeatureFPU  = uint32(0x001)
+
+	mpAPICVersion = uint8(0x14)
 )
 
 var errorVCPUNumExceed = fmt.Errorf("the number of vCPUs must be less than or equal to %d", maxVCPUs)
@@ -68,10 +74,10 @@ type (
 		length    uint16
 		spec      uint8
 		checkSum  uint8
-		_         [8]uint8  // oem
-		_         [12]uint8 // productID
-		_         uint32    // oemPtr
-		_         uint16    // oemSize
+		OEMId     [8]uint8
+		ProdID    [12]uint8
+		_         uint32 // oemPtr
+		_         uint16 // oemSize
 		oemCount  uint16
 		lapic     uint32 // Local APIC addresss must be set.
 		_         uint32 // reserved
@@ -164,7 +170,8 @@ func newMPCTable(nCPUs int) (*mpcTable, error) {
 	m.length = uint16(unsafe.Sizeof(mpcTable{})) // this field must contain the size of entries.
 	m.spec = 4
 	m.lapic = apicAddr(0)
-	m.oemCount = maxVCPUs // This must be the number of entries
+	m.OEMId = [8]byte{0x47, 0x4F, 0x4B, 0x56, 0x4D, 0x00, 0x00, 0x00} // "GOKVM   "
+	m.oemCount = maxVCPUs                                             // This must be the number of entries
 
 	if nCPUs > maxVCPUs {
 		return nil, errorVCPUNumExceed
@@ -212,26 +219,30 @@ func (m *mpcTable) bytes() ([]byte, error) {
 }
 
 type mpcCPU struct {
-	typ     uint8
-	apicID  uint8 // Local APIC number
-	apicVer uint8
-	cpuFlag uint8
-	_       uint32    // cpuFeature
-	_       uint32    // featureFlag
-	_       [2]uint32 // reserved
+	typ         uint8
+	apicID      uint8 // Local APIC number
+	apicVer     uint8
+	cpuFlag     uint8
+	sig         uint32
+	featureFlag uint32
+	_           [2]uint32 // reserved
 }
 
 func newMPCCpu(i int) *mpcCPU {
 	m := &mpcCPU{}
 
+	f := uint8(cpuFlagEnabled)
+
+	if i == 0 { // CPU 0 is Boot Processor(BP), every other is Application Processor(AP)
+		f |= cpuFlagBP
+	}
+
 	m.typ = mpEntryTypeProcessor
 	m.apicID = uint8(i)
-	m.apicVer = 0x14
-	m.cpuFlag |= cpuFlagEnabled
-
-	if i == 0 {
-		m.cpuFlag |= cpuFlagBootProcessor
-	}
+	m.apicVer = mpAPICVersion
+	m.cpuFlag = f
+	m.sig = (cpuStepping << 16)
+	m.featureFlag = cpuFeatureAPIC | cpuFeatureFPU
 
 	return m
 }
