@@ -16,7 +16,7 @@ type BootCMD struct {
 	MemSize    string `flag:"" short:"m" name:"memsize" default:"1G" help:"memory size: as number[gGmM]"`
 	NCPUs      int    `flag:"" short:"c" name:"ncpus" default:"1" help:"Number of cpus"`
 	Dev        string `flag:"" short:"D" name:"kvmDevice" default:"/dev/kvm" help:"Path to Linux KVM device" type:"path"`
-	Initrd     string `flag:"" short:"i" name:"initrd" default:"./initrd" help:"Path to initrd" type:"path"`
+	Initrd     string `flag:"" short:"i" name:"initrd" help:"Path to initrd" type:"path"`
 	Params     string `flag:"" short:"p" name:"params" help:"Linux kernel cmdline parameters"`
 	TapIfName  string `flag:"" short:"t" name:"tapifname" help:"name of tap interface" type:"path"`
 	Disk       string `flag:"" short:"d" name:"disk" help:"path of disk file" type:"path"`
