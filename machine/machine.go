@@ -447,9 +447,12 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
 	// Load initrd
-	initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
-	if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
+	var initrdSize int
+	if initrd != nil {
+		initrdSize, err = initrd.ReadAt(m.mem[initrdAddr:], 0)
+		if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
+		}
 	}
 
 	// Load kernel command-line parameters
