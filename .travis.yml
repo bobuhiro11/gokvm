@@ -25,8 +25,6 @@ before_script:
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get golang.org/x/tools/cmd/stringer
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
   - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/u-root/u-root
-  - sudo -E env "PATH=$PATH" make golangci-lint initrd vda.img
-  - sudo -E env "PATH=$PATH" make -j $(nproc) bzImage vmlinux_PVH
 script:
   - sudo -E env "PATH=$PATH" go mod tidy && git diff --no-patch --exit-code go.sum
   - sudo -E env "PATH=$PATH" make gokvm

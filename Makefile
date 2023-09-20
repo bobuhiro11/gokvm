@@ -32,17 +32,17 @@ checkbinaries:
 	@which grep
 	@which cut
 
-initrd: checkbinaries
+initrd: checkbinaries ./scripts/get_initrd.bash
 	./scripts/get_initrd.bash
 
-bzImage: linux.config
+bzImage vmlinux: linux.config ./scripts/get_kernel.bash
 	./scripts/get_kernel.bash
 
-vmlinux: linux.config
-	./scripts/get_kernel.bash
-
-vmlinux_PVH: linux_pvh.config
-	./scripts/get_kernel.bash bzImage_PVH vmlinux_PVH $<
+bzImage_PVH vmlinux_PVH CLOUDHV.fd: linux_pvh.config ./scripts/get_kernel.bash
+	./scripts/get_kernel.bash \
+		bzImage_PVH \
+		vmlinux_PVH \
+		linux_pvh.config
 
 .PHONY: run
 run: initrd bzImage
@@ -73,14 +73,14 @@ golangci: golangci-lint
 	./golangci-lint run ./...
 
 .PHONY: test
-test: bzImage vda.img
+test: bzImage vmlinux vmlinux_PVH initrd vda.img CLOUDHV.fd
 	$(MAKE) generate
 	$(MAKE) golangci
 	go test -coverprofile c.out ./...
 
 .PHONY: clean
 clean:
-	rm -rf ./gokvm ./golangci-lint bzImage vmlinux _linux *_string.go
+	rm -rf ./gokvm ./golangci-lint bzImage* vmlinux* CLOUDHV.fd _linux *_string.go
 
 .PHONY: qemu
 qemu: initrd bzImage
