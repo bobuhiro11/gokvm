@@ -1,4 +1,4 @@
-package device
+package iodev
 
 type NoopDevice struct {
 	Port  uint64

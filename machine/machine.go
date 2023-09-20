@@ -17,8 +17,8 @@ import (
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
-	"github.com/bobuhiro11/gokvm/device"
 	"github.com/bobuhiro11/gokvm/ebda"
+	"github.com/bobuhiro11/gokvm/iodev"
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/pci"
 	"github.com/bobuhiro11/gokvm/pvh"
@@ -139,7 +139,7 @@ type Machine struct {
 	runs           []*kvm.RunData
 	pci            *pci.PCI
 	serial         *serial.Serial
-	devices        []device.IODevice
+	devices        []iodev.Device
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
@@ -361,9 +361,9 @@ func (m *Machine) LoadPVH(kern, initrd *os.File, cmdline string) error {
 
 		copy(m.mem[pvh.PVHModlistStart:], ramdiskmodbytes)
 
-		m.AddDevice(&device.NoopDevice{Port: 0x80, Psize: 0x30}) // DMA Page Registers (Commonly 74L612 Chip)
+		m.AddDevice(&iodev.NoopDevice{Port: 0x80, Psize: 0x30}) // DMA Page Registers (Commonly 74L612 Chip)
 	} else {
-		m.AddDevice(&device.PostCodeDevice{}) // Port 0x80
+		m.AddDevice(&iodev.PostCodeDevice{}) // Port 0x80
 	}
 
 	memmapentries := make([]*pvh.HVMMemMapTableEntry, 0)
@@ -409,9 +409,9 @@ func (m *Machine) LoadPVH(kern, initrd *os.File, cmdline string) error {
 		return err
 	}
 
-	m.AddDevice(&device.FWDebugDevice{}) // Port 0x402
-	m.AddDevice(device.NewCMOS(0xC000000, 0x0))
-	m.AddDevice(device.NewACPIPMTimer())
+	m.AddDevice(&iodev.FWDebugDevice{}) // Port 0x402
+	m.AddDevice(iodev.NewCMOS(0xC000000, 0x0))
+	m.AddDevice(iodev.NewACPIPMTimer())
 	m.initIOPortHandlers()
 
 	return nil
@@ -566,8 +566,8 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		return err
 	}
 
-	m.AddDevice(device.NewCMOS(0xC000_0000, 0x0))
-	m.AddDevice(&device.NoopDevice{Port: 0x80, Psize: 0xA0})
+	m.AddDevice(iodev.NewCMOS(0xC000_0000, 0x0))
+	m.AddDevice(&iodev.NoopDevice{Port: 0x80, Psize: 0xA0})
 	m.initIOPortHandlers()
 
 	return nil
@@ -1289,6 +1289,6 @@ func (m *Machine) GetSerial() *serial.Serial {
 	return m.serial
 }
 
-func (m *Machine) AddDevice(dev device.IODevice) {
+func (m *Machine) AddDevice(dev iodev.Device) {
 	m.devices = append(m.devices, dev)
 }
