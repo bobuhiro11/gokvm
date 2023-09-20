@@ -9,7 +9,9 @@ gokvm-caps
 golangci-lint
 initrd
 bzImage
+bzImage_PVH
 vmlinux
+vmlinux_PVH
 linux-*.tar.xz
 linux.tar.xz
 cc-test-reporter
