@@ -361,9 +361,9 @@ func (m *Machine) LoadPVH(kern, initrd *os.File, cmdline string) error {
 
 		copy(m.mem[pvh.PVHModlistStart:], ramdiskmodbytes)
 
-		m.AddDevice(&iodev.NoopDevice{Port: 0x80, Psize: 0x30}) // DMA Page Registers (Commonly 74L612 Chip)
+		m.AddDevice(&iodev.Noop{Port: 0x80, Psize: 0x30}) // DMA Page Registers (Commonly 74L612 Chip)
 	} else {
-		m.AddDevice(&iodev.PostCodeDevice{}) // Port 0x80
+		m.AddDevice(&iodev.PostCode{}) // Port 0x80
 	}
 
 	memmapentries := make([]*pvh.HVMMemMapTableEntry, 0)
@@ -409,7 +409,7 @@ func (m *Machine) LoadPVH(kern, initrd *os.File, cmdline string) error {
 		return err
 	}
 
-	m.AddDevice(&iodev.FWDebugDevice{}) // Port 0x402
+	m.AddDevice(&iodev.FWDebug{}) // Port 0x402
 	m.AddDevice(iodev.NewCMOS(0xC000000, 0x0))
 	m.AddDevice(iodev.NewACPIPMTimer())
 	m.initIOPortHandlers()
@@ -567,7 +567,7 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	}
 
 	m.AddDevice(iodev.NewCMOS(0xC000_0000, 0x0))
-	m.AddDevice(&iodev.NoopDevice{Port: 0x80, Psize: 0xA0})
+	m.AddDevice(&iodev.Noop{Port: 0x80, Psize: 0xA0})
 	m.initIOPortHandlers()
 
 	return nil
