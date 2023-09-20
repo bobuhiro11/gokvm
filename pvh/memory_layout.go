@@ -11,7 +11,7 @@ const (
 	EBDAPointer = 0x40e
 
 	// Initial GDT/IDT.
-	BooTGDTStart = 0x500
+	BootGDTStart = 0x500
 	BootIDTStart = 0x520
 
 	// Address of the pvh_info struct.
