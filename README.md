@@ -15,6 +15,7 @@ The latest version supports the following features:
 - [x] serial console
 - [x] virtio-net
 - [x] virtio-blk
+- [x] PVH Boot Protocol
 
 **This is an experimental project, so please do not use it in production.**
 
@@ -59,3 +60,5 @@ Thanks to the many useful resources on KVM, this project was able to boot Linux 
 - [rust-vmm/vm-virtio](https://github.com/rust-vmm/vm-virtio/tree/main/crates/virtio-queue)
 - [ハイパーバイザの作り方～ちゃんと理解する仮想化技術～ 第１１回 virtioによる準仮想化デバイス その１「virtioの概要とVirtio PCI」](https://syuu1228.github.io/howto_implement_hypervisor/part11.html)
 - [ハイパーバイザの作り方～ちゃんと理解する仮想化技術～ 第１２回 virtioによる準仮想化デバイス その２「Virtqueueとvirtio-netの実現」](https://syuu1228.github.io/howto_implement_hypervisor/part12.html)
+- [Xen PVH boot protocol](https://github.com/mirage/xen/blob/master/docs/misc/hvmlite.markdown)
+- [Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)

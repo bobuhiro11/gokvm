@@ -16,6 +16,7 @@ cc-test-reporter
 vda.img
 extract-ikconfig
 extract-vmlinux
+CLOUDHV.fd
 
 # Test binary, built with `go test -c`
 *.test

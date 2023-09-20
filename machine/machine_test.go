@@ -12,6 +12,7 @@ import (
 
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/pvh"
 	"golang.org/x/arch/x86/x86asm"
 )
 
@@ -42,13 +43,24 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
+	isPVH, err := pvh.CheckPVH(kern)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	initrd, err := os.Open("../initrd")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err = m.LoadLinux(kern, initrd, param); err != nil {
-		t.Fatal(err)
+	if isPVH {
+		if err := m.LoadPVH(kern, initrd, param); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if err = m.LoadLinux(kern, initrd, param); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	m.GetInputChan()
@@ -101,6 +113,46 @@ func TestNewAndLoadLinuxWithBzImage(t *testing.T) { // nolint:paralleltest
 
 func TestNewAndLoadLinuxWithVmlinux(t *testing.T) { // nolint:paralleltest
 	testNewAndLoadLinux(t, "../vmlinux", "tap1", "192.168.30.1", "192.168.30.2", "24")
+}
+
+func TestNewAndLoadLinuxPVH(t *testing.T) { // nolint:paralleltest
+	testNewAndLoadLinux(t, "../vmlinux_PVH", "tap2", "192.168.40.1", "192.168.40.2", "24")
+}
+
+func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
+	m, err := machine.New("/dev/kvm", 1, 1<<30)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	edk2, err := os.Open("../CLOUDHV.fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.LoadPVH(edk2, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	m.GetInputChan()
+
+	if err := m.InjectSerialIRQ(); err != nil {
+		t.Errorf("m.InjectSerialIRQ: %v != nil", err)
+	}
+
+	m.RunData()
+
+	go func() {
+		if err = m.RunInfiniteLoop(0); err != nil {
+			panic(err)
+		}
+	}()
+
+	time.Sleep(15 * time.Second)
 }
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.

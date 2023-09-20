@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/bobuhiro11/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/pvh"
 	"github.com/bobuhiro11/gokvm/term"
 )
 
@@ -63,18 +64,33 @@ func (v *VMM) Init() error {
 }
 
 func (v *VMM) Setup() error {
+	var initrd *os.File
+	// Kernel arg required to load kernel or firmware image
 	kern, err := os.Open(v.Kernel)
 	if err != nil {
 		return err
 	}
 
-	initrd, err := os.Open(v.Initrd)
+	isPVH, err := pvh.CheckPVH(kern)
 	if err != nil {
 		return err
 	}
 
-	if err := v.Machine.LoadLinux(kern, initrd, v.Params); err != nil {
-		return err
+	if v.Initrd != "" {
+		initrd, err = os.Open(v.Initrd)
+		if err != nil {
+			return err
+		}
+	}
+
+	if isPVH {
+		if err := v.Machine.LoadPVH(kern, initrd, v.Params); err != nil {
+			return err
+		}
+	} else {
+		if err := v.Machine.LoadLinux(kern, initrd, v.Params); err != nil {
+			return err
+		}
 	}
 
 	return nil

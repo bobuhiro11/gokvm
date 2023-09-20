@@ -3,6 +3,7 @@ package machine
 import (
 	"bytes"
 	"debug/elf"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -16,9 +17,11 @@ import (
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
+	"github.com/bobuhiro11/gokvm/device"
 	"github.com/bobuhiro11/gokvm/ebda"
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/pci"
+	"github.com/bobuhiro11/gokvm/pvh"
 	"github.com/bobuhiro11/gokvm/serial"
 	"github.com/bobuhiro11/gokvm/tap"
 	"github.com/bobuhiro11/gokvm/virtio"
@@ -125,6 +128,10 @@ var ErrUnsupported = fmt.Errorf("unsupported")
 // ErrMemTooSmall indicates the requested memory size is too small.
 var ErrMemTooSmall = fmt.Errorf("mem request must be at least 1<<20")
 
+var ErrNotELF64File = fmt.Errorf("file is not ELF64")
+
+var errPTNoteHasNoFSize = fmt.Errorf("elf programm PT_NOTE has file size equel zero")
+
 type Machine struct {
 	kvmFd, vmFd    uintptr
 	vcpuFds        []uintptr
@@ -132,6 +139,7 @@ type Machine struct {
 	runs           []*kvm.RunData
 	pci            *pci.PCI
 	serial         *serial.Serial
+	devices        []device.IODevice
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
@@ -148,7 +156,7 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 
 	var err error
 
-	m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, 0xffffd000, 0xffffc000, nCpus)
+	m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, nCpus)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +262,170 @@ func (m *Machine) RunData() []*kvm.RunData {
 	return m.runs
 }
 
+func (m *Machine) LoadPVH(kern, initrd *os.File, cmdline string) error {
+	// Set EDBA-Pointer
+	edbaval := uint32(bootparam.EBDAStart >> 4)
+	edbabytes := make([]byte, 4)
+
+	// Convert EBDA-Address to bytes
+	binary.LittleEndian.PutUint32(edbabytes, edbaval)
+
+	// Copy EBDA-Address to memory at EBDAPointer-Address (0x40e)
+	copy(m.mem[pvh.EBDAPointer:], edbabytes)
+
+	// Create EBDA/mptables - Required for booting into Linux with PVH.
+	e, err := ebda.New(len(m.vcpuFds))
+	if err != nil {
+		return err
+	}
+
+	// Convert EBDA/mptables to bytes
+	eb, err := e.Bytes()
+	if err != nil {
+		return err
+	}
+
+	// Write EBDA/mptables to memory at EBDAStart (0x0009_FC00)
+	copy(m.mem[bootparam.EBDAStart:], eb)
+
+	// Create Global Descriptor Table
+	gdt := pvh.CreateGDT()
+
+	// Convert to bytes
+	gdtbytes := make([]byte, 0)
+	gdtEntryBytes := make([]byte, 8)
+
+	for _, entry := range gdt {
+		binary.LittleEndian.PutUint64(gdtEntryBytes, entry)
+		gdtbytes = append(gdtbytes, gdtEntryBytes...)
+	}
+
+	// Write GDT to memory
+	copy(m.mem[pvh.BooTGDTStart:], gdtbytes)
+
+	// Write IDT to memory
+	copy(m.mem[pvh.BootIDTStart:], []byte{0x0})
+
+	// Load firmware as ELF
+	fwElf, err := elf.NewFile(kern)
+	if err != nil {
+		// Abort if no ELF-File
+		return err
+	}
+
+	ripAddr := fwElf.Entry
+
+	for _, entry := range fwElf.Progs {
+		if entry.Type == elf.PT_LOAD {
+			_, err := entry.ReadAt(m.mem[entry.Paddr:], 0)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+		} else if entry.Type == elf.PT_NOTE {
+			if entry.Filesz == 0 {
+				return errPTNoteHasNoFSize
+			}
+
+			addr, _ := pvh.ParsePVHEntry(kern, entry)
+
+			if fwElf.Entry != uint64(addr) {
+				ripAddr = uint64(addr)
+			}
+		}
+
+		continue
+	}
+
+	for _, cpu := range m.vcpuFds {
+		if err := pvh.InitRegs(cpu, ripAddr); err != nil {
+			return err
+		}
+
+		if err := pvh.InitSRegs(cpu, gdt); err != nil {
+			return err
+		}
+	}
+
+	pvhstartinfo := pvh.NewStartInfo(bootparam.EBDAStart, cmdlineAddr)
+
+	if initrd != nil {
+		initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
+		if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
+		}
+
+		// Load kernel command-line parameters
+		copy(m.mem[cmdlineAddr:], cmdline)
+		m.mem[cmdlineAddr+len(cmdline)] = 0 // for null terminated string
+
+		ramdiskmod := pvh.NewModListEntry(initrdAddr, uint64(initrdSize), 0)
+
+		pvhstartinfo.NrModules += 1
+		pvhstartinfo.ModlistPAddr = pvh.PVHModlistStart
+
+		ramdiskmodbytes, err := ramdiskmod.Bytes()
+		if err != nil {
+			return err
+		}
+
+		copy(m.mem[pvh.PVHModlistStart:], ramdiskmodbytes)
+
+		m.AddDevice(&device.NoopDevice{Port: 0x80, Psize: 0x30}) // DMA Page Registers (Commonly 74L612 Chip)
+	} else {
+		m.AddDevice(&device.PostCodeDevice{}) // Port 0x80
+	}
+
+	memmapentries := make([]*pvh.HVMMemMapTableEntry, 0)
+
+	entry0 := pvh.NewMemMapTableEntry(0,
+		bootparam.EBDAStart,
+		bootparam.E820Ram)
+
+	memmapentries = append(memmapentries, entry0)
+
+	entry := pvh.NewMemMapTableEntry(
+		pvh.HighRAMStart,
+		uint64(len(m.mem)-pvh.HighRAMStart),
+		bootparam.E820Ram)
+
+	memmapentries = append(memmapentries, entry)
+
+	pvhstartinfo.MemMapEntries = uint32(len(memmapentries))
+
+	memOffset := pvh.PVHMemMapStart
+
+	// Copy the MEMMapEntries to memory one at a time.
+	for _, entry := range memmapentries {
+		b, err := entry.Bytes()
+		if err != nil {
+			return err
+		}
+
+		copy(m.mem[memOffset:], b)
+
+		memOffset += len(b)
+	}
+
+	// Copy the PVHInfoStart struct to memory.
+	pvhstartinfob, err := pvhstartinfo.Bytes()
+	if err != nil {
+		return err
+	}
+
+	copy(m.mem[pvh.PVHInfoStart:], pvhstartinfob)
+
+	if m.serial, err = serial.New(m); err != nil {
+		return err
+	}
+
+	m.AddDevice(&device.FWDebugDevice{}) // Port 0x402
+	m.AddDevice(device.NewCMOS(0xC000000, 0x0))
+	m.AddDevice(device.NewACPIPMTimer())
+	m.initIOPortHandlers()
+
+	return nil
+}
+
 // LoadLinux loads a bzImage or ELF file, an optional initrd, and
 // optional params.
 func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
@@ -275,9 +447,12 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 	copy(m.mem[bootparam.EBDAStart:], bytes)
 
 	// Load initrd
-	initrdSize, err := initrd.ReadAt(m.mem[initrdAddr:], 0)
-	if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
+	var initrdSize int
+	if initrd != nil {
+		initrdSize, err = initrd.ReadAt(m.mem[initrdAddr:], 0)
+		if err != nil && initrdSize == 0 && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("initrd: (%v, %w)", initrdSize, err)
+		}
 	}
 
 	// Load kernel command-line parameters
@@ -400,6 +575,8 @@ func (m *Machine) LoadLinux(kernel, initrd io.ReaderAt, params string) error {
 		return err
 	}
 
+	m.AddDevice(device.NewCMOS(0xC000_0000, 0x0))
+	m.AddDevice(&device.NoopDevice{Port: 0x80, Psize: 0xA0})
 	m.initIOPortHandlers()
 
 	return nil
@@ -674,12 +851,11 @@ func (m *Machine) RunOnce(cpu int) (bool, error) {
 	switch exit {
 	case kvm.EXITHLT:
 		return false, err
-
 	case kvm.EXITIO:
 		direction, size, port, count, offset := m.runs[cpu].IO()
 		f := m.ioportHandlers[port][direction]
-		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[cpu])) + uintptr(offset))))[0:size]
 
+		bytes := (*(*[100]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(m.runs[cpu])) + uintptr(offset))))[0:size]
 		for i := 0; i < int(count); i++ {
 			if err := f(port, bytes); err != nil {
 				return false, err
@@ -788,8 +964,6 @@ func (m *Machine) initIOPortHandlers() {
 	m.registerIOPortHandler(0xcf9, 0xcfa, funcNone, funcOutbCF9) // CF9
 	m.registerIOPortHandler(0x3c0, 0x3db, funcNone, funcNone)    // VGA
 	m.registerIOPortHandler(0x3b4, 0x3b6, funcNone, funcNone)    // VGA
-	m.registerIOPortHandler(0x70, 0x72, funcNone, funcNone)      // CMOS clock
-	m.registerIOPortHandler(0x80, 0xa0, funcNone, funcNone)      // DMA Page Registers (Commonly 74L612 Chip)
 	m.registerIOPortHandler(0x2f8, 0x300, funcNone, funcNone)    // Serial port 2
 	m.registerIOPortHandler(0x3e8, 0x3f0, funcNone, funcNone)    // Serial port 3
 	m.registerIOPortHandler(0x2e8, 0x2f0, funcNone, funcNone)    // Serial port 4
@@ -809,6 +983,11 @@ func (m *Machine) initIOPortHandlers() {
 	// see https://github.com/torvalds/linux/blob/master/arch/x86/pci/direct.c for more detail.
 	m.registerIOPortHandler(0xcf8, 0xcf9, m.pci.PciConfAddrIn, m.pci.PciConfAddrOut)
 	m.registerIOPortHandler(0xcfc, 0xd00, m.pci.PciConfDataIn, m.pci.PciConfDataOut)
+
+	// IO Devices - non PCI
+	for _, dev := range m.devices {
+		m.registerIOPortHandler(dev.IOPort(), dev.IOPort()+dev.Size(), dev.Read, dev.Write)
+	}
 
 	// PCI devices
 	for i, device := range m.pci.Devices {
@@ -859,14 +1038,14 @@ func (m *Machine) InjectVirtioBlkIRQ() error {
 	return nil
 }
 
-// ReadAt implements io.ReadAt for the kvm guest memory.
+// ReadAt implements io.ReadAt for the kvm guest pvh.
 func (m *Machine) ReadAt(b []byte, off int64) (int, error) {
 	mem := bytes.NewReader(m.mem)
 
 	return mem.ReadAt(b, off)
 }
 
-// WriteAt implements io.WriteAt for the kvm guest memory.
+// WriteAt implements io.WriteAt for the kvm guest pvh.
 func (m *Machine) WriteAt(b []byte, off int64) (int, error) {
 	if off > int64(len(m.mem)) {
 		return 0, syscall.EFBIG
@@ -1015,7 +1194,6 @@ func GetReg(r *kvm.Regs, reg x86asm.Reg) (*uint64, error) {
 // InitKVM takes care of the general kvm setup without dependencies to runtime target.
 func initVMandVCPU(
 	kvmPath string,
-	tssaddr, identmapaddr uint32,
 	nCpus int,
 ) (uintptr, uintptr, []uintptr, []*kvm.RunData, error) {
 	var err error
@@ -1034,11 +1212,11 @@ func initVMandVCPU(
 		return 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
 	}
 
-	if err := kvm.SetTSSAddr(vmFd, tssaddr); err != nil {
+	if err := kvm.SetTSSAddr(vmFd, pvh.KVMTSSStart); err != nil {
 		return 0, 0, nil, nil, err
 	}
 
-	if err := kvm.SetIdentityMapAddr(vmFd, identmapaddr); err != nil {
+	if err := kvm.SetIdentityMapAddr(vmFd, pvh.KVMIdentityMapStart); err != nil {
 		return 0, 0, nil, nil, err
 	}
 
@@ -1090,6 +1268,8 @@ func (m *Machine) StartVCPU(cpu, traceCount int, wg *sync.WaitGroup) {
 			}
 
 			if !errors.Is(err, kvm.ErrDebug) {
+				fmt.Printf("err: %v\r\n", err)
+
 				break
 			}
 
@@ -1116,4 +1296,8 @@ func (m *Machine) StartVCPU(cpu, traceCount int, wg *sync.WaitGroup) {
 
 func (m *Machine) GetSerial() *serial.Serial {
 	return m.serial
+}
+
+func (m *Machine) AddDevice(dev device.IODevice) {
+	m.devices = append(m.devices, dev)
 }
