@@ -1,6 +1,7 @@
 package machine_test
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -8,6 +9,10 @@ import (
 )
 
 func TestDebug(t *testing.T) { // nolint:paralleltest
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	m, err := machine.New("/dev/kvm", 1, 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)
