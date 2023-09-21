@@ -291,17 +291,8 @@ func (m *Machine) LoadPVH(kern, initrd *os.File, cmdline string) error {
 	// Create Global Descriptor Table
 	gdt := pvh.CreateGDT()
 
-	// Convert to bytes
-	gdtbytes := make([]byte, 0)
-	gdtEntryBytes := make([]byte, 8)
-
-	for _, entry := range gdt {
-		binary.LittleEndian.PutUint64(gdtEntryBytes, entry)
-		gdtbytes = append(gdtbytes, gdtEntryBytes...)
-	}
-
 	// Write GDT to memory
-	copy(m.mem[pvh.BooTGDTStart:], gdtbytes)
+	copy(m.mem[pvh.BootGDTStart:], gdt.Bytes())
 
 	// Write IDT to memory
 	copy(m.mem[pvh.BootIDTStart:], []byte{0x0})

@@ -133,8 +133,10 @@ func (h *HVMMemMapTableEntry) Bytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func CreateGDT() [4]uint64 {
-	var gdtTable [4]uint64
+type GDT [4]uint64
+
+func CreateGDT() GDT {
+	var gdtTable GDT
 
 	gdtTable[0] = GdtEntry(0, 0, 0)               // NULL
 	gdtTable[1] = GdtEntry(0xc09b, 0, 0xffffffff) // Code
@@ -144,14 +146,14 @@ func CreateGDT() [4]uint64 {
 	return gdtTable
 }
 
-func InitSRegs(vcpuFd uintptr, gdttable [4]uint64) error {
+func InitSRegs(vcpuFd uintptr, gdttable GDT) error {
 	codeseg := SegmentFromGDT(gdttable[1], 1)
 	dataseg := SegmentFromGDT(gdttable[2], 2)
 	tssseg := SegmentFromGDT(gdttable[3], 3)
 
 	// We need to write this to ....maybe create this config earlier.
 	gdt := kvm.Descriptor{
-		Base:  BooTGDTStart,
+		Base:  BootGDTStart,
 		Limit: uint16(len(gdttable)*8) - 1, // 4 entries of 64bit (8byte) per entry
 	}
 
@@ -182,6 +184,16 @@ func InitSRegs(vcpuFd uintptr, gdttable [4]uint64) error {
 	sregs.CR4 = 0x0
 
 	return kvm.SetSregs(vcpuFd, sregs)
+}
+
+func (gdt GDT) Bytes() []byte {
+	bytes := make([]byte, binary.Size(gdt))
+
+	for i, entry := range gdt {
+		binary.LittleEndian.PutUint64(bytes[i*binary.Size(entry):], entry)
+	}
+
+	return bytes
 }
 
 func InitRegs(vcpuFd uintptr, bootIP uint64) error {
