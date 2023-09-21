@@ -1,4 +1,4 @@
-GOLANGCI_LINT_VERSION = v1.46.0
+GOLANGCI_LINT_VERSION = v1.54.2
 NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)

@@ -12,8 +12,8 @@ addons:
       - genext2fs
 language: go
 go:
-  - 1.18.x
-  - 1.19.x
+  - 1.21.x
+  - 1.20.x
 env:
   - GOFLAGS="-buildvcs=false"
 
@@ -40,4 +40,4 @@ deploy:
   on:
     # https://docs.travis-ci.com/user/languages/go/#environment-variable
     tags: true
-    condition: $TRAVIS_GO_VERSION =~ ^1\.8
+    condition: $TRAVIS_GO_VERSION =~ ^1\.20

@@ -25,3 +25,7 @@ linters:
     - scopelint
     - interfacer
     - dupl
+    - depguard
+    - nolintlint
+    - nosnakecase
+    - tagalign
