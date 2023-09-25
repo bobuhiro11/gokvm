@@ -157,6 +157,10 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
 func TestHalt(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -229,6 +233,10 @@ func TestHalt(t *testing.T) {
 }
 
 func TestReadWriteAt(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -271,6 +279,10 @@ func TestReadWriteAt(t *testing.T) {
 }
 
 func TestSingleStepOffOn(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -292,6 +304,10 @@ func TestSingleStepOffOn(t *testing.T) {
 }
 
 func TestSetupGetSetRegs(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -347,6 +363,10 @@ func TestSetupGetSetRegs(t *testing.T) {
 }
 
 func TestSingleStep(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -424,6 +444,10 @@ func TestSingleStep(t *testing.T) {
 }
 
 func TestTranslate32(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -483,6 +507,10 @@ func TestTranslate32(t *testing.T) {
 }
 
 func TestCPUtoFD(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -500,6 +528,10 @@ func TestCPUtoFD(t *testing.T) {
 }
 
 func TestVtoP(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skipf("Skipping test since we are not root")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
