@@ -107,8 +107,7 @@ func TestProbingBAR0(t *testing.T) {
 	t.Parallel()
 
 	br := pci.NewBridge()
-	start, end := br.GetIORange()
-	expected := pci.SizeToBits(end - start)
+	expected := pci.SizeToBits(br.Size())
 
 	p := pci.New(br)
 	_ = p.PciConfAddrOut(0x0, pci.NumToBytes(uint32(0x80000010)))   // offset 0x10 for BAR0 with enable bit 0x80

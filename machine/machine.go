@@ -981,12 +981,8 @@ func (m *Machine) initIOPortHandlers() {
 	}
 
 	// PCI devices
-	for i, device := range m.pci.Devices {
-		start, end := device.GetIORange()
-		m.registerIOPortHandler(
-			start, end,
-			m.pci.Devices[i].IOInHandler, m.pci.Devices[i].IOOutHandler,
-		)
+	for _, dev := range m.pci.Devices {
+		m.registerIOPortHandler(dev.IOPort(), dev.IOPort()+dev.Size(), dev.Read, dev.Write)
 	}
 }
 

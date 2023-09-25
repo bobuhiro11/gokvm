@@ -66,7 +66,7 @@ func (v Blk) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Blk) IOInHandler(port uint64, bytes []byte) error {
+func (v Blk) Read(port uint64, bytes []byte) error {
 	offset := int(port - BlkIOPortStart)
 
 	b, err := v.Hdr.Bytes()
@@ -158,7 +158,7 @@ func (v *Blk) IO() error {
 	return nil
 }
 
-func (v *Blk) IOOutHandler(port uint64, bytes []byte) error {
+func (v *Blk) Write(port uint64, bytes []byte) error {
 	offset := int(port - BlkIOPortStart)
 
 	switch offset {
@@ -178,8 +178,12 @@ func (v *Blk) IOOutHandler(port uint64, bytes []byte) error {
 	return nil
 }
 
-func (v Blk) GetIORange() (start, end uint64) {
-	return BlkIOPortStart, BlkIOPortStart + BlkIOPortSize
+func (v Blk) IOPort() uint64 {
+	return BlkIOPortStart
+}
+
+func (v Blk) Size() uint64 {
+	return BlkIOPortSize
 }
 
 func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {

@@ -82,7 +82,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Net) IOInHandler(port uint64, bytes []byte) error {
+func (v Net) Read(port uint64, bytes []byte) error {
 	offset := int(port - NetIOPortStart)
 
 	b, err := v.Hdr.Bytes()
@@ -237,7 +237,7 @@ func (v *Net) Tx() error {
 	return v.IRQInjector.InjectVirtioNetIRQ()
 }
 
-func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
+func (v *Net) Write(port uint64, bytes []byte) error {
 	offset := int(port - NetIOPortStart)
 
 	switch offset {
@@ -258,8 +258,12 @@ func (v *Net) IOOutHandler(port uint64, bytes []byte) error {
 	return nil
 }
 
-func (v Net) GetIORange() (start, end uint64) {
-	return NetIOPortStart, NetIOPortStart + NetIOPortSize
+func (v Net) IOPort() uint64 {
+	return NetIOPortStart
+}
+
+func (v Net) Size() uint64 {
+	return NetIOPortSize
 }
 
 func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *Net {

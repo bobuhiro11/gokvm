@@ -40,8 +40,7 @@ func TestNetGetIORange(t *testing.T) {
 	t.Parallel()
 
 	expected := uint64(virtio.NetIOPortSize)
-	s, e := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{}).GetIORange()
-	actual := e - s
+	actual := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{}).Size()
 
 	if actual != expected {
 		t.Fatalf("expected: %v, actual: %v", expected, actual)
@@ -54,7 +53,7 @@ func TestNetIOInHandler(t *testing.T) {
 	expected := []byte{0x20, 0x00}
 	v := virtio.NewNet(9, &mockInjector{}, bytes.NewBuffer([]byte{}), []byte{})
 	actual := make([]byte, 2)
-	_ = v.IOInHandler(virtio.NetIOPortStart+12, actual)
+	_ = v.Read(virtio.NetIOPortStart+12, actual)
 
 	if !bytes.Equal(expected, actual) {
 		t.Fatalf("expected: %v, actual: %v", expected, actual)
@@ -73,11 +72,11 @@ func TestSetQueuePhysAddr(t *testing.T) {
 		base + 0x0089a000,
 	}
 
-	_ = v.IOOutHandler(virtio.NetIOPortStart+14, []byte{0x0, 0x0})              // Select Queue #0
-	_ = v.IOOutHandler(virtio.NetIOPortStart+8, []byte{0x45, 0x03, 0x00, 0x00}) // Set Phys Address
+	_ = v.Write(virtio.NetIOPortStart+14, []byte{0x0, 0x0})              // Select Queue #0
+	_ = v.Write(virtio.NetIOPortStart+8, []byte{0x45, 0x03, 0x00, 0x00}) // Set Phys Address
 
-	_ = v.IOOutHandler(virtio.NetIOPortStart+14, []byte{0x1, 0x0})              // Select Queue #1
-	_ = v.IOOutHandler(virtio.NetIOPortStart+8, []byte{0x9a, 0x08, 0x00, 0x00}) // Set Phys Address
+	_ = v.Write(virtio.NetIOPortStart+14, []byte{0x1, 0x0})              // Select Queue #1
+	_ = v.Write(virtio.NetIOPortStart+8, []byte{0x9a, 0x08, 0x00, 0x00}) // Set Phys Address
 
 	actual := [2]uint32{
 		uint32(uintptr(unsafe.Pointer(v.VirtQueue[0]))),
@@ -108,7 +107,7 @@ func TestQueueNotifyHandler(t *testing.T) {
 
 	// Select Queue #1
 	sel := byte(1)
-	_ = v.IOOutHandler(virtio.NetIOPortStart+14, []byte{sel, 0x0})
+	_ = v.Write(virtio.NetIOPortStart+14, []byte{sel, 0x0})
 
 	// Init virt queue
 	vq := virtio.VirtQueue{}
