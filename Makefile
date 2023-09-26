@@ -1,5 +1,13 @@
 GOLANGCI_LINT_VERSION = v1.54.2
-NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
+
+export GOPATH := $(shell go env GOPATH)
+export PATH := $(GOPATH)/bin:$(PATH)
+
+$(GOPATH)/bin/stringer:
+	GO111MODULE=off go get golang.org/x/tools/cmd/stringer
+
+$(GOPATH)/bin/u-root:
+	GO111MODULE=off go get github.com/u-root/u-root
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)
 	$(MAKE) generate
@@ -32,7 +40,7 @@ checkbinaries:
 	@which grep
 	@which cut
 
-initrd: checkbinaries ./scripts/get_initrd.bash
+initrd: checkbinaries ./scripts/get_initrd.bash $(GOPATH)/bin/u-root
 	./scripts/get_initrd.bash
 
 bzImage vmlinux: linux.config ./scripts/get_kernel.bash
@@ -64,7 +72,7 @@ run-system-kernel:
 		-i $(shell ls -t /boot/initramfs*.x86_64.img | head -n 1)
 
 .PHONY: generate
-generate:
+generate: $(GOPATH)/bin/stringer
 	go generate ./...
 
 .PHONY: golangci
@@ -77,6 +85,7 @@ test: bzImage vmlinux vmlinux_PVH initrd vda.img CLOUDHV.fd
 	$(MAKE) generate
 	$(MAKE) golangci
 	go test -coverprofile c.out ./...
+	go mod tidy && git diff --no-patch --exit-code go.sum
 
 .PHONY: clean
 clean:
