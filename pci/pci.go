@@ -35,12 +35,13 @@ func (a address) isEnable() bool {
 // interface for a PCI device.
 type Device interface {
 	GetDeviceHeader() DeviceHeader
-	IOInHandler(port uint64, bytes []byte) error
-	IOOutHandler(port uint64, bytes []byte) error
+	Read(uint64, []byte) error
+	Write(uint64, []byte) error
 
 	// IO port range for this PCI device.
 	// This range corresponds to IO Range in BAR0.
-	GetIORange() (start, end uint64)
+	IOPort() uint64
+	Size() uint64
 }
 
 type DeviceHeader struct {
@@ -113,8 +114,8 @@ func (p *PCI) PciConfDataIn(port uint64, values []byte) error {
 
 	// Probing BAR0 Size
 	if bar := offset/4 - 4; bar == 0 && p.isBAR0Probe {
-		start, end := p.Devices[slot].GetIORange()
-		copy(values[:4], NumToBytes(SizeToBits(end-start)))
+		size := p.Devices[slot].Size()
+		copy(values[:4], NumToBytes(SizeToBits(size)))
 
 		p.isBAR0Probe = false
 

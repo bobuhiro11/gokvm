@@ -19,16 +19,20 @@ func (br bridge) GetDeviceHeader() DeviceHeader {
 	}
 }
 
-func (br bridge) IOInHandler(port uint64, bytes []byte) error {
+func (br bridge) Read(port uint64, bytes []byte) error {
 	return ErrIONotPermit
 }
 
-func (br bridge) IOOutHandler(port uint64, bytes []byte) error {
+func (br bridge) Write(port uint64, bytes []byte) error {
 	return ErrIONotPermit
 }
 
-func (br bridge) GetIORange() (start, end uint64) {
-	return 0, 0x10
+func (br bridge) IOPort() uint64 {
+	return 0
+}
+
+func (br bridge) Size() uint64 {
+	return 0x10
 }
 
 func NewBridge() Device {

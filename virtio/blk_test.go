@@ -33,8 +33,7 @@ func TestBlkGetIORange(t *testing.T) {
 		t.Fatalf("err: %v\n", err)
 	}
 
-	s, e := v.GetIORange()
-	actual := e - s
+	actual := v.Size()
 	expected := uint64(virtio.BlkIOPortSize)
 
 	if actual != expected {
@@ -52,7 +51,7 @@ func TestBlkIOInHandler(t *testing.T) {
 
 	expected := []byte{0x20, 0x00}
 	actual := make([]byte, 2)
-	_ = v.IOInHandler(virtio.BlkIOPortStart+12, actual)
+	_ = v.Read(virtio.BlkIOPortStart+12, actual)
 
 	if !bytes.Equal(expected, actual) {
 		t.Fatalf("expected: %v, actual: %v", expected, actual)
