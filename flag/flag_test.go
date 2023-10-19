@@ -2,7 +2,6 @@ package flag_test
 
 import (
 	"errors"
-	"os"
 	"strconv"
 	"testing"
 
@@ -38,48 +37,143 @@ func TestParsesize(t *testing.T) { // nolint:paralleltest
 	}
 }
 
-func TestCmdlineBootParsing(t *testing.T) { // nolint:paralleltest
-	// Omit t.Parallel() because it modifies os.Args.
-	args := os.Args
-	defer func() {
-		os.Args = args
-	}()
+func TestParseBootArgs(t *testing.T) {
+	t.Parallel()
 
-	os.Args = []string{
+	args := []string{
 		"gokvm",
 		"boot",
-		"-D",
-		"/dev/kvm",
-		"-k",
-		"kernel_path",
 		"-i",
 		"initrd_path",
-		"-m",
-		"1G",
+		"-k",
+		"kernel_path",
+		"-p",
+		"params",
+		"-t",
+		"tap_if_name",
 		"-c",
 		"2",
-		"-t",
-		"tap0",
 		"-d",
-		"/dev/null",
+		"disk_path",
+		"-m",
+		"1G",
 		"-T",
-		"1",
+		"1M",
 	}
 
-	flag.Parse()
+	c, _, err := flag.ParseArgs(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if c.Dev != "/dev/kvm" {
+		t.Error("invalid kvm  path")
+	}
+
+	if c.Kernel != "kernel_path" {
+		t.Error("invalid kernel image path")
+	}
+
+	if c.Initrd != "initrd_path" {
+		t.Error("invalid initrd path")
+	}
+
+	if c.Params != "params" {
+		t.Error("invalid kernel command-line parameters")
+	}
+
+	if c.TapIfName != "tap_if_name" {
+		t.Error("invalid name of tap interface")
+	}
+
+	if c.Disk != "disk_path" {
+		t.Errorf("invalid path of disk file: got %v, want %v", c.Disk, "disk_path")
+	}
+
+	if c.NCPUs != 2 {
+		t.Error("invalid number of vcpus")
+	}
+
+	if c.MemSize != 1<<30 {
+		t.Errorf("msize: got %#x, want %#x", c.MemSize, 1<<30)
+	}
+
+	if c.TraceCount != 1<<20 {
+		t.Errorf("trace: got %#x, want %#x", c.TraceCount, 1<<20)
+	}
 }
 
-func TestCmdlineProbeParsing(t *testing.T) { // nolint:paralleltest
-	// Omit t.Parallel() because it modifies os.Args.
-	args := os.Args
-	defer func() {
-		os.Args = args
-	}()
+func TestParseBootArgsWithDefaults(t *testing.T) {
+	t.Parallel()
 
-	os.Args = []string{
+	args := []string{
+		"gokvm",
+		"boot",
+	}
+
+	c, _, err := flag.ParseArgs(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if c.Dev != "/dev/kvm" {
+		t.Error("invalid kvm path")
+	}
+
+	if c.Kernel != "./bzImage" {
+		t.Error("invalid kernel image path")
+	}
+
+	if c.Initrd != "" {
+		t.Error("invalid initrd path")
+	}
+
+	if c.Params != `console=ttyS0 earlyprintk=serial `+
+		`noapic noacpi notsc nowatchdog `+
+		`nmi_watchdog=0 debug apic=debug show_lapic=all mitigations=off `+
+		`lapic tsc_early_khz=2000 `+
+		`dyndbg="file arch/x86/kernel/smpboot.c +plf ; file drivers/net/virtio_net.c +plf" `+
+		`pci=realloc=off `+
+		`virtio_pci.force_legacy=1 rdinit=/init init=/init `+
+		`gokvm.ipv4_addr=192.168.20.1/24` {
+		t.Error("invalid kernel command-line parameters")
+	}
+
+	if c.TapIfName != "" {
+		t.Error("invalid name of tap interface")
+	}
+
+	if c.Disk != "" {
+		t.Errorf("invalid path of disk file: got %v, want %v", c.Disk, "disk_path")
+	}
+
+	if c.NCPUs != 1 {
+		t.Error("invalid number of vcpus")
+	}
+
+	if c.MemSize != 1<<30 {
+		t.Errorf("msize: got %#x, want %#x", c.MemSize, 1<<30)
+	}
+
+	if c.TraceCount != 0 {
+		t.Errorf("trace: got %#x, want %#x", c.TraceCount, 1<<20)
+	}
+}
+
+func TestParseProbeArgs(t *testing.T) {
+	t.Parallel()
+
+	args := []string{
 		"gokvm",
 		"probe",
 	}
 
-	flag.Parse()
+	_, probeConfig, err := flag.ParseArgs(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if probeConfig == nil {
+		t.Fatal("probeConfig is nil")
+	}
 }
