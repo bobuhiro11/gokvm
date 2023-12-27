@@ -765,13 +765,18 @@ func (m *Machine) initCPUID(cpu int) error {
 
 	// https://www.kernel.org/doc/html/latest/virt/kvm/cpuid.html
 	for i := 0; i < int(cpuid.Nent); i++ {
-		if cpuid.Entries[i].Function == kvm.CPUIDFuncPerMon {
+		switch cpuid.Entries[i].Function {
+		case kvm.CPUIDFuncPerMon:
 			cpuid.Entries[i].Eax = 0 // disable
-		} else if cpuid.Entries[i].Function == kvm.CPUIDSignature {
+
+		case kvm.CPUIDSignature:
 			cpuid.Entries[i].Eax = kvm.CPUIDFeatures
 			cpuid.Entries[i].Ebx = 0x4b4d564b // KVMK
 			cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
 			cpuid.Entries[i].Edx = 0x4d       // M
+
+		default:
+			continue
 		}
 	}
 
