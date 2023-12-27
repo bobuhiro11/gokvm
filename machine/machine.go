@@ -775,6 +775,10 @@ func (m *Machine) initCPUID(cpu int) error {
 			cpuid.Entries[i].Ecx = 0x564b4d56 // VMKV
 			cpuid.Entries[i].Edx = 0x4d       // M
 
+		case 7:
+			// Unset X86_FEATURE_FSRM (Fast Short Rep Mov)
+			cpuid.Entries[i].Edx &= ^(uint32(1) << 4)
+
 		default:
 			continue
 		}
