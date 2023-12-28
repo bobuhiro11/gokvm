@@ -36,12 +36,12 @@ func printCPUID(cpuid kvm.CPUID) {
 	for i := 0; i < int(cpuid.Nent); i++ {
 		switch cpuid.Entries[i].Function {
 		case 1:
-			fmt.Printf("F_1_Edx.\n")
-			printFeatures(gokvmCPUID.All_F_1_Edx, cpuid.Entries[i].Edx)
+			fmt.Printf("F1Edx.\n")
+			printFeatures(gokvmCPUID.AllF1Edx, cpuid.Entries[i].Edx)
 		case 7:
 			if cpuid.Entries[i].Index == 0 {
-				fmt.Printf("F_7_0_Edx.\n")
-				printFeatures(gokvmCPUID.All_F_7_0_Edx, cpuid.Entries[i].Edx)
+				fmt.Printf("F7_0Edx.\n")
+				printFeatures(gokvmCPUID.AllF7_0Edx, cpuid.Entries[i].Edx)
 			}
 		}
 	}
