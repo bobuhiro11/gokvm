@@ -47,5 +47,9 @@ func main() {
 		if err := probe.KVMCapabilities(); err != nil {
 			log.Fatal(err)
 		}
+
+		if err := probe.CPUID(); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
