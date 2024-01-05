@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	gokvmCPUID "github.com/bobuhiro11/gokvm/cpuid"
 	"github.com/bobuhiro11/gokvm/kvm"
 )
 
@@ -27,49 +26,10 @@ func CPUID() error {
 		return err
 	}
 
-	printCPUID(cpuid)
+	for _, e := range cpuid.Entries {
+		fmt.Printf("0x%08x 0x%02x: eax=0x%08x ebx=0x%08x ecx=0x%08x edx=0x%08x (flag:%x)\n",
+			e.Function, e.Index, e.Eax, e.Ebx, e.Ecx, e.Edx, e.Flags)
+	}
 
 	return nil
-}
-
-func printCPUID(cpuid kvm.CPUID) {
-	for i := 0; i < int(cpuid.Nent); i++ {
-		switch cpuid.Entries[i].Function {
-		case 1:
-			fmt.Printf("F1Edx.\n")
-			printFeatures(gokvmCPUID.AllF1Edx, cpuid.Entries[i].Edx)
-		case 7:
-			if cpuid.Entries[i].Index == 0 {
-				fmt.Printf("F7_0Edx.\n")
-				printFeatures(gokvmCPUID.AllF7_0Edx, cpuid.Entries[i].Edx)
-			}
-		}
-	}
-}
-
-func printFeatures[T gokvmCPUID.Feature](features []T, reg uint32) {
-	enabled := []T{}
-	disabled := []T{}
-
-	for i := 0; i < len(features); i++ {
-		if reg&(1<<uint(features[i])) != 0 {
-			enabled = append(enabled, features[i])
-		} else {
-			disabled = append(disabled, features[i])
-		}
-	}
-
-	fmt.Printf("* Enabled:")
-
-	for i := 0; i < len(enabled); i++ {
-		fmt.Printf(" %s", enabled[i].String())
-	}
-
-	fmt.Printf("\n* Disabled:")
-
-	for i := 0; i < len(disabled); i++ {
-		fmt.Printf(" %s", disabled[i].String())
-	}
-
-	fmt.Printf("\n\n")
 }
