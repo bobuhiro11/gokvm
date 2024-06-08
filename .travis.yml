@@ -12,8 +12,8 @@ addons:
       - genext2fs
 language: go
 go:
+  - 1.22.x
   - 1.21.x
-  - 1.20.x
 env:
   - GOFLAGS="-buildvcs=false"
 
@@ -22,7 +22,7 @@ before_script:
   - curl --retry 5 -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod a+x ./cc-test-reporter
   - sudo -E env "PATH=$PATH" ./cc-test-reporter before-build
-  - sudo -E env "PATH=$PATH" "GO111MODULE=off" go get github.com/mattn/goveralls
+  - sudo -E env "PATH=$PATH" go install github.com/mattn/goveralls@latest
 script:
   - sudo -E env "PATH=$PATH" make gokvm
   - travis_retry sudo -E env "PATH=$PATH" make test
