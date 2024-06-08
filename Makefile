@@ -4,10 +4,10 @@ export GOPATH := $(shell go env GOPATH)
 export PATH := $(GOPATH)/bin:$(PATH)
 
 $(GOPATH)/bin/stringer:
-	GO111MODULE=off go get golang.org/x/tools/cmd/stringer
+	go install golang.org/x/tools/cmd/stringer@latest
 
 $(GOPATH)/bin/u-root:
-	GO111MODULE=off go get github.com/u-root/u-root
+	go install github.com/u-root/u-root@latest
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)
 	$(MAKE) generate
