@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
 
 	"github.com/bobuhiro11/gokvm/machine"
 	"github.com/bobuhiro11/gokvm/pvh"
 	"github.com/bobuhiro11/gokvm/term"
+	"golang.org/x/sync/errgroup"
 )
 
 // Config defines the configuration of the
@@ -99,17 +99,23 @@ func (v *VMM) Setup() error {
 func (v *VMM) Boot() error {
 	var err error
 
-	var wg sync.WaitGroup
-
 	trace := v.TraceCount > 0
 	if err := v.SingleStep(trace); err != nil {
 		return fmt.Errorf("setting trace to %v:%w", trace, err)
 	}
 
+	g := new(errgroup.Group)
+
 	for cpu := 0; cpu < v.NCPUs; cpu++ {
 		fmt.Printf("Start CPU %d of %d\r\n", cpu, v.NCPUs)
-		v.StartVCPU(cpu, v.TraceCount, &wg)
-		wg.Add(1)
+
+		i := cpu
+
+		f := func() error {
+			return v.VCPU(os.Stderr, i, v.TraceCount)
+		}
+
+		g.Go(f)
 	}
 
 	if !term.IsTerminal() {
@@ -132,10 +138,19 @@ func (v *VMM) Boot() error {
 
 	in := bufio.NewReader(os.Stdin)
 
-	v.GetSerial().StartSerial(*in, restoreMode, v.InjectSerialIRQ)
+	g.Go(func() error {
+		err := v.GetSerial().Start(*in, restoreMode, v.InjectSerialIRQ)
+		log.Printf("Serial exits: %v", err)
+
+		return err
+	})
 
 	fmt.Printf("Waiting for CPUs to exit\r\n")
-	wg.Wait()
+
+	if err := g.Wait(); err != nil {
+		log.Print(err)
+	}
+
 	fmt.Printf("All cpus done\n\r")
 
 	return nil
