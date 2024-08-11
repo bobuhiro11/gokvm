@@ -2,9 +2,10 @@ package serial
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"log"
-	"os"
 )
 
 const (
@@ -119,31 +120,34 @@ func (s *Serial) Out(port uint64, values []byte) error {
 	return err
 }
 
-func (s *Serial) StartSerial(in bufio.Reader, restoreMode func(), irqInject func() error) {
+func (s *Serial) Start(in bufio.Reader, restoreMode func(), irqInject func() error) error {
 	var before byte = 0
 
-	go func() {
-		for {
-			b, err := in.ReadByte()
-			if err != nil {
-				log.Printf("%v", err)
-
-				break
-			}
-			s.GetInputChan() <- b
-
-			if len(s.GetInputChan()) > 0 {
-				if err := irqInject(); err != nil {
-					log.Printf("InjectSerialIRQ: %v", err)
-				}
+	for {
+		b, err := in.ReadByte()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return err
 			}
 
-			if before == 0x1 && b == 'x' {
-				restoreMode()
-				os.Exit(0)
-			}
-
-			before = b
+			break
 		}
-	}()
+		s.GetInputChan() <- b
+
+		if len(s.GetInputChan()) > 0 {
+			if err := irqInject(); err != nil {
+				log.Printf("InjectSerialIRQ: %v", err)
+			}
+		}
+
+		if before == 0x1 && b == 'x' {
+			restoreMode()
+
+			break
+		}
+
+		before = b
+	}
+
+	return io.EOF
 }

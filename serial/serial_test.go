@@ -3,6 +3,8 @@ package serial_test
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/serial"
@@ -79,7 +81,11 @@ func TestStartSerial(t *testing.T) {
 
 	in := bufio.NewReader(&bufIn)
 
-	s.StartSerial(*in, func() {}, injectFunc)
+	go func() {
+		if err := s.Start(*in, func() {}, injectFunc); !errors.Is(err, io.EOF) {
+			t.Errorf("s.Start(): got %v, want %v", err, io.EOF)
+		}
+	}()
 
 	if err := s.In(serial.COM1Addr+3, []byte{0}); err != nil {
 		t.Fatal(err)
