@@ -2,6 +2,7 @@ package vmm
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -104,7 +105,7 @@ func (v *VMM) Boot() error {
 		return fmt.Errorf("setting trace to %v:%w", trace, err)
 	}
 
-	g := new(errgroup.Group)
+	g, ctx := errgroup.WithContext(context.Background())
 
 	for cpu := 0; cpu < v.NCPUs; cpu++ {
 		fmt.Printf("Start CPU %d of %d\r\n", cpu, v.NCPUs)
@@ -112,7 +113,7 @@ func (v *VMM) Boot() error {
 		i := cpu
 
 		f := func() error {
-			return v.VCPU(os.Stderr, i, v.TraceCount)
+			return v.VCPU(ctx, os.Stderr, i, v.TraceCount)
 		}
 
 		g.Go(f)
