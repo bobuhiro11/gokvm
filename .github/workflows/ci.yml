@@ -11,6 +11,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     permissions:
       contents: read
     strategy:
@@ -31,11 +32,27 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y qemu-kvm qemu-utils libmnl-dev genext2fs
 
+    - name: Display system information
+      run: |
+        echo "=== CPU Information ==="
+        lscpu | grep -E "Model name|CPU\(s\)|Flags"
+        echo ""
+        echo "=== Kernel Version ==="
+        uname -r
+        echo ""
+        echo "=== Kernel Boot Parameters ==="
+        cat /proc/cmdline
+        echo ""
+        echo "=== KVM Support ==="
+        if [ -e /dev/kvm ]; then
+          ls -l /dev/kvm
+          echo "KVM is available"
+        else
+          echo "KVM is NOT available"
+        fi
+
     - name: Install test coverage tools
       run: |
-        curl --retry 5 -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
-        chmod a+x ./cc-test-reporter
-        sudo -E env "PATH=$PATH" ./cc-test-reporter before-build
         go install github.com/mattn/goveralls@latest
 
     - name: Build gokvm
@@ -53,15 +70,6 @@ jobs:
       env:
         COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: sudo -E env "PATH=$PATH" goveralls -service=github -coverprofile c.out
-
-    - name: Upload coverage to CodeClimate
-      if: matrix.go-version == '1.22.x'
-      env:
-        CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
-      run: |
-        if [ -n "$CC_TEST_REPORTER_ID" ]; then
-          sudo -E env "PATH=$PATH" ./cc-test-reporter after-build
-        fi
 
     - name: Clean up
       if: always()
