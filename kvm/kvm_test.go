@@ -582,13 +582,27 @@ func TestSetNrMMUPages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := kvm.SetNrMMUPages(vmFd, 0x1000); err != nil {
+	err = kvm.SetNrMMUPages(vmFd, 0x1000)
+	if err != nil {
+		// KVM_SET_NR_MMU_PAGES was removed in Linux 6.11+
+		// Skip test if ioctl is not supported (ENOTTY = inappropriate ioctl for device)
+		if errors.Is(err, syscall.ENOTTY) {
+			t.Skipf("Skipping test: KVM_SET_NR_MMU_PAGES not supported (removed in kernel 6.11+)")
+		}
+
 		t.Fatal(err)
 	}
 
 	retval := uint64(0)
 
-	if err := kvm.GetNrMMUPages(vmFd, &retval); err != nil {
+	err = kvm.GetNrMMUPages(vmFd, &retval)
+	if err != nil {
+		// KVM_GET_NR_MMU_PAGES was also removed in Linux 6.11+
+		// Skip test if ioctl is not supported
+		if errors.Is(err, syscall.ENOTTY) {
+			t.Skipf("Skipping test: KVM_GET_NR_MMU_PAGES not supported (removed in kernel 6.11+)")
+		}
+
 		t.Fatal(err)
 	}
 }
