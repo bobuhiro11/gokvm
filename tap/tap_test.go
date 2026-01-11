@@ -63,8 +63,11 @@ func TestRead(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
-	buf := make([]byte, 20)
-	if _, err := tap.Read(buf); !errors.Is(err, syscall.EAGAIN) {
+	buf := make([]byte, 1500)
+	_, err = tap.Read(buf)
+	// Accept either EAGAIN (no data available) or nil (initial packets
+	// like IPv6 Router Solicitation may be present after link up)
+	if err != nil && !errors.Is(err, syscall.EAGAIN) {
 		t.Fatal(err)
 	}
 
