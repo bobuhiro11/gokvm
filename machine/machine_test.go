@@ -105,8 +105,9 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L", //nolint:gosec
-		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4)).Output()
+	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", //nolint:gosec
+		"--retry-connrefused", "-L",
+		fmt.Sprintf("http://%s/mnt/dev_vda/index.html", guestIPv4)).Output()
 	t.Logf("curl output: %s\n", output)
 
 	if err != nil {
