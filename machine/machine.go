@@ -2,6 +2,7 @@ package machine
 
 import (
 	"bytes"
+	"context"
 	"debug/elf"
 	"encoding/binary"
 	"encoding/hex"
@@ -803,7 +804,7 @@ func (m *Machine) SingleStep(onoff bool) error {
 
 // RunInfiniteLoop runs the guest cpu until there is an error.
 // If the error is ErrExitDebug, this function can be called again.
-func (m *Machine) RunInfiniteLoop(cpu int) error {
+func (m *Machine) RunInfiniteLoop(ctx context.Context, cpu int) error {
 	// https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
 	// - vcpu ioctls: These query and set attributes that control the operation
 	//   of a single virtual cpu.
@@ -822,17 +823,22 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 	defer runtime.UnlockOSThread()
 
 	for {
-		isContinue, err := m.RunOnce(cpu)
-		if isContinue {
-			if err != nil {
-				fmt.Printf("%v\r\n", err)
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			isContinue, err := m.RunOnce(cpu)
+			if isContinue {
+				if err != nil {
+					fmt.Printf("%v\r\n", err)
+				}
+
+				continue
 			}
 
-			continue
-		}
-
-		if err != nil {
-			return err
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -1248,7 +1254,7 @@ func initVMandVCPU(
 	return kvmFd, vmFd, vcpuFds, runs, nil
 }
 
-func (m *Machine) VCPU(stdout io.Writer, cpu, traceCount int) error {
+func (m *Machine) VCPU(ctx context.Context, stdout io.Writer, cpu, traceCount int) error {
 	trace := traceCount > 0
 
 	var err error
@@ -1256,28 +1262,33 @@ func (m *Machine) VCPU(stdout io.Writer, cpu, traceCount int) error {
 	// exit this loop after a certain number of instructions
 	// were run.
 	for tc := 0; ; tc++ {
-		err = m.RunInfiniteLoop(cpu)
-		if err == nil {
-			continue
-		}
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			err = m.RunInfiniteLoop(ctx, cpu)
+			if err == nil {
+				continue
+			}
 
-		if !errors.Is(err, kvm.ErrDebug) {
-			return fmt.Errorf("CPU %d: %w", cpu, err)
-		}
+			if !errors.Is(err, kvm.ErrDebug) {
+				return fmt.Errorf("CPU %d: %w", cpu, err)
+			}
 
-		if err := m.SingleStep(trace); err != nil {
-			fmt.Fprintf(stdout, "Setting trace to %v:%v", trace, err)
-		}
+			if err := m.SingleStep(trace); err != nil {
+				fmt.Fprintf(stdout, "Setting trace to %v:%v", trace, err)
+			}
 
-		if tc%traceCount != 0 {
-			continue
-		}
+			if tc%traceCount != 0 {
+				continue
+			}
 
-		_, r, s, err := m.Inst(cpu)
-		if err != nil {
-			fmt.Fprintf(stdout, "disassembling after debug exit:%v", err)
-		} else {
-			fmt.Fprintf(stdout, "%#x:%s\r\n", r.RIP, s)
+			_, r, s, err := m.Inst(cpu)
+			if err != nil {
+				fmt.Fprintf(stdout, "disassembling after debug exit:%v", err)
+			} else {
+				fmt.Fprintf(stdout, "%#x:%s\r\n", r.RIP, s)
+			}
 		}
 	}
 }

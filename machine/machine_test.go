@@ -2,6 +2,7 @@ package machine_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -82,8 +83,10 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 
 	m.RunData()
 
+	ctx := context.Background()
+
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
+		if err = m.RunInfiniteLoop(ctx, 0); err != nil {
 			panic(err)
 		}
 	}()
@@ -157,8 +160,10 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 
 	m.RunData()
 
+	ctx := context.Background()
+
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
+		if err = m.RunInfiniteLoop(ctx, 0); err != nil {
 			panic(err)
 		}
 	}()
