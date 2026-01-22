@@ -182,12 +182,10 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 }
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
-func TestHalt(t *testing.T) {
+func TestHalt(t *testing.T) { // nolint:paralleltest
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
 	if err != nil {
@@ -472,12 +470,10 @@ func TestSingleStep(t *testing.T) {
 	}
 }
 
-func TestTranslate32(t *testing.T) {
+func TestTranslate32(t *testing.T) { // nolint:paralleltest
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
 	if err != nil {
