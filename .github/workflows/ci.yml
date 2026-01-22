@@ -65,7 +65,14 @@ jobs:
     - name: Run tests
       env:
         GOFLAGS: "-buildvcs=false"
-      run: sudo -E env "PATH=$PATH" make test
+      run: |
+        for i in $(seq 1 10); do
+          echo "=== Test run $i/10 ==="
+          sudo -E env "PATH=$PATH" make test
+          if [ $i -lt 10 ]; then
+            sleep 3
+          fi
+        done
 
     - name: Upload coverage to Coveralls
       if: matrix.go-version == '1.22.x'
