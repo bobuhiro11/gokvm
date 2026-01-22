@@ -107,7 +107,8 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 
 	// Retry curl in a loop to handle slow HTTP server startup
 	var curlErr error
-	var url = fmt.Sprintf("http://%s/mnt/dev_vda/index.html", guestIPv4)
+
+	url := fmt.Sprintf("http://%s/mnt/dev_vda/index.html", guestIPv4)
 
 	for attempt := 1; attempt <= 10; attempt++ {
 		output, curlErr = exec.Command("curl", "--retry", "5", "--retry-delay", "1", //nolint:gosec
