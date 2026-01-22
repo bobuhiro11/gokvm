@@ -105,13 +105,27 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	output, err = exec.Command("curl", "--retry", "15", "--retry-delay", "2", //nolint:gosec
-		"--retry-connrefused", "--retry-all-errors", "--connect-timeout", "5", "-L",
-		fmt.Sprintf("http://%s/mnt/dev_vda/index.html", guestIPv4)).Output()
-	t.Logf("curl output: %s\n", output)
+	// Retry curl in a loop to handle slow HTTP server startup
+	var curlErr error
 
-	if err != nil {
-		t.Fatal(err)
+	url := fmt.Sprintf("http://%s/mnt/dev_vda/index.html", guestIPv4)
+
+	for attempt := 1; attempt <= 10; attempt++ {
+		output, curlErr = exec.Command("curl", "--retry", "5", "--retry-delay", "1", //nolint:gosec
+			"--retry-connrefused", "--retry-all-errors", "--connect-timeout", "5",
+			"-L", url).CombinedOutput()
+		t.Logf("curl attempt %d output: %s\n", attempt, output)
+
+		if curlErr == nil {
+			break
+		}
+
+		t.Logf("curl attempt %d failed: %v, retrying...", attempt, curlErr)
+		time.Sleep(3 * time.Second)
+	}
+
+	if curlErr != nil {
+		t.Fatal(curlErr)
 	}
 
 	if string(output) != "index.html: this message is from /dev/vda in guest\n" {
