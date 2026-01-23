@@ -1261,32 +1261,38 @@ func initVMandVCPU(
 
 	if vmFd, err = kvm.CreateVM(kvmFd); err != nil {
 		devKVM.Close()
+
 		return nil, 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
 	}
 
 	if err := kvm.SetTSSAddr(vmFd, pvh.KVMTSSStart); err != nil {
 		devKVM.Close()
+
 		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.SetIdentityMapAddr(vmFd, pvh.KVMIdentityMapStart); err != nil {
 		devKVM.Close()
+
 		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.CreateIRQChip(vmFd); err != nil {
 		devKVM.Close()
+
 		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.CreatePIT2(vmFd); err != nil {
 		devKVM.Close()
+
 		return nil, 0, 0, nil, nil, err
 	}
 
 	mmapSize, err := kvm.GetVCPUMMmapSize(kvmFd)
 	if err != nil {
 		devKVM.Close()
+
 		return nil, 0, 0, nil, nil, err
 	}
 
@@ -1295,6 +1301,7 @@ func initVMandVCPU(
 		vcpuFds[cpu], err = kvm.CreateVCPU(vmFd, cpu)
 		if err != nil {
 			devKVM.Close()
+
 			return nil, 0, 0, nil, nil, err
 		}
 
@@ -1303,6 +1310,7 @@ func initVMandVCPU(
 			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
 			devKVM.Close()
+
 			return nil, 0, 0, nil, nil, err
 		}
 
