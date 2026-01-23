@@ -223,7 +223,9 @@ func (m *Machine) Close() error {
 
 	// Unmap memory
 	if m.mem != nil {
-		syscall.Munmap(m.mem)
+		if err := syscall.Munmap(m.mem); err != nil {
+			return err
+		}
 	}
 
 	return nil
