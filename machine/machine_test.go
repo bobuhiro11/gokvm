@@ -37,6 +37,11 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
+	// Ensure VM is properly stopped when test ends
+	t.Cleanup(func() {
+		m.Close()
+	})
+
 	if err := m.AddTapIf(tap); err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +88,8 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if err := m.RunInfiniteLoop(0); err != nil && !errors.Is(err, machine.ErrVMClosed) {
+			t.Errorf("RunInfiniteLoop: %v", err)
 		}
 	}()
 
@@ -155,6 +160,11 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
+	// Ensure VM is properly stopped when test ends
+	t.Cleanup(func() {
+		m.Close()
+	})
+
 	edk2, err := os.Open("../CLOUDHV.fd")
 	if err != nil {
 		t.Fatal(err)
@@ -173,8 +183,8 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if err := m.RunInfiniteLoop(0); err != nil && !errors.Is(err, machine.ErrVMClosed) {
+			t.Errorf("RunInfiniteLoop: %v", err)
 		}
 	}()
 

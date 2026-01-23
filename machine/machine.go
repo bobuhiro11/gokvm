@@ -131,6 +131,9 @@ var ErrNotELF64File = fmt.Errorf("file is not ELF64")
 
 var errPTNoteHasNoFSize = fmt.Errorf("elf programm PT_NOTE has file size equel zero")
 
+// ErrVMClosed indicates the VM was closed via Close().
+var ErrVMClosed = errors.New("VM closed")
+
 type Machine struct {
 	kvmFd, vmFd    uintptr
 	vcpuFds        []uintptr
@@ -140,6 +143,7 @@ type Machine struct {
 	serial         *serial.Serial
 	devices        []iodev.Device
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
+	done           chan struct{}
 }
 
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
@@ -149,7 +153,9 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 		return nil, fmt.Errorf("memory size %d:%w", memSize, ErrMemTooSmall)
 	}
 
-	m := &Machine{}
+	m := &Machine{
+		done: make(chan struct{}),
+	}
 
 	m.pci = pci.New(pci.NewBridge())
 
@@ -191,6 +197,36 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 	}
 
 	return m, nil
+}
+
+// Close stops the VM and releases resources. It signals RunInfiniteLoop to
+// stop and closes all file descriptors. Safe to call multiple times.
+func (m *Machine) Close() error {
+	select {
+	case <-m.done:
+		// Already closed
+		return nil
+	default:
+		close(m.done)
+	}
+
+	// Close vcpu file descriptors
+	for _, fd := range m.vcpuFds {
+		syscall.Close(int(fd))
+	}
+
+	// Close VM file descriptor
+	syscall.Close(int(m.vmFd))
+
+	// Close KVM file descriptor
+	syscall.Close(int(m.kvmFd))
+
+	// Unmap memory
+	if m.mem != nil {
+		syscall.Munmap(m.mem)
+	}
+
+	return nil
 }
 
 func (m *Machine) AddTapIf(tapIfName string) error {
@@ -803,6 +839,7 @@ func (m *Machine) SingleStep(onoff bool) error {
 
 // RunInfiniteLoop runs the guest cpu until there is an error.
 // If the error is ErrExitDebug, this function can be called again.
+// Returns ErrVMClosed if the VM was stopped via Close().
 func (m *Machine) RunInfiniteLoop(cpu int) error {
 	// https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
 	// - vcpu ioctls: These query and set attributes that control the operation
@@ -822,6 +859,13 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 	defer runtime.UnlockOSThread()
 
 	for {
+		// Check if VM was closed before running
+		select {
+		case <-m.done:
+			return ErrVMClosed
+		default:
+		}
+
 		isContinue, err := m.RunOnce(cpu)
 		if isContinue {
 			if err != nil {
@@ -832,6 +876,13 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 		}
 
 		if err != nil {
+			// Check if the error is due to VM being closed
+			select {
+			case <-m.done:
+				return ErrVMClosed
+			default:
+			}
+
 			return err
 		}
 	}
