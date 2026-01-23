@@ -37,6 +37,11 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
+	// Ensure VM is properly stopped when test ends
+	t.Cleanup(func() {
+		m.Close()
+	})
+
 	if err := m.AddTapIf(tap); err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +88,8 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if err := m.RunInfiniteLoop(0); err != nil && !errors.Is(err, machine.ErrVMClosed) {
+			t.Errorf("RunInfiniteLoop: %v", err)
 		}
 	}()
 
@@ -105,12 +110,27 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L", //nolint:gosec
-		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4)).Output()
-	t.Logf("curl output: %s\n", output)
+	// Retry curl in a loop to handle slow HTTP server startup
+	var curlErr error
 
-	if err != nil {
-		t.Fatal(err)
+	url := fmt.Sprintf("http://%s/mnt/dev_vda/index.html", guestIPv4)
+
+	for attempt := 1; attempt <= 20; attempt++ {
+		output, curlErr = exec.Command("curl", "-s", "--retry", "5", "--retry-delay", "1", //nolint:gosec
+			"--retry-connrefused", "--retry-all-errors", "--connect-timeout", "5",
+			"-L", url).CombinedOutput()
+		t.Logf("curl attempt %d output: %s\n", attempt, output)
+
+		if curlErr == nil {
+			break
+		}
+
+		t.Logf("curl attempt %d failed: %v, retrying...", attempt, curlErr)
+		time.Sleep(5 * time.Second)
+	}
+
+	if curlErr != nil {
+		t.Fatal(curlErr)
 	}
 
 	if string(output) != "index.html: this message is from /dev/vda in guest\n" {
@@ -140,6 +160,11 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
+	// Ensure VM is properly stopped when test ends
+	t.Cleanup(func() {
+		m.Close()
+	})
+
 	edk2, err := os.Open("../CLOUDHV.fd")
 	if err != nil {
 		t.Fatal(err)
@@ -158,8 +183,8 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if err := m.RunInfiniteLoop(0); err != nil && !errors.Is(err, machine.ErrVMClosed) {
+			t.Errorf("RunInfiniteLoop: %v", err)
 		}
 	}()
 
@@ -167,12 +192,10 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 }
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
-func TestHalt(t *testing.T) {
+func TestHalt(t *testing.T) { // nolint:paralleltest
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
 	if err != nil {
@@ -457,12 +480,10 @@ func TestSingleStep(t *testing.T) {
 	}
 }
 
-func TestTranslate32(t *testing.T) {
+func TestTranslate32(t *testing.T) { // nolint:paralleltest
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
 	}
-
-	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
 	if err != nil {

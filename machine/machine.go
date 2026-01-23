@@ -131,7 +131,11 @@ var ErrNotELF64File = fmt.Errorf("file is not ELF64")
 
 var errPTNoteHasNoFSize = fmt.Errorf("elf programm PT_NOTE has file size equel zero")
 
+// ErrVMClosed indicates the VM was closed via Close().
+var ErrVMClosed = errors.New("VM closed")
+
 type Machine struct {
+	kvmFile        *os.File // Keep alive to prevent GC from closing the fd
 	kvmFd, vmFd    uintptr
 	vcpuFds        []uintptr
 	mem            []byte
@@ -140,6 +144,7 @@ type Machine struct {
 	serial         *serial.Serial
 	devices        []iodev.Device
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
+	done           chan struct{}
 }
 
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
@@ -149,13 +154,15 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 		return nil, fmt.Errorf("memory size %d:%w", memSize, ErrMemTooSmall)
 	}
 
-	m := &Machine{}
+	m := &Machine{
+		done: make(chan struct{}),
+	}
 
 	m.pci = pci.New(pci.NewBridge())
 
 	var err error
 
-	m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, nCpus)
+	m.kvmFile, m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, nCpus)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +198,40 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 	}
 
 	return m, nil
+}
+
+// Close stops the VM and releases resources. It signals RunInfiniteLoop to
+// stop and closes all file descriptors. Safe to call multiple times.
+func (m *Machine) Close() error {
+	select {
+	case <-m.done:
+		// Already closed
+		return nil
+	default:
+		close(m.done)
+	}
+
+	// Close vcpu file descriptors
+	for _, fd := range m.vcpuFds {
+		syscall.Close(int(fd))
+	}
+
+	// Close VM file descriptor
+	syscall.Close(int(m.vmFd))
+
+	// Close KVM file descriptor (via the os.File to match how it was opened)
+	if m.kvmFile != nil {
+		m.kvmFile.Close()
+	}
+
+	// Unmap memory
+	if m.mem != nil {
+		if err := syscall.Munmap(m.mem); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (m *Machine) AddTapIf(tapIfName string) error {
@@ -803,6 +844,7 @@ func (m *Machine) SingleStep(onoff bool) error {
 
 // RunInfiniteLoop runs the guest cpu until there is an error.
 // If the error is ErrExitDebug, this function can be called again.
+// Returns ErrVMClosed if the VM was stopped via Close().
 func (m *Machine) RunInfiniteLoop(cpu int) error {
 	// https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
 	// - vcpu ioctls: These query and set attributes that control the operation
@@ -822,6 +864,13 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 	defer runtime.UnlockOSThread()
 
 	for {
+		// Check if VM was closed before running
+		select {
+		case <-m.done:
+			return ErrVMClosed
+		default:
+		}
+
 		isContinue, err := m.RunOnce(cpu)
 		if isContinue {
 			if err != nil {
@@ -832,6 +881,13 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 		}
 
 		if err != nil {
+			// Check if the error is due to VM being closed
+			select {
+			case <-m.done:
+				return ErrVMClosed
+			default:
+			}
+
 			return err
 		}
 	}
@@ -1190,12 +1246,12 @@ func GetReg(r *kvm.Regs, reg x86asm.Reg) (*uint64, error) {
 func initVMandVCPU(
 	kvmPath string,
 	nCpus int,
-) (uintptr, uintptr, []uintptr, []*kvm.RunData, error) {
+) (*os.File, uintptr, uintptr, []uintptr, []*kvm.RunData, error) {
 	var err error
 
 	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
 	if err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	kvmFd := devKVM.Fd()
@@ -1204,48 +1260,64 @@ func initVMandVCPU(
 	runs := make([]*kvm.RunData, nCpus)
 
 	if vmFd, err = kvm.CreateVM(kvmFd); err != nil {
-		return 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
+		devKVM.Close()
+
+		return nil, 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
 	}
 
 	if err := kvm.SetTSSAddr(vmFd, pvh.KVMTSSStart); err != nil {
-		return 0, 0, nil, nil, err
+		devKVM.Close()
+
+		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.SetIdentityMapAddr(vmFd, pvh.KVMIdentityMapStart); err != nil {
-		return 0, 0, nil, nil, err
+		devKVM.Close()
+
+		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.CreateIRQChip(vmFd); err != nil {
-		return 0, 0, nil, nil, err
+		devKVM.Close()
+
+		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.CreatePIT2(vmFd); err != nil {
-		return 0, 0, nil, nil, err
+		devKVM.Close()
+
+		return nil, 0, 0, nil, nil, err
 	}
 
 	mmapSize, err := kvm.GetVCPUMMmapSize(kvmFd)
 	if err != nil {
-		return 0, 0, nil, nil, err
+		devKVM.Close()
+
+		return nil, 0, 0, nil, nil, err
 	}
 
 	for cpu := 0; cpu < nCpus; cpu++ {
 		// Create vCPU
 		vcpuFds[cpu], err = kvm.CreateVCPU(vmFd, cpu)
 		if err != nil {
-			return 0, 0, nil, nil, err
+			devKVM.Close()
+
+			return nil, 0, 0, nil, nil, err
 		}
 
 		// init kvm_run structure
 		r, err := syscall.Mmap(int(vcpuFds[cpu]), 0, int(mmapSize),
 			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
-			return 0, 0, nil, nil, err
+			devKVM.Close()
+
+			return nil, 0, 0, nil, nil, err
 		}
 
 		runs[cpu] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
-	return kvmFd, vmFd, vcpuFds, runs, nil
+	return devKVM, kvmFd, vmFd, vcpuFds, runs, nil
 }
 
 func (m *Machine) VCPU(stdout io.Writer, cpu, traceCount int) error {

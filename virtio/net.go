@@ -15,12 +15,13 @@ import (
 )
 
 var (
-	ErrInvalidSel  = errors.New("queue sel is invalid")
-	ErrIONotPermit = errors.New("IO is not permitted for virtio device")
-	ErrNoTxPacket  = errors.New("no packet for tx")
-	ErrNoRxPacket  = errors.New("no packet for rx")
-	ErrVQNotInit   = errors.New("vq not initialized")
-	ErrNoRxBuf     = errors.New("no buffer found for rx")
+	ErrInvalidSel    = errors.New("queue sel is invalid")
+	ErrIONotPermit   = errors.New("IO is not permitted for virtio device")
+	ErrNoTxPacket    = errors.New("no packet for tx")
+	ErrNoRxPacket    = errors.New("no packet for rx")
+	ErrVQNotInit     = errors.New("vq not initialized")
+	ErrNoRxBuf       = errors.New("no buffer found for rx")
+	ErrInvalidDescID = errors.New("invalid descriptor ID")
 )
 
 const (
@@ -137,6 +138,11 @@ func (v *Net) Rx() error {
 	for len(packet) > 0 {
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
+		// Validate descID to prevent out of bounds access
+		if descID >= QueueSize {
+			return fmt.Errorf("%w: %d >= %d", ErrInvalidDescID, descID, QueueSize)
+		}
+
 		// head of vring chain
 		if headDescID == NONE {
 			headDescID = descID
@@ -200,12 +206,22 @@ func (v *Net) Tx() error {
 		buf := []byte{}
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
+		// Validate descID to prevent out of bounds access
+		if descID >= QueueSize {
+			return fmt.Errorf("%w: %d >= %d", ErrInvalidDescID, descID, QueueSize)
+		}
+
 		// This structure is holding both the index of the descriptor chain and the
 		// number of bytes that were written to the memory as part of serving the request.
 		usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(descID)
 		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
 
 		for {
+			if descID >= QueueSize {
+				return fmt.Errorf("%w in chain: %d >= %d",
+					ErrInvalidDescID, descID, QueueSize)
+			}
+
 			desc := v.VirtQueue[sel].DescTable[descID]
 
 			b := make([]byte, desc.Len)
