@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sync"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/serial"
@@ -81,7 +82,13 @@ func TestStartSerial(t *testing.T) {
 
 	in := bufio.NewReader(&bufIn)
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
 	go func() {
+		defer wg.Done()
+
 		if err := s.Start(*in, func() {}, injectFunc); !errors.Is(err, io.EOF) {
 			t.Errorf("s.Start(): got %v, want %v", err, io.EOF)
 		}
@@ -90,4 +97,6 @@ func TestStartSerial(t *testing.T) {
 	if err := s.In(serial.COM1Addr+3, []byte{0}); err != nil {
 		t.Fatal(err)
 	}
+
+	wg.Wait()
 }

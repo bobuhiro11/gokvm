@@ -17,6 +17,32 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
+// waitForPing polls ping every 2s up to 120s until it succeeds.
+func waitForPing(t *testing.T, ip string) {
+	t.Helper()
+
+	deadline := time.Now().Add(120 * time.Second)
+
+	for {
+		out, err := exec.Command(
+			"ping", ip, "-c", "1", "-W", "1",
+		).CombinedOutput()
+
+		if err == nil {
+			t.Logf("ping succeeded: %s", out)
+
+			return
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("ping %s timed out after 120s: %s",
+				ip, out)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
 // skipIfTripleFault checks if the error indicates a VM triple fault (EXITSHUTDOWN)
 // and skips the test if so. This can happen due to kernel/KVM compatibility issues.
 func skipIfTripleFault(t *testing.T, err error, testMode string) {
@@ -83,8 +109,8 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if runErr := m.RunInfiniteLoop(0); runErr != nil {
+			fmt.Printf("RunInfiniteLoop: %v\n", runErr)
 		}
 	}()
 
@@ -96,17 +122,13 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	time.Sleep(15 * time.Second)
+	waitForPing(t, guestIPv4)
 
-	output, err := exec.Command("ping", guestIPv4, "-c", "3", "-i", "0.1").Output()
-	t.Logf("ping output: %s\n", output)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L", //nolint:gosec
-		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4)).Output()
+	output, err := exec.Command("curl", //nolint:gosec
+		"--retry", "5", "--retry-delay", "3",
+		"--retry-connrefused", "-L",
+		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4),
+	).Output()
 	t.Logf("curl output: %s\n", output)
 
 	if err != nil {
@@ -158,8 +180,8 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if runErr := m.RunInfiniteLoop(0); runErr != nil {
+			fmt.Printf("RunInfiniteLoop: %v\n", runErr)
 		}
 	}()
 
@@ -418,6 +440,8 @@ func TestSingleStep(t *testing.T) {
 
 	t.Logf("Runonce: %v, %v", ok, err)
 
+	skipIfTripleFault(t, err, "64-bit single step")
+
 	if !errors.Is(err, kvm.ErrDebug) {
 		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrDebug)
 	}
@@ -447,6 +471,8 @@ func TestSingleStep(t *testing.T) {
 	}
 
 	t.Logf("Runonce: %v, %v", ok, err)
+
+	skipIfTripleFault(t, err, "64-bit single step (NOP)")
 
 	if r, err = m.GetRegs(0); err != nil {
 		t.Errorf("Run: GetRegs(0) exit is %v, not nil", err)
