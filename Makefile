@@ -7,7 +7,7 @@ $(GOPATH)/bin/stringer:
 	go install golang.org/x/tools/cmd/stringer@latest
 
 $(GOPATH)/src/github.com/u-root/u-root:
-	git clone --depth=1 --branch v0.11.0 \
+	git clone --depth=1 --branch v0.13.1 \
 	  https://github.com/u-root/u-root.git $@
 
 $(GOPATH)/bin/u-root: $(GOPATH)/src/github.com/u-root/u-root
