@@ -6,8 +6,13 @@ export PATH := $(GOPATH)/bin:$(PATH)
 $(GOPATH)/bin/stringer:
 	go install golang.org/x/tools/cmd/stringer@latest
 
-$(GOPATH)/bin/u-root:
-	go install github.com/u-root/u-root@latest
+$(GOPATH)/src/github.com/u-root/u-root:
+	git clone --depth=1 --branch v0.11.0 \
+	  https://github.com/u-root/u-root.git $@
+
+$(GOPATH)/bin/u-root: $(GOPATH)/src/github.com/u-root/u-root
+	cd $(GOPATH)/src/github.com/u-root/u-root \
+	  && go install .
 
 gokvm: $(wildcard *.go) $(wildcard */*.go)
 	$(MAKE) generate
@@ -40,7 +45,9 @@ checkbinaries:
 	@which grep
 	@which cut
 
-initrd: checkbinaries ./scripts/get_initrd.bash .bashrc $(GOPATH)/bin/u-root
+initrd: checkbinaries ./scripts/get_initrd.bash .bashrc \
+  $(GOPATH)/bin/u-root \
+  $(GOPATH)/src/github.com/u-root/u-root
 	./scripts/get_initrd.bash
 
 bzImage vmlinux: linux.config ./scripts/get_kernel.bash
