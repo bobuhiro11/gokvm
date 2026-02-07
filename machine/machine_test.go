@@ -43,6 +43,34 @@ func waitForPing(t *testing.T, ip string) {
 	}
 }
 
+// waitForHTTP polls curl every 2s up to 120s until
+// the HTTP endpoint responds successfully.
+func waitForHTTP(t *testing.T, url string) string {
+	t.Helper()
+
+	deadline := time.Now().Add(120 * time.Second)
+
+	for {
+		out, err := exec.Command(
+			"curl", "-sSf", url,
+		).CombinedOutput()
+
+		if err == nil {
+			t.Logf("curl succeeded: %s", out)
+
+			return string(out)
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"curl %s timed out after 120s: %s (%v)",
+				url, out, err)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
 // skipIfTripleFault checks if the error indicates a VM triple fault (EXITSHUTDOWN)
 // and skips the test if so. This can happen due to kernel/KVM compatibility issues.
 func skipIfTripleFault(t *testing.T, err error, testMode string) {
@@ -124,19 +152,11 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 
 	waitForPing(t, guestIPv4)
 
-	output, err := exec.Command("curl", //nolint:gosec
-		"--retry", "5", "--retry-delay", "3",
-		"--retry-connrefused", "-L",
-		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4),
-	).Output()
-	t.Logf("curl output: %s\n", output)
+	output := waitForHTTP(t, fmt.Sprintf(
+		"http://%s/mnt/dev_vda/index.html", guestIPv4))
 
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(output) != "index.html: this message is from /dev/vda in guest\n" {
-		t.Fatal(string(output))
+	if output != "index.html: this message is from /dev/vda in guest\n" {
+		t.Fatal(output)
 	}
 }
 
