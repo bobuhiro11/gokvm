@@ -19,24 +19,35 @@ type ifReq struct {
 }
 
 func ioctl(fd, op, arg uintptr) (uintptr, error) {
-	res, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL, fd, op, arg)
-	if errno != 0 {
-		return res, errno
-	}
+	for {
+		res, _, errno := syscall.Syscall(
+			syscall.SYS_IOCTL, fd, op, arg)
+		if errno == syscall.EINTR {
+			continue
+		}
 
-	return res, nil
+		if errno != 0 {
+			return res, errno
+		}
+
+		return res, nil
+	}
 }
 
 func fcntl(fd, op, arg uintptr) (uintptr, error) {
-	res, _, errno := syscall.Syscall(
-		syscall.SYS_FCNTL, fd, op, arg)
+	for {
+		res, _, errno := syscall.Syscall(
+			syscall.SYS_FCNTL, fd, op, arg)
+		if errno == syscall.EINTR {
+			continue
+		}
 
-	if errno != 0 {
-		return res, errno
+		if errno != 0 {
+			return res, errno
+		}
+
+		return res, nil
 	}
-
-	return res, nil
 }
 
 func New(name string) (*Tap, error) {
@@ -84,9 +95,23 @@ func (t *Tap) Close() error {
 }
 
 func (t Tap) Write(buf []byte) (n int, err error) {
-	return syscall.Write(t.fd, buf)
+	for {
+		n, err = syscall.Write(t.fd, buf)
+		if err == syscall.EINTR {
+			continue
+		}
+
+		return n, err
+	}
 }
 
 func (t Tap) Read(buf []byte) (n int, err error) {
-	return syscall.Read(t.fd, buf)
+	for {
+		n, err = syscall.Read(t.fd, buf)
+		if err == syscall.EINTR {
+			continue
+		}
+
+		return n, err
+	}
 }

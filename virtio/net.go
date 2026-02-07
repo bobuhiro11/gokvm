@@ -277,7 +277,7 @@ func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *
 		irq:          irq,
 		IRQInjector:  irqInjector,
 		txKick:       make(chan interface{}),
-		rxKick:       make(chan os.Signal),
+		rxKick:       make(chan os.Signal, 1),
 		tap:          tap,
 		Mem:          mem,
 		VirtQueue:    [2]*VirtQueue{},
