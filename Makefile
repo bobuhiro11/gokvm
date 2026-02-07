@@ -40,7 +40,7 @@ checkbinaries:
 	@which grep
 	@which cut
 
-initrd: checkbinaries ./scripts/get_initrd.bash $(GOPATH)/bin/u-root
+initrd: checkbinaries ./scripts/get_initrd.bash .bashrc $(GOPATH)/bin/u-root
 	./scripts/get_initrd.bash
 
 bzImage vmlinux: linux.config ./scripts/get_kernel.bash

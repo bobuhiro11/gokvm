@@ -52,7 +52,7 @@ func waitForHTTP(t *testing.T, url string) string {
 
 	for {
 		out, err := exec.Command(
-			"curl", "-sSf", url,
+			"curl", "-sSfL", url,
 		).CombinedOutput()
 
 		if err == nil && len(out) > 0 {
