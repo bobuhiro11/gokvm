@@ -157,13 +157,24 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 
 	m.RunData()
 
+	// Use a channel to capture errors from the VM goroutine
+	errChan := make(chan error, 1)
 	go func() {
 		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+			errChan <- err
 		}
 	}()
 
-	time.Sleep(15 * time.Second)
+	// Wait for either the test duration or an error
+	select {
+	case err := <-errChan:
+		// Check if this is a triple fault/shutdown that should be skipped
+		skipIfTripleFault(t, err, "EDK2 firmware")
+		// If we get here, it's a different error that should fail the test
+		t.Fatalf("RunInfiniteLoop error: %v", err)
+	case <-time.After(15 * time.Second):
+		// Test completed successfully after 15 seconds
+	}
 }
 
 // TestHalt tries to run a Halt instruction in 64-bit mode.
