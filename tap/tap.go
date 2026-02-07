@@ -1,6 +1,7 @@
 package tap
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 	"unsafe"
@@ -97,7 +98,7 @@ func (t *Tap) Close() error {
 func (t Tap) Write(buf []byte) (n int, err error) {
 	for {
 		n, err = syscall.Write(t.fd, buf)
-		if err == syscall.EINTR {
+		if errors.Is(err, syscall.EINTR) {
 			continue
 		}
 
@@ -108,7 +109,7 @@ func (t Tap) Write(buf []byte) (n int, err error) {
 func (t Tap) Read(buf []byte) (n int, err error) {
 	for {
 		n, err = syscall.Read(t.fd, buf)
-		if err == syscall.EINTR {
+		if errors.Is(err, syscall.EINTR) {
 			continue
 		}
 
