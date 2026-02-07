@@ -95,7 +95,11 @@ type BlkReq struct {
 
 func (v *Blk) IO() error {
 	sel := uint16(0)
-	// v.dumpDesc(sel)
+
+	if v.VirtQueue[sel] == nil {
+		return ErrVQNotInit
+	}
+
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
@@ -106,8 +110,10 @@ func (v *Blk) IO() error {
 	for v.LastAvailIdx[sel] != availRing.Idx {
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
-		// This structure is holding both the index of the descriptor chain and the
-		// number of bytes that were written to the memory as part of serving the request.
+		// This structure is holding both the index of
+		// the descriptor chain and the number of bytes
+		// written to memory as part of serving the
+		// request.
 		usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(descID)
 		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
 
@@ -121,7 +127,7 @@ func (v *Blk) IO() error {
 			descID = desc.Next
 		}
 
-		// buf[0] contains type, reserved, and sector fields.
+		// buf[0] contains type, reserved, and sector.
 		// buf[1] contains raw io data.
 		// buf[2] contains a status field.
 		//
@@ -129,21 +135,24 @@ func (v *Blk) IO() error {
 		blkReq := *((*BlkReq)(unsafe.Pointer(&buf[0][0])))
 		data := buf[1]
 
-		var err error
+		var ioErr error
 		if blkReq.Type&0x1 == 0x1 {
-			// write to file
-			_, err = v.file.WriteAt(data, int64(blkReq.Sector*SectorSize))
+			_, ioErr = v.file.WriteAt(
+				data,
+				int64(blkReq.Sector*SectorSize),
+			)
 		} else {
-			// read from file
-			_, err = v.file.ReadAt(data, int64(blkReq.Sector*SectorSize))
+			_, ioErr = v.file.ReadAt(
+				data,
+				int64(blkReq.Sector*SectorSize),
+			)
 		}
 
-		if err != nil {
-			return err
-		}
-
-		if err = v.file.Sync(); err != nil {
-			return err
+		// Write status byte per virtio spec.
+		if ioErr != nil {
+			buf[2][0] = 1 // VIRTIO_BLK_S_IOERR
+		} else {
+			buf[2][0] = 0 // VIRTIO_BLK_S_OK
 		}
 
 		usedRing.Idx++
