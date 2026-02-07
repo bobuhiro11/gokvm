@@ -55,7 +55,7 @@ func waitForHTTP(t *testing.T, url string) string {
 			"curl", "-sSf", url,
 		).CombinedOutput()
 
-		if err == nil {
+		if err == nil && len(out) > 0 {
 			t.Logf("curl succeeded: %s", out)
 
 			return string(out)
