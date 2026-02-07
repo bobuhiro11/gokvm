@@ -142,6 +142,19 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 }
 
+// Close releases resources held by PCI devices (tap FDs,
+// disk FDs, signal registrations) to prevent cross-test
+// interference.
+func (m *Machine) Close() error {
+	for _, d := range m.pci.Devices {
+		if c, ok := d.(io.Closer); ok {
+			c.Close()
+		}
+	}
+
+	return nil
+}
+
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
 // vCPUs, and attaching memory, disk (if needed), and tap (if needed).
 func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {

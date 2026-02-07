@@ -2,6 +2,7 @@ package virtio_test
 
 import (
 	"bytes"
+	"io"
 	"testing"
 	"unsafe"
 
@@ -133,6 +134,51 @@ func TestQueueNotifyHandler(t *testing.T) {
 
 	if !bytes.Equal(expected, b.Bytes()) {
 		t.Fatalf("expected: %v, actual: %v", expected, b.Bytes())
+	}
+}
+
+// mockTapCloser implements io.ReadWriteCloser for
+// testing Net.Close().
+type mockTapCloser struct {
+	bytes.Buffer
+	closed bool
+}
+
+func (m *mockTapCloser) Close() error {
+	m.closed = true
+
+	return nil
+}
+
+func TestNetClose(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, []byte{},
+	)
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: got %v, want nil", err)
+	}
+
+	if !tap.closed {
+		t.Fatal("tap was not closed")
+	}
+}
+
+func TestNetCloseNonCloser(t *testing.T) {
+	t.Parallel()
+
+	// Use a plain io.ReadWriter (no Close method).
+	var buf bytes.Buffer
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		io.ReadWriter(&buf), []byte{},
+	)
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: got %v, want nil", err)
 	}
 }
 

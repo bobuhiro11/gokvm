@@ -266,6 +266,16 @@ func (v Net) Size() uint64 {
 	return NetIOPortSize
 }
 
+func (v *Net) Close() error {
+	signal.Stop(v.rxKick)
+
+	if c, ok := v.tap.(io.Closer); ok {
+		return c.Close()
+	}
+
+	return nil
+}
+
 func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *Net {
 	res := &Net{
 		Hdr: netHdr{

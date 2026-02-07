@@ -195,6 +195,10 @@ func (v Blk) Size() uint64 {
 	return BlkIOPortSize
 }
 
+func (v *Blk) Close() error {
+	return v.file.Close()
+}
+
 func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {
 	file, err := os.OpenFile(path, os.O_RDWR, 0o644)
 	if err != nil {

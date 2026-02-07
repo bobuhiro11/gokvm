@@ -91,6 +91,8 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
+	t.Cleanup(func() { m.Close() })
+
 	if err := m.AddTapIf(tap); err != nil {
 		t.Fatal(err)
 	}
@@ -181,6 +183,8 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Cleanup(func() { m.Close() })
 
 	edk2, err := os.Open("../CLOUDHV.fd")
 	if err != nil {

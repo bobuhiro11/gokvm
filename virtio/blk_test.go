@@ -220,6 +220,37 @@ func TestBlkIOStatusByte(t *testing.T) {
 	}
 }
 
+func TestBlkClose(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp("", "blk-close-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+	f.Close()
+
+	mem := make([]byte, 0x10000)
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: got %v, want nil", err)
+	}
+
+	// Second close should fail because the file
+	// descriptor is already closed.
+	if err := v.Close(); err == nil {
+		t.Fatal("second Close: got nil, want error")
+	}
+}
+
 func TestBlkIONilQueue(t *testing.T) {
 	t.Parallel()
 
