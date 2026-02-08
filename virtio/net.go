@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -42,8 +43,9 @@ type Net struct {
 
 	tap io.ReadWriter
 
-	txKick chan interface{}
-	rxKick chan os.Signal
+	txKick    chan interface{}
+	rxKick    chan os.Signal
+	closeOnce sync.Once
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -65,7 +67,7 @@ type netHeader struct {
 	_ uint16   // maxVirtQueuePairs
 }
 
-func (v Net) GetDeviceHeader() pci.DeviceHeader {
+func (v *Net) GetDeviceHeader() pci.DeviceHeader {
 	return pci.DeviceHeader{
 		DeviceID:    0x1000,
 		VendorID:    0x1AF4,
@@ -82,7 +84,7 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Net) Read(port uint64, bytes []byte) error {
+func (v *Net) Read(port uint64, bytes []byte) error {
 	offset := int(port - NetIOPortStart)
 
 	b, err := v.Hdr.Bytes()
@@ -97,10 +99,14 @@ func (v Net) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Net) RxThreadEntry() {
+	log.Println("virtio-net: RxThreadEntry started")
+
 	for range v.rxKick {
 		for v.Rx() == nil {
 		}
 	}
+
+	log.Println("virtio-net: RxThreadEntry exited")
 }
 
 func (v *Net) Rx() error {
@@ -177,10 +183,14 @@ func (v *Net) Rx() error {
 }
 
 func (v *Net) TxThreadEntry() {
+	log.Println("virtio-net: TxThreadEntry started")
+
 	for range v.txKick {
 		for v.Tx() == nil {
 		}
 	}
+
+	log.Println("virtio-net: TxThreadEntry exited")
 }
 
 func (v *Net) Tx() error {
@@ -249,25 +259,47 @@ func (v *Net) Write(port uint64, bytes []byte) error {
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		v.Hdr.commonHeader.isr = 0x0
-		v.txKick <- true
+
+		queueIdx := pci.BytesToNum(bytes)
+		switch queueIdx {
+		case 0:
+			// RX queue kick: silently drop.
+			// RX is driven by SIGIO signals.
+		case 1:
+			// TX queue kick: non-blocking send.
+			select {
+			case v.txKick <- true:
+			default:
+			}
+		default:
+			log.Printf(
+				"virtio-net: unexpected queue %d",
+				queueIdx,
+			)
+		}
 	case 19:
-		fmt.Printf("ISR was written!\r\n")
 	default:
 	}
 
 	return nil
 }
 
-func (v Net) IOPort() uint64 {
+func (v *Net) IOPort() uint64 {
 	return NetIOPortStart
 }
 
-func (v Net) Size() uint64 {
+func (v *Net) Size() uint64 {
 	return NetIOPortSize
 }
 
 func (v *Net) Close() error {
+	log.Println("virtio-net: Close called")
 	signal.Stop(v.rxKick)
+
+	v.closeOnce.Do(func() {
+		close(v.rxKick)
+		close(v.txKick)
+	})
 
 	if c, ok := v.tap.(io.Closer); ok {
 		return c.Close()
@@ -286,7 +318,7 @@ func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *
 		},
 		irq:          irq,
 		IRQInjector:  irqInjector,
-		txKick:       make(chan interface{}),
+		txKick:       make(chan interface{}, 1),
 		rxKick:       make(chan os.Signal, 1),
 		tap:          tap,
 		Mem:          mem,

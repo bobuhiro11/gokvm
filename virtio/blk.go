@@ -3,7 +3,9 @@ package virtio
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
 	"os"
+	"sync"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -24,7 +26,8 @@ type Blk struct {
 	Mem          []byte
 	LastAvailIdx [1]uint16
 
-	kick chan interface{}
+	kick      chan interface{}
+	closeOnce sync.Once
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -49,7 +52,7 @@ type blkHeader struct {
 	capacity uint64
 }
 
-func (v Blk) GetDeviceHeader() pci.DeviceHeader {
+func (v *Blk) GetDeviceHeader() pci.DeviceHeader {
 	return pci.DeviceHeader{
 		DeviceID:    0x1001,
 		VendorID:    0x1AF4,
@@ -66,7 +69,7 @@ func (v Blk) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Blk) Read(port uint64, bytes []byte) error {
+func (v *Blk) Read(port uint64, bytes []byte) error {
 	offset := int(port - BlkIOPortStart)
 
 	b, err := v.Hdr.Bytes()
@@ -81,10 +84,14 @@ func (v Blk) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Blk) IOThreadEntry() {
+	log.Println("virtio-blk: IOThreadEntry started")
+
 	for range v.kick {
 		for v.IO() == nil {
 		}
 	}
+
+	log.Println("virtio-blk: IOThreadEntry exited")
 }
 
 type BlkReq struct {
@@ -179,7 +186,11 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
 		v.Hdr.commonHeader.isr = 0x0
-		v.kick <- true
+
+		select {
+		case v.kick <- true:
+		default:
+		}
 	case 19:
 	default:
 	}
@@ -187,15 +198,18 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 	return nil
 }
 
-func (v Blk) IOPort() uint64 {
+func (v *Blk) IOPort() uint64 {
 	return BlkIOPortStart
 }
 
-func (v Blk) Size() uint64 {
+func (v *Blk) Size() uint64 {
 	return BlkIOPortSize
 }
 
 func (v *Blk) Close() error {
+	log.Println("virtio-blk: Close called")
+	v.closeOnce.Do(func() { close(v.kick) })
+
 	return v.file.Close()
 }
 
@@ -225,7 +239,7 @@ func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, 
 		file:         file,
 		irq:          irq,
 		IRQInjector:  irqInjector,
-		kick:         make(chan interface{}),
+		kick:         make(chan interface{}, 1),
 		Mem:          mem,
 		VirtQueue:    [1]*VirtQueue{},
 		LastAvailIdx: [1]uint16{0},

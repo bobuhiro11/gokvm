@@ -3,7 +3,9 @@ package virtio_test
 import (
 	"bytes"
 	"os"
+	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/virtio"
@@ -248,6 +250,93 @@ func TestBlkClose(t *testing.T) {
 	// descriptor is already closed.
 	if err := v.Close(); err == nil {
 		t.Fatal("second Close: got nil, want error")
+	}
+}
+
+func TestBlkIOThreadExitsOnClose(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp("", "blk-iothread-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+	f.Close()
+
+	mem := make([]byte, 0x10000)
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		v.IOThreadEntry()
+	}()
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal(
+			"IOThreadEntry did not exit after Close",
+		)
+	}
+}
+
+func TestBlkWriteNonBlockingKick(t *testing.T) {
+	t.Parallel()
+
+	mem := make([]byte, 0x10000)
+
+	v, err := virtio.NewBlk(
+		"/dev/zero", 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer v.Close()
+
+	// Write offset 16 twice rapidly. With a blocking
+	// send on a size-1 channel the second call would
+	// block the vCPU. Both must complete promptly.
+	for i := 0; i < 2; i++ {
+		done := make(chan struct{})
+
+		go func() {
+			_ = v.Write(
+				virtio.BlkIOPortStart+16,
+				[]byte{0x0, 0x0},
+			)
+
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(1 * time.Second):
+			t.Fatalf(
+				"Write #%d to offset 16 blocked", i,
+			)
+		}
 	}
 }
 

@@ -3,7 +3,9 @@ package virtio_test
 import (
 	"bytes"
 	"io"
+	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/virtio"
@@ -179,6 +181,140 @@ func TestNetCloseNonCloser(t *testing.T) {
 
 	if err := v.Close(); err != nil {
 		t.Fatalf("Close: got %v, want nil", err)
+	}
+}
+
+func TestNetThreadsExitOnClose(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		v.TxThreadEntry()
+	}()
+
+	go func() {
+		defer wg.Done()
+		v.RxThreadEntry()
+	}()
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal(
+			"thread entries did not exit after Close",
+		)
+	}
+}
+
+func TestNetWriteNonBlockingKick(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	defer v.Close()
+
+	// Write offset 16 with queue index 1 (TX) twice.
+	// Both must complete without blocking.
+	for i := 0; i < 2; i++ {
+		done := make(chan struct{})
+
+		go func() {
+			_ = v.Write(
+				virtio.NetIOPortStart+16,
+				[]byte{0x1, 0x0}, // queue 1 = TX
+			)
+
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(1 * time.Second):
+			t.Fatalf(
+				"Write #%d to offset 16 blocked", i,
+			)
+		}
+	}
+}
+
+func TestNetWriteRxKickDropped(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	defer v.Close()
+
+	// Start TxThreadEntry so it drains txKick.
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		v.TxThreadEntry()
+	}()
+
+	// Write offset 16 with queue index 0 (RX).
+	// This should be silently dropped and not sent
+	// to txKick, so TxThreadEntry should NOT call Tx.
+	done := make(chan struct{})
+
+	go func() {
+		_ = v.Write(
+			virtio.NetIOPortStart+16,
+			[]byte{0x0, 0x0}, // queue 0 = RX
+		)
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Write RX kick blocked")
+	}
+
+	// Give a brief moment for any erroneous kick
+	// to propagate, then close and verify tap was
+	// never written to (Tx was not called).
+	time.Sleep(50 * time.Millisecond)
+
+	v.Close()
+	wg.Wait()
+
+	if tap.Len() != 0 {
+		t.Fatalf(
+			"tap had %d bytes; want 0 (Tx called)",
+			tap.Len(),
+		)
 	}
 }
 
