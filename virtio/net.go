@@ -45,6 +45,7 @@ type Net struct {
 
 	txKick    chan interface{}
 	rxKick    chan os.Signal
+	done      chan struct{}
 	closeOnce sync.Once
 
 	irq         uint8
@@ -101,12 +102,18 @@ func (v *Net) Read(port uint64, bytes []byte) error {
 func (v *Net) RxThreadEntry() {
 	log.Println("virtio-net: RxThreadEntry started")
 
-	for range v.rxKick {
-		for v.Rx() == nil {
+	for {
+		select {
+		case <-v.done:
+			log.Println("virtio-net: RxThreadEntry " +
+				"received done signal")
+
+			return
+		case <-v.rxKick:
+			for v.Rx() == nil {
+			}
 		}
 	}
-
-	log.Println("virtio-net: RxThreadEntry exited")
 }
 
 func (v *Net) Rx() error {
@@ -185,12 +192,18 @@ func (v *Net) Rx() error {
 func (v *Net) TxThreadEntry() {
 	log.Println("virtio-net: TxThreadEntry started")
 
-	for range v.txKick {
-		for v.Tx() == nil {
+	for {
+		select {
+		case <-v.done:
+			log.Println("virtio-net: TxThreadEntry " +
+				"received done signal")
+
+			return
+		case <-v.txKick:
+			for v.Tx() == nil {
+			}
 		}
 	}
-
-	log.Println("virtio-net: TxThreadEntry exited")
 }
 
 func (v *Net) Tx() error {
@@ -296,10 +309,7 @@ func (v *Net) Close() error {
 	log.Println("virtio-net: Close called")
 	signal.Stop(v.rxKick)
 
-	v.closeOnce.Do(func() {
-		close(v.rxKick)
-		close(v.txKick)
-	})
+	v.closeOnce.Do(func() { close(v.done) })
 
 	if c, ok := v.tap.(io.Closer); ok {
 		return c.Close()
@@ -320,6 +330,7 @@ func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *
 		IRQInjector:  irqInjector,
 		txKick:       make(chan interface{}, 1),
 		rxKick:       make(chan os.Signal, 1),
+		done:         make(chan struct{}),
 		tap:          tap,
 		Mem:          mem,
 		VirtQueue:    [2]*VirtQueue{},

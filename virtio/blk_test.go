@@ -340,6 +340,92 @@ func TestBlkWriteNonBlockingKick(t *testing.T) {
 	}
 }
 
+func TestBlkWriteAfterClose(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp("", "blk-wac-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+	f.Close()
+
+	mem := make([]byte, 0x10000)
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write at offset 16 after Close must not panic.
+	if err := v.Write(
+		virtio.BlkIOPortStart+16,
+		[]byte{0x0, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBlkConcurrentCloseAndWrite(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp("", "blk-ccw-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+	f.Close()
+
+	mem := make([]byte, 0x10000)
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		v.Close()
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < 100; i++ {
+			_ = v.Write(
+				virtio.BlkIOPortStart+16,
+				[]byte{0x0, 0x0},
+			)
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent Close+Write deadlocked")
+	}
+}
+
 func TestBlkIONilQueue(t *testing.T) {
 	t.Parallel()
 

@@ -27,6 +27,7 @@ type Blk struct {
 	LastAvailIdx [1]uint16
 
 	kick      chan interface{}
+	done      chan struct{}
 	closeOnce sync.Once
 
 	irq         uint8
@@ -86,12 +87,18 @@ func (v *Blk) Read(port uint64, bytes []byte) error {
 func (v *Blk) IOThreadEntry() {
 	log.Println("virtio-blk: IOThreadEntry started")
 
-	for range v.kick {
-		for v.IO() == nil {
+	for {
+		select {
+		case <-v.done:
+			log.Println("virtio-blk: IOThreadEntry " +
+				"received done signal")
+
+			return
+		case <-v.kick:
+			for v.IO() == nil {
+			}
 		}
 	}
-
-	log.Println("virtio-blk: IOThreadEntry exited")
 }
 
 type BlkReq struct {
@@ -208,7 +215,7 @@ func (v *Blk) Size() uint64 {
 
 func (v *Blk) Close() error {
 	log.Println("virtio-blk: Close called")
-	v.closeOnce.Do(func() { close(v.kick) })
+	v.closeOnce.Do(func() { close(v.done) })
 
 	return v.file.Close()
 }
@@ -240,6 +247,7 @@ func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, 
 		irq:          irq,
 		IRQInjector:  irqInjector,
 		kick:         make(chan interface{}, 1),
+		done:         make(chan struct{}),
 		Mem:          mem,
 		VirtQueue:    [1]*VirtQueue{},
 		LastAvailIdx: [1]uint16{0},

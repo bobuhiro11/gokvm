@@ -318,6 +318,70 @@ func TestNetWriteRxKickDropped(t *testing.T) {
 	}
 }
 
+func TestNetWriteAfterClose(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write TX kick after Close must not panic.
+	if err := v.Write(
+		virtio.NetIOPortStart+16,
+		[]byte{0x1, 0x0}, // queue 1 = TX
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNetConcurrentCloseAndWrite(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		v.Close()
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < 100; i++ {
+			_ = v.Write(
+				virtio.NetIOPortStart+16,
+				[]byte{0x1, 0x0}, // queue 1 = TX
+			)
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent Close+Write deadlocked")
+	}
+}
+
 func TestRx(t *testing.T) {
 	t.Parallel()
 
