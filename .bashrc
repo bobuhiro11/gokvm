@@ -13,6 +13,11 @@ then
   ip addr add $GUEST_IPV4_ADDR dev eth0
 fi
 
+# Start HTTP server early so the test retry loop gets
+# a response (even 404) instead of "Connection refused".
+srvfiles -h 0.0.0.0 -p 80 > /tmp/srvfiles.log 2>&1 &
+echo "srvfiles started as PID=$!"
+
 # If /dev/vda is formatted as ext2, mount as read-only to avoid
 # inadvertent fs corruption. If you want to write, please remount.
 # Retry up to 30s because the virtio block device may not be
@@ -30,8 +35,6 @@ while [ $n -lt 30 ]; do
   n=$((n + 1))
   sleep 1
 done
-
-nohup srvfiles -h 0.0.0.0 -p 80 &
 ps
 
 echo 'loading .bashrc finished.'

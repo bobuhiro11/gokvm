@@ -4,12 +4,28 @@ import (
 	"bytes"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/virtio"
 )
+
+// countingInjector counts InjectVirtioBlkIRQ calls.
+type countingInjector struct {
+	blkCount atomic.Int64
+}
+
+func (c *countingInjector) InjectVirtioNetIRQ() error {
+	return nil
+}
+
+func (c *countingInjector) InjectVirtioBlkIRQ() error {
+	c.blkCount.Add(1)
+
+	return nil
+}
 
 func TestBlkGetDeviceHeader(t *testing.T) {
 	t.Parallel()
@@ -423,6 +439,175 @@ func TestBlkConcurrentCloseAndWrite(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("concurrent Close+Write deadlocked")
+	}
+}
+
+func TestBlkISRClearedOnRead(t *testing.T) {
+	t.Parallel()
+
+	// Create a temp file with enough data for one sector.
+	f, err := os.CreateTemp("", "blk-isr-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+
+	data := make([]byte, 1024)
+	if _, err := f.Write(data); err != nil {
+		t.Fatal(err)
+	}
+
+	f.Close()
+
+	mem := make([]byte, 0x100000)
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up a virtqueue and perform one IO to set ISR.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+
+	vq.DescTable[0].Addr = 0x1000
+	vq.DescTable[0].Len = 16
+	vq.DescTable[0].Next = 1
+
+	blkReq := (*virtio.BlkReq)(
+		unsafe.Pointer(&mem[0x1000]),
+	)
+	blkReq.Type = 0 // read
+	blkReq.Sector = 0
+
+	vq.DescTable[1].Addr = 0x2000
+	vq.DescTable[1].Len = 512
+	vq.DescTable[1].Next = 2
+
+	vq.DescTable[2].Addr = 0x3000
+	vq.DescTable[2].Len = 1
+
+	v.VirtQueue[0] = &vq
+
+	if err := v.IO(); err != nil {
+		t.Fatal(err)
+	}
+
+	// First read of ISR (offset 19) must return 1.
+	buf := make([]byte, 1)
+	if err := v.Read(
+		virtio.BlkIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 1 {
+		t.Fatalf(
+			"first ISR read: got %d, want 1",
+			buf[0],
+		)
+	}
+
+	// Second read must return 0 (cleared on read).
+	if err := v.Read(
+		virtio.BlkIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 0 {
+		t.Fatalf(
+			"second ISR read: got %d, want 0",
+			buf[0],
+		)
+	}
+}
+
+func TestBlkIOThreadReInjectsIRQ(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp("", "blk-reinject-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+
+	data := make([]byte, 1024)
+	if _, err := f.Write(data); err != nil {
+		t.Fatal(err)
+	}
+
+	f.Close()
+
+	mem := make([]byte, 0x100000)
+	inj := &countingInjector{}
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, inj, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up a virtqueue and perform one IO to set ISR.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+
+	vq.DescTable[0].Addr = 0x1000
+	vq.DescTable[0].Len = 16
+	vq.DescTable[0].Next = 1
+
+	blkReq := (*virtio.BlkReq)(
+		unsafe.Pointer(&mem[0x1000]),
+	)
+	blkReq.Type = 0
+	blkReq.Sector = 0
+
+	vq.DescTable[1].Addr = 0x2000
+	vq.DescTable[1].Len = 512
+	vq.DescTable[1].Next = 2
+
+	vq.DescTable[2].Addr = 0x3000
+	vq.DescTable[2].Len = 1
+
+	v.VirtQueue[0] = &vq
+
+	if err := v.IO(); err != nil {
+		t.Fatal(err)
+	}
+
+	// IO() calls InjectVirtioBlkIRQ once.
+	before := inj.blkCount.Load()
+
+	// Start IOThreadEntry — the ticker should
+	// re-inject because ISR is still set.
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		v.IOThreadEntry()
+	}()
+
+	// Wait long enough for several ticks (10ms each).
+	time.Sleep(100 * time.Millisecond)
+
+	after := inj.blkCount.Load()
+
+	v.Close()
+	wg.Wait()
+
+	reinjections := after - before
+	if reinjections < 2 {
+		t.Fatalf(
+			"expected >=2 re-injections, got %d",
+			reinjections,
+		)
 	}
 }
 

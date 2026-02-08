@@ -139,6 +139,57 @@ func TestQueueNotifyHandler(t *testing.T) {
 	}
 }
 
+// TestTxIgnoresQueueSEL verifies that Tx() uses the
+// hardcoded TX queue (index 1) regardless of the
+// volatile queueSEL register value.
+func TestTxIgnoresQueueSEL(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte{0xaa, 0xbb, 0xcc, 0xdd}
+	b := bytes.NewBuffer([]byte{})
+
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(9, &mockInjector{}, b, mem)
+
+	// Do NOT write to offset 14 — leave queueSEL at
+	// its default value 0 (RX). Before the fix, Tx()
+	// would read this register and fail with
+	// ErrInvalidSel.
+
+	const K = 10
+
+	copy(mem[0x100+K:0x100+K+2], []byte{0xaa, 0xbb})
+	copy(mem[0x200:0x200+2], []byte{0xcc, 0xdd})
+
+	vq := virtio.VirtQueue{}
+
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = K + 2
+	vq.DescTable[0].Flags = 0x1
+	vq.DescTable[0].Next = 0x1
+
+	vq.DescTable[1].Addr = 0x200
+	vq.DescTable[1].Len = 2
+
+	vq.AvailRing.Idx = 1
+	v.VirtQueue[1] = &vq
+
+	if err := v.Tx(); err != nil {
+		t.Fatalf("Tx with queueSEL=0: %v", err)
+	}
+
+	if !v.IRQInjector.(*mockInjector).called {
+		t.Fatal("IRQ not injected")
+	}
+
+	if !bytes.Equal(expected, b.Bytes()) {
+		t.Fatalf(
+			"expected: %v, actual: %v",
+			expected, b.Bytes(),
+		)
+	}
+}
+
 // mockTapCloser implements io.ReadWriteCloser for
 // testing Net.Close().
 type mockTapCloser struct {
@@ -379,6 +430,57 @@ func TestNetConcurrentCloseAndWrite(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("concurrent Close+Write deadlocked")
+	}
+}
+
+func TestNetISRClearedOnRead(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte{0xaa, 0xbb}
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer(expected), mem,
+	)
+
+	// Init virt queue and do one Rx to set ISR.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = 0x200
+	v.VirtQueue[0] = &vq
+
+	if err := v.Rx(); err != nil {
+		t.Fatal(err)
+	}
+
+	// First read of ISR (offset 19) must return 1.
+	buf := make([]byte, 1)
+	if err := v.Read(
+		virtio.NetIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 1 {
+		t.Fatalf(
+			"first ISR read: got %d, want 1",
+			buf[0],
+		)
+	}
+
+	// Second read must return 0 (cleared on read).
+	if err := v.Read(
+		virtio.NetIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 0 {
+		t.Fatalf(
+			"second ISR read: got %d, want 0",
+			buf[0],
+		)
 	}
 }
 

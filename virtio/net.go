@@ -10,13 +10,13 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
 
 var (
-	ErrInvalidSel  = errors.New("queue sel is invalid")
 	ErrIONotPermit = errors.New("IO is not permitted for virtio device")
 	ErrNoTxPacket  = errors.New("no packet for tx")
 	ErrNoRxPacket  = errors.New("no packet for rx")
@@ -95,6 +95,12 @@ func (v *Net) Read(port uint64, bytes []byte) error {
 
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
+
+	// ISR is at offset 19 in the virtio common header.
+	// Per the virtio spec, reading ISR clears it.
+	if offset <= 19 && offset+l > 19 {
+		v.Hdr.commonHeader.isr = 0
+	}
 
 	return nil
 }
@@ -192,6 +198,9 @@ func (v *Net) Rx() error {
 func (v *Net) TxThreadEntry() {
 	log.Println("virtio-net: TxThreadEntry started")
 
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-v.done:
@@ -202,14 +211,22 @@ func (v *Net) TxThreadEntry() {
 		case <-v.txKick:
 			for v.Tx() == nil {
 			}
+		case <-ticker.C:
+			for v.Tx() == nil {
+			}
+
+			if v.Hdr.commonHeader.isr != 0 {
+				_ = v.IRQInjector.InjectVirtioNetIRQ()
+			}
 		}
 	}
 }
 
 func (v *Net) Tx() error {
-	sel := v.Hdr.commonHeader.queueSEL
-	if sel == 0 {
-		return ErrInvalidSel
+	const sel = 1
+
+	if v.VirtQueue[sel] == nil {
+		return ErrVQNotInit
 	}
 
 	availRing := &v.VirtQueue[sel].AvailRing
@@ -251,6 +268,7 @@ func (v *Net) Tx() error {
 		if _, err := v.tap.Write(buf); err != nil {
 			return err
 		}
+
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
 	}

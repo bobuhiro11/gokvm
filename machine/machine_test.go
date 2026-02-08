@@ -50,16 +50,24 @@ func waitForHTTP(t *testing.T, url string) string {
 
 	deadline := time.Now().Add(120 * time.Second)
 
+	attempt := 0
+
 	for {
+		attempt++
+
 		out, err := exec.Command(
 			"curl", "-sSfL", url,
 		).CombinedOutput()
 
 		if err == nil && len(out) > 0 {
-			t.Logf("curl succeeded: %s", out)
+			t.Logf("curl succeeded on attempt %d: %s",
+				attempt, out)
 
 			return string(out)
 		}
+
+		t.Logf("curl attempt %d: %s (%v)",
+			attempt, out, err)
 
 		if time.Now().After(deadline) {
 			t.Fatalf(

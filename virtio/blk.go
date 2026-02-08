@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -81,11 +82,20 @@ func (v *Blk) Read(port uint64, bytes []byte) error {
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
 
+	// ISR is at offset 19 in the virtio common header.
+	// Per the virtio spec, reading ISR clears it.
+	if offset <= 19 && offset+l > 19 {
+		v.Hdr.commonHeader.isr = 0
+	}
+
 	return nil
 }
 
 func (v *Blk) IOThreadEntry() {
 	log.Println("virtio-blk: IOThreadEntry started")
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -96,6 +106,13 @@ func (v *Blk) IOThreadEntry() {
 			return
 		case <-v.kick:
 			for v.IO() == nil {
+			}
+		case <-ticker.C:
+			for v.IO() == nil {
+			}
+
+			if v.Hdr.commonHeader.isr != 0 {
+				_ = v.IRQInjector.InjectVirtioBlkIRQ()
 			}
 		}
 	}
@@ -150,6 +167,7 @@ func (v *Blk) IO() error {
 		data := buf[1]
 
 		var ioErr error
+
 		if blkReq.Type&0x1 == 0x1 {
 			_, ioErr = v.file.WriteAt(
 				data,
