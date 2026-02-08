@@ -13,28 +13,36 @@ then
   ip addr add $GUEST_IPV4_ADDR dev eth0
 fi
 
-# Start HTTP server early so the test retry loop gets
-# a response (even 404) instead of "Connection refused".
-srvfiles -h 0.0.0.0 -p 80 > /tmp/srvfiles.log 2>&1 &
-echo "srvfiles started as PID=$!"
-
-# If /dev/vda is formatted as ext2, mount as read-only to avoid
-# inadvertent fs corruption. If you want to write, please remount.
-# Retry up to 30s because the virtio block device may not be
-# ready immediately when .bashrc runs.
+# If /dev/vda is formatted as ext2, mount as read-only
+# to avoid inadvertent fs corruption.
+# Retry up to 30s because the virtio block device may
+# not be ready immediately when .bashrc runs.
 n=0
+mounted=0
 while [ $n -lt 30 ]; do
+  echo "mount attempt $n"
   if [ "$(hexdump -e '/1 "%x"' -s 0x0000438 \
       -n 2 /dev/vda 2>/dev/null)" = "53ef" ]
   then
     mkdir -p /mnt/dev_vda
     mount -o ro /dev/vda /mnt/dev_vda
+    echo "mount succeeded on attempt $n"
     ls -la /mnt/dev_vda
+    mounted=1
     break
   fi
   n=$((n + 1))
   sleep 1
 done
+
+if [ "$mounted" -eq 0 ]; then
+  echo "WARNING: /dev/vda mount failed after 30s"
+fi
+
+# Start HTTP server AFTER mount so the first 200 OK
+# response already contains the mounted content.
+srvfiles -h 0.0.0.0 -p 80 > /tmp/srvfiles.log 2>&1 &
+echo "srvfiles started as PID=$!"
 ps
 
 echo 'loading .bashrc finished.'

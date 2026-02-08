@@ -44,8 +44,10 @@ func waitForPing(t *testing.T, ip string) {
 }
 
 // waitForHTTP polls curl every 2s up to 120s until
-// the HTTP endpoint responds successfully.
-func waitForHTTP(t *testing.T, url string) string {
+// the response body equals expected.
+func waitForHTTP(
+	t *testing.T, url, expected string,
+) string {
 	t.Helper()
 
 	deadline := time.Now().Add(120 * time.Second)
@@ -59,20 +61,27 @@ func waitForHTTP(t *testing.T, url string) string {
 			"curl", "-sSfL", url,
 		).CombinedOutput()
 
-		if err == nil && len(out) > 0 {
-			t.Logf("curl succeeded on attempt %d: %s",
-				attempt, out)
+		body := string(out)
 
-			return string(out)
+		if err == nil && body == expected {
+			t.Logf("curl matched on attempt %d", attempt)
+
+			return body
 		}
 
-		t.Logf("curl attempt %d: %s (%v)",
-			attempt, out, err)
+		if err == nil {
+			t.Logf("curl attempt %d: unexpected body: %q",
+				attempt, body)
+		} else {
+			t.Logf("curl attempt %d: %s (%v)",
+				attempt, out, err)
+		}
 
 		if time.Now().After(deadline) {
 			t.Fatalf(
-				"curl %s timed out after 120s: %s (%v)",
-				url, out, err)
+				"curl %s timed out after %d attempts"+
+					" (120s): last body=%q err=%v",
+				url, attempt, body, err)
 		}
 
 		time.Sleep(2 * time.Second)
@@ -161,12 +170,17 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 	}
 
 	waitForPing(t, guestIPv4)
+	t.Logf("ping OK at %s", time.Now().Format(time.RFC3339))
+
+	const wantBody = "index.html: this message is " +
+		"from /dev/vda in guest\n"
 
 	output := waitForHTTP(t, fmt.Sprintf(
-		"http://%s/mnt/dev_vda/index.html", guestIPv4))
+		"http://%s/mnt/dev_vda/index.html", guestIPv4),
+		wantBody)
 
-	if output != "index.html: this message is from /dev/vda in guest\n" {
-		t.Fatal(output)
+	if output != wantBody {
+		t.Fatalf("unexpected response body: %q", output)
 	}
 }
 
