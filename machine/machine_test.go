@@ -86,6 +86,10 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	m, err := machine.New("/dev/kvm", 1, 1<<29)
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +183,10 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	m, err := machine.New("/dev/kvm", 1, 1<<30)
 	if err != nil {
 		t.Fatal(err)
@@ -216,6 +224,10 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 func TestHalt(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -297,6 +309,10 @@ func TestReadWriteAt(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -343,6 +359,10 @@ func TestSingleStepOffOn(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -366,6 +386,10 @@ func TestSingleStepOffOn(t *testing.T) {
 func TestSetupGetSetRegs(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -425,6 +449,10 @@ func TestSetupGetSetRegs(t *testing.T) {
 func TestSingleStep(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -512,6 +540,10 @@ func TestTranslate32(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -578,6 +610,10 @@ func TestCPUtoFD(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	m, err := machine.New("/dev/kvm", 1, machine.MinMemSize)
@@ -597,6 +633,10 @@ func TestCPUtoFD(t *testing.T) {
 func TestVtoP(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()

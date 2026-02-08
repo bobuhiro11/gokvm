@@ -14,6 +14,10 @@ func TestIoctlEINTRRetry(t *testing.T) {
 		)
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile(

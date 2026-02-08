@@ -13,6 +13,10 @@ func TestDebug(t *testing.T) { // nolint:paralleltest
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	m, err := machine.New("/dev/kvm", 1, 1<<29)
 	if err != nil {
 		t.Fatalf("Open: got %v, want nil", err)

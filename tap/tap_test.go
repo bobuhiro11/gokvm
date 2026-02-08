@@ -15,6 +15,10 @@ func TestNew(t *testing.T) { // nolint:paralleltest
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/net/tun"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/net/tun not available")
+	}
+
 	tap, err := tap.New("test_tap")
 	if err != nil {
 		t.Fatal(err)
@@ -29,6 +33,14 @@ func TestNew(t *testing.T) { // nolint:paralleltest
 func TestWrite(t *testing.T) { // nolint:paralleltest
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := exec.LookPath("ip"); err != nil {
+		t.Skip("Skipping test: ip command not available")
+	}
+
+	if _, err := os.Stat("/dev/net/tun"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/net/tun not available")
 	}
 
 	tap, err := tap.New("test_write")
@@ -52,6 +64,14 @@ func TestWrite(t *testing.T) { // nolint:paralleltest
 func TestRead(t *testing.T) { // nolint:paralleltest
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := exec.LookPath("ip"); err != nil {
+		t.Skip("Skipping test: ip command not available")
+	}
+
+	if _, err := os.Stat("/dev/net/tun"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/net/tun not available")
 	}
 
 	tap, err := tap.New("test_read")

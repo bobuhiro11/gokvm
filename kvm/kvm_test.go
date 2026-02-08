@@ -65,6 +65,10 @@ func TestGetAPIVersion(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -83,6 +87,10 @@ func TestGetAPIVersion(t *testing.T) {
 func TestCreateVM(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -114,6 +122,10 @@ func TestCreateVM(t *testing.T) {
 func TestCPUID(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -163,6 +175,10 @@ func TestCPUID(t *testing.T) {
 func TestCreateVCPU(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -220,6 +236,10 @@ func TestGetVCPUMMapSize(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -240,6 +260,10 @@ func TestCreateVCPUWithNoVmFd(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -257,6 +281,10 @@ func TestCreateVCPUWithNoVmFd(t *testing.T) {
 func TestAddNum(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -402,6 +430,10 @@ func TestSetMemLogDirtyPages(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	u := kvm.UserspaceMemoryRegion{}
@@ -416,6 +448,10 @@ func TestSetMemLogDirtyPages(t *testing.T) {
 func TestIRQLine(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -468,6 +504,10 @@ func TestGetSetPID2(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -506,6 +546,10 @@ func TestSetGSIRouting(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -540,6 +584,10 @@ func TestCoalescedMMIO(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -566,6 +614,10 @@ func TestCoalescedMMIO(t *testing.T) {
 func TestSetNrMMUPages(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -612,6 +664,10 @@ func TestGetDirtyLog(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -656,6 +712,10 @@ func TestSetGetIRQChip(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -693,6 +753,10 @@ func TestGetEmulatedCPUID(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -715,6 +779,10 @@ func TestGetEmulatedCPUID(t *testing.T) {
 func TestSetGetTSCKHz(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -751,6 +819,10 @@ func TestSetGetClock(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -779,6 +851,10 @@ func TestSetGetClock(t *testing.T) {
 func TestCreateDev(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -815,6 +891,10 @@ func TestInjectInterrpt(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -843,6 +923,10 @@ func TestInjectInterrpt(t *testing.T) {
 func TestGetMSRIndexList(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -879,6 +963,10 @@ func TestGetMSRIndexList(t *testing.T) {
 func TestGetMSRFeatureIndexList(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -929,6 +1017,10 @@ func TestGetSetLocalAPIC(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -970,6 +1062,10 @@ func TestReinjectControl(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -1000,6 +1096,10 @@ func TestReinjectControl(t *testing.T) {
 func TestTranslate(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -1051,6 +1151,10 @@ func TestTRPAccessReporting(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -1091,6 +1195,10 @@ func TestTRPAccessReporting(t *testing.T) {
 func TestGetSetMPState(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -1139,6 +1247,10 @@ func TestX86MCE(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -1185,6 +1297,10 @@ func TestGetSetVCPUEvents(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -1227,6 +1343,10 @@ func TestGetSetVCPUEvents(t *testing.T) {
 func TestGetSetDebugRegs(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -1273,6 +1393,10 @@ func TestGetSetXCRS(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -1317,6 +1441,10 @@ func TestSMI(t *testing.T) {
 		t.Skipf("Skipping test since we are not root")
 	}
 
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
+	}
+
 	t.Parallel()
 
 	devKVM, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0o644)
@@ -1353,6 +1481,10 @@ func TestSMI(t *testing.T) {
 func TestGetSetSRegs2(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
@@ -1397,6 +1529,10 @@ func TestGetSetSRegs2(t *testing.T) {
 func TestGetSetMSRS(t *testing.T) {
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
+	}
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		t.Skip("Skipping test: /dev/kvm not available")
 	}
 
 	t.Parallel()
