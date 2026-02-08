@@ -8,7 +8,8 @@ curl -s -O -L -C - --retry 5 \
   https://github.com/bobuhiro11/bins/raw/main/gokvm/initrd
 
 # Check that initrd was compiled with latest get_initrd.bash.
-md5sum=$(md5sum ./scripts/get_initrd.bash | awk '{print $1}')
+md5sum=$(cat ./scripts/get_initrd.bash .bashrc \
+  | md5sum | awk '{print $1}')
 lsinitramfs initrd | grep $md5sum
 
 # If needed, we build initrd in local

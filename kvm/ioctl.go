@@ -8,12 +8,19 @@ import "syscall"
 // and return values to make things easier for
 // programmers.
 func Ioctl(fd, op, arg uintptr) (uintptr, error) {
-	res, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, op, arg)
-	if errno != 0 {
-		return res, errno
-	}
+	for {
+		res, _, errno := syscall.Syscall(
+			syscall.SYS_IOCTL, fd, op, arg)
+		if errno == syscall.EINTR {
+			continue
+		}
 
-	return res, nil
+		if errno != 0 {
+			return res, errno
+		}
+
+		return res, nil
+	}
 }
 
 const (

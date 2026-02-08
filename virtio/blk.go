@@ -3,7 +3,10 @@ package virtio
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
 	"os"
+	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
@@ -24,7 +27,9 @@ type Blk struct {
 	Mem          []byte
 	LastAvailIdx [1]uint16
 
-	kick chan interface{}
+	kick      chan interface{}
+	done      chan struct{}
+	closeOnce sync.Once
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -49,7 +54,7 @@ type blkHeader struct {
 	capacity uint64
 }
 
-func (v Blk) GetDeviceHeader() pci.DeviceHeader {
+func (v *Blk) GetDeviceHeader() pci.DeviceHeader {
 	return pci.DeviceHeader{
 		DeviceID:    0x1001,
 		VendorID:    0x1AF4,
@@ -66,8 +71,14 @@ func (v Blk) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Blk) Read(port uint64, bytes []byte) error {
+func (v *Blk) Read(port uint64, bytes []byte) error {
 	offset := int(port - BlkIOPortStart)
+
+	if int(v.Hdr.commonHeader.queueSEL) >= len(v.VirtQueue) {
+		v.Hdr.commonHeader.queueNUM = 0
+	} else {
+		v.Hdr.commonHeader.queueNUM = QueueSize
+	}
 
 	b, err := v.Hdr.Bytes()
 	if err != nil {
@@ -77,12 +88,38 @@ func (v Blk) Read(port uint64, bytes []byte) error {
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
 
+	// ISR is at offset 19 in the virtio common header.
+	// Per the virtio spec, reading ISR clears it.
+	if offset <= 19 && offset+l > 19 {
+		v.Hdr.commonHeader.isr = 0
+	}
+
 	return nil
 }
 
 func (v *Blk) IOThreadEntry() {
-	for range v.kick {
-		for v.IO() == nil {
+	log.Println("virtio-blk: IOThreadEntry started")
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-v.done:
+			log.Println("virtio-blk: IOThreadEntry " +
+				"received done signal")
+
+			return
+		case <-v.kick:
+			for v.IO() == nil {
+			}
+		case <-ticker.C:
+			for v.IO() == nil {
+			}
+
+			if v.Hdr.commonHeader.isr != 0 {
+				_ = v.IRQInjector.InjectVirtioBlkIRQ()
+			}
 		}
 	}
 }
@@ -95,7 +132,11 @@ type BlkReq struct {
 
 func (v *Blk) IO() error {
 	sel := uint16(0)
-	// v.dumpDesc(sel)
+
+	if v.VirtQueue[sel] == nil {
+		return ErrVQNotInit
+	}
+
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
@@ -106,8 +147,10 @@ func (v *Blk) IO() error {
 	for v.LastAvailIdx[sel] != availRing.Idx {
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
-		// This structure is holding both the index of the descriptor chain and the
-		// number of bytes that were written to the memory as part of serving the request.
+		// This structure is holding both the index of
+		// the descriptor chain and the number of bytes
+		// written to memory as part of serving the
+		// request.
 		usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(descID)
 		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
 
@@ -121,7 +164,7 @@ func (v *Blk) IO() error {
 			descID = desc.Next
 		}
 
-		// buf[0] contains type, reserved, and sector fields.
+		// buf[0] contains type, reserved, and sector.
 		// buf[1] contains raw io data.
 		// buf[2] contains a status field.
 		//
@@ -129,21 +172,25 @@ func (v *Blk) IO() error {
 		blkReq := *((*BlkReq)(unsafe.Pointer(&buf[0][0])))
 		data := buf[1]
 
-		var err error
+		var ioErr error
+
 		if blkReq.Type&0x1 == 0x1 {
-			// write to file
-			_, err = v.file.WriteAt(data, int64(blkReq.Sector*SectorSize))
+			_, ioErr = v.file.WriteAt(
+				data,
+				int64(blkReq.Sector*SectorSize),
+			)
 		} else {
-			// read from file
-			_, err = v.file.ReadAt(data, int64(blkReq.Sector*SectorSize))
+			_, ioErr = v.file.ReadAt(
+				data,
+				int64(blkReq.Sector*SectorSize),
+			)
 		}
 
-		if err != nil {
-			return err
-		}
-
-		if err = v.file.Sync(); err != nil {
-			return err
+		// Write status byte per virtio spec.
+		if ioErr != nil {
+			buf[2][0] = 1 // VIRTIO_BLK_S_IOERR
+		} else {
+			buf[2][0] = 0 // VIRTIO_BLK_S_OK
 		}
 
 		usedRing.Idx++
@@ -164,13 +211,20 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 	switch offset {
 	case 8:
 		// Queue PFN is aligned to page (4096 bytes)
+		sel := v.Hdr.commonHeader.queueSEL
+		if int(sel) >= len(v.VirtQueue) {
+			break
+		}
+
 		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
-		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
+		v.VirtQueue[sel] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
-		v.Hdr.commonHeader.isr = 0x0
-		v.kick <- true
+		select {
+		case v.kick <- true:
+		default:
+		}
 	case 19:
 	default:
 	}
@@ -178,12 +232,19 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 	return nil
 }
 
-func (v Blk) IOPort() uint64 {
+func (v *Blk) IOPort() uint64 {
 	return BlkIOPortStart
 }
 
-func (v Blk) Size() uint64 {
+func (v *Blk) Size() uint64 {
 	return BlkIOPortSize
+}
+
+func (v *Blk) Close() error {
+	log.Println("virtio-blk: Close called")
+	v.closeOnce.Do(func() { close(v.done) })
+
+	return v.file.Close()
 }
 
 func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {
@@ -212,7 +273,8 @@ func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, 
 		file:         file,
 		irq:          irq,
 		IRQInjector:  irqInjector,
-		kick:         make(chan interface{}),
+		kick:         make(chan interface{}, 1),
+		done:         make(chan struct{}),
 		Mem:          mem,
 		VirtQueue:    [1]*VirtQueue{},
 		LastAvailIdx: [1]uint16{0},

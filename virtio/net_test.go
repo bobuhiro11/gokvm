@@ -2,7 +2,10 @@ package virtio_test
 
 import (
 	"bytes"
+	"io"
+	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/virtio"
@@ -133,6 +136,458 @@ func TestQueueNotifyHandler(t *testing.T) {
 
 	if !bytes.Equal(expected, b.Bytes()) {
 		t.Fatalf("expected: %v, actual: %v", expected, b.Bytes())
+	}
+}
+
+// TestTxIgnoresQueueSEL verifies that Tx() uses the
+// hardcoded TX queue (index 1) regardless of the
+// volatile queueSEL register value.
+func TestTxIgnoresQueueSEL(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte{0xaa, 0xbb, 0xcc, 0xdd}
+	b := bytes.NewBuffer([]byte{})
+
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(9, &mockInjector{}, b, mem)
+
+	// Do NOT write to offset 14 — leave queueSEL at
+	// its default value 0 (RX). Before the fix, Tx()
+	// would read this register and fail with
+	// ErrInvalidSel.
+
+	const K = 10
+
+	copy(mem[0x100+K:0x100+K+2], []byte{0xaa, 0xbb})
+	copy(mem[0x200:0x200+2], []byte{0xcc, 0xdd})
+
+	vq := virtio.VirtQueue{}
+
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = K + 2
+	vq.DescTable[0].Flags = 0x1
+	vq.DescTable[0].Next = 0x1
+
+	vq.DescTable[1].Addr = 0x200
+	vq.DescTable[1].Len = 2
+
+	vq.AvailRing.Idx = 1
+	v.VirtQueue[1] = &vq
+
+	if err := v.Tx(); err != nil {
+		t.Fatalf("Tx with queueSEL=0: %v", err)
+	}
+
+	if !v.IRQInjector.(*mockInjector).called {
+		t.Fatal("IRQ not injected")
+	}
+
+	if !bytes.Equal(expected, b.Bytes()) {
+		t.Fatalf(
+			"expected: %v, actual: %v",
+			expected, b.Bytes(),
+		)
+	}
+}
+
+// mockTapCloser implements io.ReadWriteCloser for
+// testing Net.Close().
+type mockTapCloser struct {
+	bytes.Buffer
+	closed bool
+}
+
+func (m *mockTapCloser) Close() error {
+	m.closed = true
+
+	return nil
+}
+
+func TestNetClose(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, []byte{},
+	)
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: got %v, want nil", err)
+	}
+
+	if !tap.closed {
+		t.Fatal("tap was not closed")
+	}
+}
+
+func TestNetCloseNonCloser(t *testing.T) {
+	t.Parallel()
+
+	// Use a plain io.ReadWriter (no Close method).
+	var buf bytes.Buffer
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		io.ReadWriter(&buf), []byte{},
+	)
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: got %v, want nil", err)
+	}
+}
+
+func TestNetThreadsExitOnClose(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		v.TxThreadEntry()
+	}()
+
+	go func() {
+		defer wg.Done()
+		v.RxThreadEntry()
+	}()
+
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal(
+			"thread entries did not exit after Close",
+		)
+	}
+}
+
+func TestNetWriteNonBlockingKick(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	defer v.Close()
+
+	// Write offset 16 with queue index 1 (TX) twice.
+	// Both must complete without blocking.
+	for i := 0; i < 2; i++ {
+		done := make(chan struct{})
+
+		go func() {
+			_ = v.Write(
+				virtio.NetIOPortStart+16,
+				[]byte{0x1, 0x0}, // queue 1 = TX
+			)
+
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(1 * time.Second):
+			t.Fatalf(
+				"Write #%d to offset 16 blocked", i,
+			)
+		}
+	}
+}
+
+func TestNetWriteRxKickDropped(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	defer v.Close()
+
+	// Start TxThreadEntry so it drains txKick.
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		v.TxThreadEntry()
+	}()
+
+	// Write offset 16 with queue index 0 (RX).
+	// This should be silently dropped and not sent
+	// to txKick, so TxThreadEntry should NOT call Tx.
+	done := make(chan struct{})
+
+	go func() {
+		_ = v.Write(
+			virtio.NetIOPortStart+16,
+			[]byte{0x0, 0x0}, // queue 0 = RX
+		)
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Write RX kick blocked")
+	}
+
+	// Give a brief moment for any erroneous kick
+	// to propagate, then close and verify tap was
+	// never written to (Tx was not called).
+	time.Sleep(50 * time.Millisecond)
+
+	v.Close()
+	wg.Wait()
+
+	if tap.Len() != 0 {
+		t.Fatalf(
+			"tap had %d bytes; want 0 (Tx called)",
+			tap.Len(),
+		)
+	}
+}
+
+func TestNetWriteAfterClose(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write TX kick after Close must not panic.
+	if err := v.Write(
+		virtio.NetIOPortStart+16,
+		[]byte{0x1, 0x0}, // queue 1 = TX
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNetConcurrentCloseAndWrite(t *testing.T) {
+	t.Parallel()
+
+	tap := &mockTapCloser{}
+	mem := make([]byte, 0x10000)
+	v := virtio.NewNet(
+		9, &mockInjector{}, tap, mem,
+	)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		v.Close()
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < 100; i++ {
+			_ = v.Write(
+				virtio.NetIOPortStart+16,
+				[]byte{0x1, 0x0}, // queue 1 = TX
+			)
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent Close+Write deadlocked")
+	}
+}
+
+func TestNetISRClearedOnRead(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte{0xaa, 0xbb}
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer(expected), mem,
+	)
+
+	// Init virt queue and do one Rx to set ISR.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = 0x200
+	v.VirtQueue[0] = &vq
+
+	if err := v.Rx(); err != nil {
+		t.Fatal(err)
+	}
+
+	// First read of ISR (offset 19) must return 1.
+	buf := make([]byte, 1)
+	if err := v.Read(
+		virtio.NetIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 1 {
+		t.Fatalf(
+			"first ISR read: got %d, want 1",
+			buf[0],
+		)
+	}
+
+	// Second read must return 0 (cleared on read).
+	if err := v.Read(
+		virtio.NetIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 0 {
+		t.Fatalf(
+			"second ISR read: got %d, want 0",
+			buf[0],
+		)
+	}
+}
+
+func TestNetISRNotClearedOnNotify(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte{0xaa, 0xbb}
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer(expected), mem,
+	)
+
+	defer v.Close()
+
+	// Init virt queue and do one Rx to set ISR=1.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = 0x200
+	v.VirtQueue[0] = &vq
+
+	if err := v.Rx(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to Queue Notify (offset 16) — must NOT
+	// clear ISR.
+	if err := v.Write(
+		virtio.NetIOPortStart+16,
+		[]byte{0x1, 0x0}, // TX kick
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read ISR (offset 19) — must still be 1.
+	buf := make([]byte, 1)
+	if err := v.Read(
+		virtio.NetIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 1 {
+		t.Fatalf(
+			"ISR after notify: got %d, want 1",
+			buf[0],
+		)
+	}
+}
+
+func TestNetQueueNUMForInvalidQueue(t *testing.T) {
+	t.Parallel()
+
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer([]byte{}), []byte{},
+	)
+
+	// Select queue 2 (Net only has queues 0 and 1).
+	if err := v.Write(
+		virtio.NetIOPortStart+14,
+		[]byte{0x2, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read queueNUM (offset 12, 2 bytes).
+	buf := make([]byte, 2)
+	if err := v.Read(
+		virtio.NetIOPortStart+12, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	num := uint16(buf[0]) | uint16(buf[1])<<8
+	if num != 0 {
+		t.Fatalf(
+			"queueNUM for invalid queue: got %d, want 0",
+			num,
+		)
+	}
+}
+
+func TestNetWriteQueuePFNBoundsCheck(t *testing.T) {
+	t.Parallel()
+
+	mem := make([]byte, 0x100000)
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer([]byte{}), mem,
+	)
+
+	// Select queue 2 (out of bounds for Net).
+	if err := v.Write(
+		virtio.NetIOPortStart+14,
+		[]byte{0x2, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to Queue PFN (offset 8) — must not panic.
+	if err := v.Write(
+		virtio.NetIOPortStart+8,
+		[]byte{0x01, 0x00, 0x00, 0x00},
+	); err != nil {
+		t.Fatal(err)
 	}
 }
 

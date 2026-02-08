@@ -4,18 +4,19 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/pci"
 )
 
 var (
-	ErrInvalidSel  = errors.New("queue sel is invalid")
 	ErrIONotPermit = errors.New("IO is not permitted for virtio device")
 	ErrNoTxPacket  = errors.New("no packet for tx")
 	ErrNoRxPacket  = errors.New("no packet for rx")
@@ -42,8 +43,10 @@ type Net struct {
 
 	tap io.ReadWriter
 
-	txKick chan interface{}
-	rxKick chan os.Signal
+	txKick    chan interface{}
+	rxKick    chan os.Signal
+	done      chan struct{}
+	closeOnce sync.Once
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -65,7 +68,7 @@ type netHeader struct {
 	_ uint16   // maxVirtQueuePairs
 }
 
-func (v Net) GetDeviceHeader() pci.DeviceHeader {
+func (v *Net) GetDeviceHeader() pci.DeviceHeader {
 	return pci.DeviceHeader{
 		DeviceID:    0x1000,
 		VendorID:    0x1AF4,
@@ -82,8 +85,14 @@ func (v Net) GetDeviceHeader() pci.DeviceHeader {
 	}
 }
 
-func (v Net) Read(port uint64, bytes []byte) error {
+func (v *Net) Read(port uint64, bytes []byte) error {
 	offset := int(port - NetIOPortStart)
+
+	if int(v.Hdr.commonHeader.queueSEL) >= len(v.VirtQueue) {
+		v.Hdr.commonHeader.queueNUM = 0
+	} else {
+		v.Hdr.commonHeader.queueNUM = QueueSize
+	}
 
 	b, err := v.Hdr.Bytes()
 	if err != nil {
@@ -93,12 +102,28 @@ func (v Net) Read(port uint64, bytes []byte) error {
 	l := len(bytes)
 	copy(bytes[:l], b[offset:offset+l])
 
+	// ISR is at offset 19 in the virtio common header.
+	// Per the virtio spec, reading ISR clears it.
+	if offset <= 19 && offset+l > 19 {
+		v.Hdr.commonHeader.isr = 0
+	}
+
 	return nil
 }
 
 func (v *Net) RxThreadEntry() {
-	for range v.rxKick {
-		for v.Rx() == nil {
+	log.Println("virtio-net: RxThreadEntry started")
+
+	for {
+		select {
+		case <-v.done:
+			log.Println("virtio-net: RxThreadEntry " +
+				"received done signal")
+
+			return
+		case <-v.rxKick:
+			for v.Rx() == nil {
+			}
 		}
 	}
 }
@@ -177,16 +202,37 @@ func (v *Net) Rx() error {
 }
 
 func (v *Net) TxThreadEntry() {
-	for range v.txKick {
-		for v.Tx() == nil {
+	log.Println("virtio-net: TxThreadEntry started")
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-v.done:
+			log.Println("virtio-net: TxThreadEntry " +
+				"received done signal")
+
+			return
+		case <-v.txKick:
+			for v.Tx() == nil {
+			}
+		case <-ticker.C:
+			for v.Tx() == nil {
+			}
+
+			if v.Hdr.commonHeader.isr != 0 {
+				_ = v.IRQInjector.InjectVirtioNetIRQ()
+			}
 		}
 	}
 }
 
 func (v *Net) Tx() error {
-	sel := v.Hdr.commonHeader.queueSEL
-	if sel == 0 {
-		return ErrInvalidSel
+	const sel = 1
+
+	if v.VirtQueue[sel] == nil {
+		return ErrVQNotInit
 	}
 
 	availRing := &v.VirtQueue[sel].AvailRing
@@ -228,6 +274,7 @@ func (v *Net) Tx() error {
 		if _, err := v.tap.Write(buf); err != nil {
 			return err
 		}
+
 		usedRing.Idx++
 		v.LastAvailIdx[sel]++
 	}
@@ -243,27 +290,59 @@ func (v *Net) Write(port uint64, bytes []byte) error {
 	switch offset {
 	case 8:
 		// Queue PFN is aligned to page (4096 bytes)
+		sel := v.Hdr.commonHeader.queueSEL
+		if int(sel) >= len(v.VirtQueue) {
+			break
+		}
+
 		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
-		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
+		v.VirtQueue[sel] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
-		v.Hdr.commonHeader.isr = 0x0
-		v.txKick <- true
+		queueIdx := pci.BytesToNum(bytes)
+		switch queueIdx {
+		case 0:
+			// RX queue kick: silently drop.
+			// RX is driven by SIGIO signals.
+		case 1:
+			// TX queue kick: non-blocking send.
+			select {
+			case v.txKick <- true:
+			default:
+			}
+		default:
+			log.Printf(
+				"virtio-net: unexpected queue %d",
+				queueIdx,
+			)
+		}
 	case 19:
-		fmt.Printf("ISR was written!\r\n")
 	default:
 	}
 
 	return nil
 }
 
-func (v Net) IOPort() uint64 {
+func (v *Net) IOPort() uint64 {
 	return NetIOPortStart
 }
 
-func (v Net) Size() uint64 {
+func (v *Net) Size() uint64 {
 	return NetIOPortSize
+}
+
+func (v *Net) Close() error {
+	log.Println("virtio-net: Close called")
+	signal.Stop(v.rxKick)
+
+	v.closeOnce.Do(func() { close(v.done) })
+
+	if c, ok := v.tap.(io.Closer); ok {
+		return c.Close()
+	}
+
+	return nil
 }
 
 func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *Net {
@@ -276,8 +355,9 @@ func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *
 		},
 		irq:          irq,
 		IRQInjector:  irqInjector,
-		txKick:       make(chan interface{}),
-		rxKick:       make(chan os.Signal),
+		txKick:       make(chan interface{}, 1),
+		rxKick:       make(chan os.Signal, 1),
+		done:         make(chan struct{}),
 		tap:          tap,
 		Mem:          mem,
 		VirtQueue:    [2]*VirtQueue{},
