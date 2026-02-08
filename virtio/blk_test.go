@@ -611,6 +611,150 @@ func TestBlkIOThreadReInjectsIRQ(t *testing.T) {
 	}
 }
 
+func TestBlkISRNotClearedOnNotify(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp("", "blk-isr-notify-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(f.Name())
+
+	data := make([]byte, 1024)
+	if _, err := f.Write(data); err != nil {
+		t.Fatal(err)
+	}
+
+	f.Close()
+
+	mem := make([]byte, 0x100000)
+
+	v, err := virtio.NewBlk(
+		f.Name(), 10, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer v.Close()
+
+	// Perform one IO to set ISR=1.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+
+	vq.DescTable[0].Addr = 0x1000
+	vq.DescTable[0].Len = 16
+	vq.DescTable[0].Next = 1
+
+	blkReq := (*virtio.BlkReq)(
+		unsafe.Pointer(&mem[0x1000]),
+	)
+	blkReq.Type = 0
+	blkReq.Sector = 0
+
+	vq.DescTable[1].Addr = 0x2000
+	vq.DescTable[1].Len = 512
+	vq.DescTable[1].Next = 2
+
+	vq.DescTable[2].Addr = 0x3000
+	vq.DescTable[2].Len = 1
+
+	v.VirtQueue[0] = &vq
+
+	if err := v.IO(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to Queue Notify (offset 16) — must NOT
+	// clear ISR.
+	if err := v.Write(
+		virtio.BlkIOPortStart+16,
+		[]byte{0x0, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read ISR (offset 19) — must still be 1.
+	buf := make([]byte, 1)
+	if err := v.Read(
+		virtio.BlkIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 1 {
+		t.Fatalf(
+			"ISR after notify: got %d, want 1",
+			buf[0],
+		)
+	}
+}
+
+func TestBlkQueueNUMForInvalidQueue(t *testing.T) {
+	t.Parallel()
+
+	v, err := virtio.NewBlk(
+		"/dev/zero", 9, &mockInjector{}, []byte{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Select queue 1 (Blk only has queue 0).
+	if err := v.Write(
+		virtio.BlkIOPortStart+14,
+		[]byte{0x1, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read queueNUM (offset 12, 2 bytes).
+	buf := make([]byte, 2)
+	if err := v.Read(
+		virtio.BlkIOPortStart+12, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	num := uint16(buf[0]) | uint16(buf[1])<<8
+	if num != 0 {
+		t.Fatalf(
+			"queueNUM for invalid queue: got %d, want 0",
+			num,
+		)
+	}
+}
+
+func TestBlkWriteQueuePFNBoundsCheck(t *testing.T) {
+	t.Parallel()
+
+	mem := make([]byte, 0x100000)
+
+	v, err := virtio.NewBlk(
+		"/dev/zero", 9, &mockInjector{}, mem,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Select queue 1 (out of bounds for Blk).
+	if err := v.Write(
+		virtio.BlkIOPortStart+14,
+		[]byte{0x1, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to Queue PFN (offset 8) — must not panic.
+	if err := v.Write(
+		virtio.BlkIOPortStart+8,
+		[]byte{0x01, 0x00, 0x00, 0x00},
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBlkIONilQueue(t *testing.T) {
 	t.Parallel()
 

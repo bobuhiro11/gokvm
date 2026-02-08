@@ -74,6 +74,12 @@ func (v *Blk) GetDeviceHeader() pci.DeviceHeader {
 func (v *Blk) Read(port uint64, bytes []byte) error {
 	offset := int(port - BlkIOPortStart)
 
+	if int(v.Hdr.commonHeader.queueSEL) >= len(v.VirtQueue) {
+		v.Hdr.commonHeader.queueNUM = 0
+	} else {
+		v.Hdr.commonHeader.queueNUM = QueueSize
+	}
+
 	b, err := v.Hdr.Bytes()
 	if err != nil {
 		return err
@@ -205,13 +211,16 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 	switch offset {
 	case 8:
 		// Queue PFN is aligned to page (4096 bytes)
+		sel := v.Hdr.commonHeader.queueSEL
+		if int(sel) >= len(v.VirtQueue) {
+			break
+		}
+
 		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
-		v.VirtQueue[v.Hdr.commonHeader.queueSEL] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
+		v.VirtQueue[sel] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
-		v.Hdr.commonHeader.isr = 0x0
-
 		select {
 		case v.kick <- true:
 		default:

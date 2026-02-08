@@ -17,12 +17,17 @@ fi
 # to avoid inadvertent fs corruption.
 # Retry up to 30s because the virtio block device may
 # not be ready immediately when .bashrc runs.
+echo "checking /dev/vda existence..."
+ls -la /dev/vda 2>&1 || true
+
 n=0
 mounted=0
 while [ $n -lt 30 ]; do
   echo "mount attempt $n"
-  if [ "$(hexdump -e '/1 "%x"' -s 0x0000438 \
-      -n 2 /dev/vda 2>/dev/null)" = "53ef" ]
+  magic=$(timeout 5 hexdump -e '/1 "%x"' -s 0x0000438 \
+      -n 2 /dev/vda 2>/dev/null) || magic=""
+  echo "  hexdump magic=$magic"
+  if [ "$magic" = "53ef" ]
   then
     mkdir -p /mnt/dev_vda
     mount -o ro /dev/vda /mnt/dev_vda

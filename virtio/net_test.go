@@ -484,6 +484,113 @@ func TestNetISRClearedOnRead(t *testing.T) {
 	}
 }
 
+func TestNetISRNotClearedOnNotify(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte{0xaa, 0xbb}
+	mem := make([]byte, 0x1000000)
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer(expected), mem,
+	)
+
+	defer v.Close()
+
+	// Init virt queue and do one Rx to set ISR=1.
+	vq := virtio.VirtQueue{}
+	vq.AvailRing.Idx = 1
+	vq.DescTable[0].Addr = 0x100
+	vq.DescTable[0].Len = 0x200
+	v.VirtQueue[0] = &vq
+
+	if err := v.Rx(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to Queue Notify (offset 16) — must NOT
+	// clear ISR.
+	if err := v.Write(
+		virtio.NetIOPortStart+16,
+		[]byte{0x1, 0x0}, // TX kick
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read ISR (offset 19) — must still be 1.
+	buf := make([]byte, 1)
+	if err := v.Read(
+		virtio.NetIOPortStart+19, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf[0] != 1 {
+		t.Fatalf(
+			"ISR after notify: got %d, want 1",
+			buf[0],
+		)
+	}
+}
+
+func TestNetQueueNUMForInvalidQueue(t *testing.T) {
+	t.Parallel()
+
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer([]byte{}), []byte{},
+	)
+
+	// Select queue 2 (Net only has queues 0 and 1).
+	if err := v.Write(
+		virtio.NetIOPortStart+14,
+		[]byte{0x2, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read queueNUM (offset 12, 2 bytes).
+	buf := make([]byte, 2)
+	if err := v.Read(
+		virtio.NetIOPortStart+12, buf,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	num := uint16(buf[0]) | uint16(buf[1])<<8
+	if num != 0 {
+		t.Fatalf(
+			"queueNUM for invalid queue: got %d, want 0",
+			num,
+		)
+	}
+}
+
+func TestNetWriteQueuePFNBoundsCheck(t *testing.T) {
+	t.Parallel()
+
+	mem := make([]byte, 0x100000)
+	v := virtio.NewNet(
+		9, &mockInjector{},
+		bytes.NewBuffer([]byte{}), mem,
+	)
+
+	// Select queue 2 (out of bounds for Net).
+	if err := v.Write(
+		virtio.NetIOPortStart+14,
+		[]byte{0x2, 0x0},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write to Queue PFN (offset 8) — must not panic.
+	if err := v.Write(
+		virtio.NetIOPortStart+8,
+		[]byte{0x01, 0x00, 0x00, 0x00},
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRx(t *testing.T) {
 	t.Parallel()
 
