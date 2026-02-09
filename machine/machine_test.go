@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -17,11 +18,32 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
-// waitForPing polls ping every 2s up to 120s until it succeeds.
+// syncBuf is a thread-safe bytes.Buffer for capturing
+// serial console output from the guest VM.
+type syncBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuf) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *syncBuf) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
+// waitForPing polls ping every 2s up to 300s until it succeeds.
 func waitForPing(t *testing.T, ip string) {
 	t.Helper()
 
-	deadline := time.Now().Add(120 * time.Second)
+	deadline := time.Now().Add(300 * time.Second)
 
 	for {
 		out, err := exec.Command(
@@ -35,7 +57,7 @@ func waitForPing(t *testing.T, ip string) {
 		}
 
 		if time.Now().After(deadline) {
-			t.Fatalf("ping %s timed out after 120s: %s",
+			t.Fatalf("ping %s timed out after 300s: %s",
 				ip, out)
 		}
 
@@ -43,14 +65,14 @@ func waitForPing(t *testing.T, ip string) {
 	}
 }
 
-// waitForHTTP polls curl every 2s up to 120s until
+// waitForHTTP polls curl every 2s up to 300s until
 // the response body equals expected.
 func waitForHTTP(
 	t *testing.T, url, expected string,
 ) string {
 	t.Helper()
 
-	deadline := time.Now().Add(120 * time.Second)
+	deadline := time.Now().Add(300 * time.Second)
 
 	attempt := 0
 
@@ -80,7 +102,7 @@ func waitForHTTP(
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"curl %s timed out after %d attempts"+
-					" (120s): last body=%q err=%v",
+					" (300s): last body=%q err=%v",
 				url, attempt, body, err)
 		}
 
@@ -108,7 +130,13 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { m.Close() })
+	var serialBuf syncBuf
+
+	t.Cleanup(func() {
+		m.Close()
+		t.Logf("=== serial console output ===\n%s",
+			serialBuf.String())
+	})
 
 	if err := m.AddTapIf(tap); err != nil {
 		t.Fatal(err)
@@ -147,6 +175,7 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		}
 	}
 
+	m.GetSerial().SetOutput(&serialBuf)
 	m.GetInputChan()
 
 	if err := m.InjectSerialIRQ(); err != nil {

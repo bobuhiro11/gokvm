@@ -15,16 +15,17 @@ fi
 
 # If /dev/vda is formatted as ext2, mount as read-only
 # to avoid inadvertent fs corruption.
-# Retry up to 30s because the virtio block device may
+# Retry up to ~30s because the virtio block device may
 # not be ready immediately when .bashrc runs.
+# (10 iterations * (2s hexdump timeout + 1s sleep) = 30s)
 echo "checking /dev/vda existence..."
 ls -la /dev/vda 2>&1 || true
 
 n=0
 mounted=0
-while [ $n -lt 30 ]; do
+while [ $n -lt 10 ]; do
   echo "mount attempt $n"
-  magic=$(timeout 5 hexdump -e '/1 "%x"' -s 0x0000438 \
+  magic=$(timeout 2 hexdump -e '/1 "%x"' -s 0x0000438 \
       -n 2 /dev/vda 2>/dev/null) || magic=""
   echo "  hexdump magic=$magic"
   if [ "$magic" = "53ef" ]
@@ -41,7 +42,7 @@ while [ $n -lt 30 ]; do
 done
 
 if [ "$mounted" -eq 0 ]; then
-  echo "WARNING: /dev/vda mount failed after 30s"
+  echo "WARNING: /dev/vda mount failed after 10 attempts"
 fi
 
 # Start HTTP server AFTER mount so the first 200 OK

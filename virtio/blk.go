@@ -118,6 +118,9 @@ func (v *Blk) IOThreadEntry() {
 			}
 
 			if v.Hdr.commonHeader.isr != 0 {
+				log.Println("virtio-blk: ticker " +
+					"re-injecting IRQ")
+
 				_ = v.IRQInjector.InjectVirtioBlkIRQ()
 			}
 		}
@@ -143,6 +146,9 @@ func (v *Blk) IO() error {
 	if v.LastAvailIdx[sel] == availRing.Idx {
 		return ErrNoTxPacket
 	}
+
+	log.Printf("virtio-blk IO: avail=%d last=%d",
+		availRing.Idx, v.LastAvailIdx[sel])
 
 	for v.LastAvailIdx[sel] != availRing.Idx {
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
@@ -171,6 +177,10 @@ func (v *Blk) IO() error {
 		// refs https://wiki.osdev.org/Virtio#Block_Device_Packets
 		blkReq := *((*BlkReq)(unsafe.Pointer(&buf[0][0])))
 		data := buf[1]
+
+		log.Printf("virtio-blk IO: type=%d sector=%d"+
+			" len=%d", blkReq.Type, blkReq.Sector,
+			len(data))
 
 		var ioErr error
 
@@ -223,7 +233,10 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 	case 16:
 		select {
 		case v.kick <- true:
+			log.Println("virtio-blk: kick sent")
 		default:
+			log.Println("virtio-blk: kick dropped" +
+				" (already pending)")
 		}
 	case 19:
 	default:

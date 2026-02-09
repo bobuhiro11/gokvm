@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"sync"
 	"testing"
 
@@ -99,4 +100,60 @@ func TestStartSerial(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestOutputWriter(t *testing.T) {
+	t.Parallel()
+
+	s, err := serial.New(&mockInjector{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+
+	s.SetOutput(&buf)
+
+	// THR write (port 0, dlab=0) outputs the byte.
+	if err := s.Out(serial.COM1Addr, []byte{'A'}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := buf.String(); got != "A" {
+		t.Fatalf("SetOutput: got %q, want %q", got, "A")
+	}
+}
+
+func TestDefaultOutput(t *testing.T) {
+	t.Parallel()
+
+	s, err := serial.New(&mockInjector{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// By default output should go to os.Stdout.
+	// Redirect to a pipe so we can verify.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.SetOutput(w)
+
+	if err := s.Out(serial.COM1Addr, []byte{'B'}); err != nil {
+		t.Fatal(err)
+	}
+
+	w.Close()
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := buf.String(); got != "B" {
+		t.Fatalf("default output: got %q, want %q",
+			got, "B")
+	}
 }
