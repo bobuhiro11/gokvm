@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -120,6 +122,36 @@ func skipIfTripleFault(t *testing.T, err error, testMode string) {
 	}
 }
 
+// copyVDAImg copies ../vda.img to a temp file so each
+// test gets its own disk image, preventing cross-test
+// corruption.
+func copyVDAImg(t *testing.T) string {
+	t.Helper()
+
+	src, err := os.Open("../vda.img")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+
+	dst, err := os.CreateTemp("",
+		"vda-"+filepath.Base(t.Name())+"-*.img")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { os.Remove(dst.Name()) })
+
+	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		t.Fatal(err)
+	}
+
+	dst.Close()
+
+	return dst.Name()
+}
+
 func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixLen string) { // nolint:thelper
 	if os.Getuid() != 0 {
 		t.Skipf("Skipping test since we are not root")
@@ -142,7 +174,8 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	if err := m.AddDisk("../vda.img"); err != nil {
+	vdaPath := copyVDAImg(t)
+	if err := m.AddDisk(vdaPath); err != nil {
 		t.Fatal(err)
 	}
 
@@ -183,6 +216,27 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 	}
 
 	m.RunData()
+
+	// Deadline watchdog: if the test deadline is
+	// approaching (60s margin), log serial output and
+	// close the VM so we get diagnostics instead of
+	// a bare timeout panic.
+	if dl, ok := t.Deadline(); ok {
+		go func() {
+			margin := 60 * time.Second
+
+			timer := time.NewTimer(
+				time.Until(dl) - margin)
+			defer timer.Stop()
+
+			<-timer.C
+			t.Errorf("deadline watchdog fired "+
+				"(60s before %s)\nserial:\n%s",
+				dl.Format(time.RFC3339),
+				serialBuf.String())
+			m.Close()
+		}()
+	}
 
 	go func() {
 		if runErr := m.RunInfiniteLoop(0); runErr != nil {

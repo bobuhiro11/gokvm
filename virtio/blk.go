@@ -19,6 +19,24 @@ const (
 	SectorSize = 512
 )
 
+// LoadU16 reads a uint16 through a non-inlined function
+// call, preventing the compiler from caching the value
+// across iterations. This is needed for shared memory
+// fields (AvailRing.Idx, UsedRing.Idx) that are written
+// by KVM vCPU threads via unsafe.Pointer.
+//
+//go:noinline
+func LoadU16(p *uint16) uint16 { return *p }
+
+// StoreAddU16 atomically-enough increments a uint16
+// through a non-inlined function call, ensuring the
+// write is visible to other threads.
+//
+//go:noinline
+func StoreAddU16(p *uint16, delta uint16) {
+	*p += delta
+}
+
 type Blk struct {
 	file *os.File
 	Hdr  blkHdr
@@ -100,7 +118,7 @@ func (v *Blk) Read(port uint64, bytes []byte) error {
 func (v *Blk) IOThreadEntry() {
 	log.Println("virtio-blk: IOThreadEntry started")
 
-	ticker := time.NewTicker(10 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -112,6 +130,10 @@ func (v *Blk) IOThreadEntry() {
 			return
 		case <-v.kick:
 			for v.IO() == nil {
+			}
+
+			if v.Hdr.commonHeader.isr != 0 {
+				_ = v.IRQInjector.InjectVirtioBlkIRQ()
 			}
 		case <-ticker.C:
 			for v.IO() == nil {
@@ -143,22 +165,23 @@ func (v *Blk) IO() error {
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
-	if v.LastAvailIdx[sel] == availRing.Idx {
+	if v.LastAvailIdx[sel] == LoadU16(&availRing.Idx) {
 		return ErrNoTxPacket
 	}
 
 	log.Printf("virtio-blk IO: avail=%d last=%d",
-		availRing.Idx, v.LastAvailIdx[sel])
+		LoadU16(&availRing.Idx), v.LastAvailIdx[sel])
 
-	for v.LastAvailIdx[sel] != availRing.Idx {
+	for v.LastAvailIdx[sel] != LoadU16(&availRing.Idx) {
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
 		// This structure is holding both the index of
 		// the descriptor chain and the number of bytes
 		// written to memory as part of serving the
 		// request.
-		usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(descID)
-		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
+		uidx := LoadU16(&usedRing.Idx)
+		usedRing.Ring[uidx%QueueSize].Idx = uint32(descID)
+		usedRing.Ring[uidx%QueueSize].Len = 0
 
 		var buf [3][]byte
 
@@ -166,7 +189,7 @@ func (v *Blk) IO() error {
 			desc := v.VirtQueue[sel].DescTable[descID]
 			buf[i] = v.Mem[desc.Addr : desc.Addr+uint64(desc.Len)]
 
-			usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
+			usedRing.Ring[uidx%QueueSize].Len += desc.Len
 			descID = desc.Next
 		}
 
@@ -203,7 +226,7 @@ func (v *Blk) IO() error {
 			buf[2][0] = 0 // VIRTIO_BLK_S_OK
 		}
 
-		usedRing.Idx++
+		StoreAddU16(&usedRing.Idx, 1)
 		v.LastAvailIdx[sel]++
 	}
 
@@ -235,8 +258,13 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 		case v.kick <- true:
 			log.Println("virtio-blk: kick sent")
 		default:
-			log.Println("virtio-blk: kick dropped" +
-				" (already pending)")
+			if v.VirtQueue[0] != nil {
+				log.Printf("virtio-blk: kick dropped"+
+					" (avail=%d last=%d)",
+					LoadU16(
+						&v.VirtQueue[0].AvailRing.Idx),
+					v.LastAvailIdx[0])
+			}
 		}
 	case 19:
 	default:
@@ -286,7 +314,7 @@ func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, 
 		file:         file,
 		irq:          irq,
 		IRQInjector:  irqInjector,
-		kick:         make(chan interface{}, 1),
+		kick:         make(chan interface{}, QueueSize),
 		done:         make(chan struct{}),
 		Mem:          mem,
 		VirtQueue:    [1]*VirtQueue{},

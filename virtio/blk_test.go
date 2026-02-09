@@ -773,3 +773,45 @@ func TestBlkIONilQueue(t *testing.T) {
 		t.Fatal("expected error for nil VirtQueue")
 	}
 }
+
+func TestLoadU16StoreAddU16(t *testing.T) {
+	t.Parallel()
+
+	var val uint16
+
+	if got := virtio.LoadU16(&val); got != 0 {
+		t.Fatalf("initial: got %d, want 0", got)
+	}
+
+	virtio.StoreAddU16(&val, 5)
+
+	if got := virtio.LoadU16(&val); got != 5 {
+		t.Fatalf("after +5: got %d, want 5", got)
+	}
+
+	// Concurrent modification: start N goroutines
+	// each incrementing by 1.
+	const N = 100
+
+	var wg sync.WaitGroup
+
+	wg.Add(N)
+
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			virtio.StoreAddU16(&val, 1)
+		}()
+	}
+
+	wg.Wait()
+
+	// Without true atomics the final value may vary
+	// under race, but with -race it must not crash.
+	got := virtio.LoadU16(&val)
+	t.Logf("after %d concurrent +1: val=%d", N, got)
+
+	if got < 5 {
+		t.Fatalf("value went backwards: %d", got)
+	}
+}

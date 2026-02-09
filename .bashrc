@@ -23,9 +23,9 @@ ls -la /dev/vda 2>&1 || true
 
 n=0
 mounted=0
-while [ $n -lt 10 ]; do
+while [ $n -lt 30 ]; do
   echo "mount attempt $n"
-  magic=$(timeout 2 hexdump -e '/1 "%x"' -s 0x0000438 \
+  magic=$(timeout 5 hexdump -e '/1 "%x"' -s 0x0000438 \
       -n 2 /dev/vda 2>/dev/null) || magic=""
   echo "  hexdump magic=$magic"
   if [ "$magic" = "53ef" ]
@@ -42,7 +42,7 @@ while [ $n -lt 10 ]; do
 done
 
 if [ "$mounted" -eq 0 ]; then
-  echo "WARNING: /dev/vda mount failed after 10 attempts"
+  echo "WARNING: /dev/vda mount failed after 30 attempts"
 fi
 
 # Start HTTP server AFTER mount so the first 200 OK

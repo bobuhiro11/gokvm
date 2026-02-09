@@ -151,13 +151,14 @@ func (v *Net) Rx() error {
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
-	if v.LastAvailIdx[sel] == availRing.Idx {
+	if v.LastAvailIdx[sel] == LoadU16(&availRing.Idx) {
 		return ErrNoRxBuf
 	}
 
 	const NONE = uint16(256)
 	headDescID := NONE
 	prevDescID := NONE
+	uidx := LoadU16(&usedRing.Idx)
 
 	for len(packet) > 0 {
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
@@ -166,10 +167,12 @@ func (v *Net) Rx() error {
 		if headDescID == NONE {
 			headDescID = descID
 
-			// This structure is holding both the index of the descriptor chain and the
-			// number of bytes that were written to the memory as part of serving the request.
-			usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(headDescID)
-			usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
+			// This structure is holding both the
+			// index of the descriptor chain and the
+			// number of bytes that were written to
+			// memory as part of serving the request.
+			usedRing.Ring[uidx%QueueSize].Idx = uint32(headDescID)
+			usedRing.Ring[uidx%QueueSize].Len = 0
 		}
 
 		desc := &v.VirtQueue[sel].DescTable[descID]
@@ -180,10 +183,11 @@ func (v *Net) Rx() error {
 		}
 
 		copy(v.Mem[desc.Addr:desc.Addr+uint64(l)], packet[:l])
+
 		packet = packet[l:]
 		desc.Len = l
 
-		usedRing.Ring[usedRing.Idx%QueueSize].Len += l
+		usedRing.Ring[uidx%QueueSize].Len += l
 
 		if prevDescID != NONE {
 			v.VirtQueue[sel].DescTable[prevDescID].Flags |= 0x1
@@ -194,7 +198,7 @@ func (v *Net) Rx() error {
 		v.LastAvailIdx[sel]++
 	}
 
-	usedRing.Idx++
+	StoreAddU16(&usedRing.Idx, 1)
 
 	v.Hdr.commonHeader.isr = 0x1
 
@@ -238,27 +242,27 @@ func (v *Net) Tx() error {
 	availRing := &v.VirtQueue[sel].AvailRing
 	usedRing := &v.VirtQueue[sel].UsedRing
 
-	if v.LastAvailIdx[sel] == availRing.Idx {
+	if v.LastAvailIdx[sel] == LoadU16(&availRing.Idx) {
 		return ErrNoTxPacket
 	}
 
-	for v.LastAvailIdx[sel] != availRing.Idx {
+	for v.LastAvailIdx[sel] != LoadU16(&availRing.Idx) {
 		buf := []byte{}
 		descID := availRing.Ring[v.LastAvailIdx[sel]%QueueSize]
 
-		// This structure is holding both the index of the descriptor chain and the
-		// number of bytes that were written to the memory as part of serving the request.
-		usedRing.Ring[usedRing.Idx%QueueSize].Idx = uint32(descID)
-		usedRing.Ring[usedRing.Idx%QueueSize].Len = 0
+		uidx := LoadU16(&usedRing.Idx)
+		usedRing.Ring[uidx%QueueSize].Idx = uint32(descID)
+		usedRing.Ring[uidx%QueueSize].Len = 0
 
 		for {
 			desc := v.VirtQueue[sel].DescTable[descID]
 
 			b := make([]byte, desc.Len)
 			copy(b, v.Mem[desc.Addr:desc.Addr+uint64(desc.Len)])
+
 			buf = append(buf, b...)
 
-			usedRing.Ring[usedRing.Idx%QueueSize].Len += desc.Len
+			usedRing.Ring[uidx%QueueSize].Len += desc.Len
 
 			if desc.Flags&0x1 != 0 {
 				descID = desc.Next
@@ -275,7 +279,7 @@ func (v *Net) Tx() error {
 			return err
 		}
 
-		usedRing.Idx++
+		StoreAddU16(&usedRing.Idx, 1)
 		v.LastAvailIdx[sel]++
 	}
 
