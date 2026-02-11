@@ -73,6 +73,7 @@ jobs:
       run: |
         for i in $(seq 2 10); do
           echo "=== Test iteration $i/10 ==="
+          sudo -E env "PATH=$PATH" go clean -testcache
           sudo -E env "PATH=$PATH" go test -timeout 30m ./...
           echo "=== Iteration $i/10 passed ==="
         done
