@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -131,6 +132,10 @@ var ErrNotELF64File = fmt.Errorf("file is not ELF64")
 
 var errPTNoteHasNoFSize = fmt.Errorf("elf programm PT_NOTE has file size equel zero")
 
+// ErrMachineStopped is returned by RunOnce when Machine.Close
+// has been called.
+var ErrMachineStopped = errors.New("machine stopped")
+
 type Machine struct {
 	kvmFd, vmFd    uintptr
 	vcpuFds        []uintptr
@@ -140,6 +145,25 @@ type Machine struct {
 	serial         *serial.Serial
 	devices        []iodev.Device
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
+	stopped        uint32
+}
+
+// Close stops vCPU goroutines and releases PCI device
+// resources (tap FDs, disk FDs, signal registrations).
+func (m *Machine) Close() error {
+	atomic.StoreUint32(&m.stopped, 1)
+
+	for _, r := range m.runs {
+		r.ImmediateExit = 1
+	}
+
+	for _, d := range m.pci.Devices {
+		if c, ok := d.(io.Closer); ok {
+			c.Close()
+		}
+	}
+
+	return nil
 }
 
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
@@ -845,6 +869,13 @@ func (m *Machine) RunOnce(cpu int) (bool, error) {
 	}
 
 	_ = kvm.Run(fd)
+
+	if atomic.LoadUint32(&m.stopped) != 0 {
+		log.Printf("RunOnce: stopped flag set, exiting")
+
+		return false, ErrMachineStopped
+	}
+
 	exit := kvm.ExitType(m.runs[cpu].ExitReason)
 
 	switch exit {

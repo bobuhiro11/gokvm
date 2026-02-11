@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 )
 
 const (
@@ -26,6 +27,7 @@ type Serial struct {
 	inputChan chan byte
 
 	irqInjector IRQInjector
+	output      io.Writer
 }
 
 func New(irqInjector IRQInjector) (*Serial, error) {
@@ -33,9 +35,14 @@ func New(irqInjector IRQInjector) (*Serial, error) {
 		IER: 0, LCR: 0,
 		inputChan:   make(chan byte, 10000),
 		irqInjector: irqInjector,
+		output:      os.Stdout,
 	}
 
 	return s, nil
+}
+
+func (s *Serial) SetOutput(w io.Writer) {
+	s.output = w
 }
 
 func (s *Serial) GetInputChan() chan<- byte {
@@ -94,7 +101,7 @@ func (s *Serial) Out(port uint64, values []byte) error {
 	switch {
 	case port == 0 && !s.dlab():
 		// THR
-		fmt.Printf("%c", values[0])
+		fmt.Fprintf(s.output, "%c", values[0])
 	case port == 0 && s.dlab():
 		// DLL
 	case port == 1 && !s.dlab():
