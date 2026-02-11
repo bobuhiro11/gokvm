@@ -359,7 +359,7 @@ func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *
 		},
 		irq:          irq,
 		IRQInjector:  irqInjector,
-		txKick:       make(chan interface{}, 1),
+		txKick:       make(chan interface{}, QueueSize),
 		rxKick:       make(chan os.Signal, 1),
 		done:         make(chan struct{}),
 		tap:          tap,

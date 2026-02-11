@@ -13,25 +13,29 @@ then
   ip addr add $GUEST_IPV4_ADDR dev eth0
 fi
 
-# If /dev/vda is formatted as ext2, mount as read-only
-# to avoid inadvertent fs corruption.
-# Retry up to ~30s because the virtio block device may
-# not be ready immediately when .bashrc runs.
-# (10 iterations * (2s hexdump timeout + 1s sleep) = 30s)
-echo "checking /dev/vda existence..."
-ls -la /dev/vda 2>&1 || true
+# Diagnostics: show virtio driver probe status
+echo "=== dmesg virtio ==="
+dmesg | grep -i -E "virtio|vd[a-z]" || true
+echo "=== /proc/partitions ==="
+cat /proc/partitions 2>&1 || true
+echo "=== ls /dev/vd* ==="
+ls -la /dev/vd* 2>&1 || true
+echo "=== lsblk ==="
+lsblk 2>&1 || true
+echo "=== end diagnostics ==="
 
+# Give the kernel time to finish virtio-blk driver probe
+sleep 2
+
+# Mount /dev/vda as ext2 read-only.
+# Retry up to ~60s because the virtio block device may
+# not be ready immediately when .bashrc runs.
 n=0
 mounted=0
-while [ $n -lt 30 ]; do
+while [ $n -lt 60 ]; do
   echo "mount attempt $n"
-  magic=$(timeout 5 hexdump -e '/1 "%x"' -s 0x0000438 \
-      -n 2 /dev/vda 2>/dev/null) || magic=""
-  echo "  hexdump magic=$magic"
-  if [ "$magic" = "53ef" ]
-  then
-    mkdir -p /mnt/dev_vda
-    mount -o ro /dev/vda /mnt/dev_vda
+  mkdir -p /mnt/dev_vda
+  if mount -t ext2 -o ro /dev/vda /mnt/dev_vda 2>&1; then
     echo "mount succeeded on attempt $n"
     ls -la /mnt/dev_vda
     mounted=1
@@ -42,7 +46,9 @@ while [ $n -lt 30 ]; do
 done
 
 if [ "$mounted" -eq 0 ]; then
-  echo "WARNING: /dev/vda mount failed after 30 attempts"
+  echo "WARNING: /dev/vda mount failed after 60 attempts"
+  echo "=== final dmesg virtio ==="
+  dmesg | grep -i -E "virtio|vd[a-z]" || true
 fi
 
 # Start HTTP server AFTER mount so the first 200 OK

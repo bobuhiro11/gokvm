@@ -89,3 +89,30 @@ VirtQueue descriptors independently from vCPU execution.
 
 GitHub Actions on ubuntu-22.04 with Go 1.21.x and 1.22.x.
 Triggered on push/PR to main and daily. 60-minute timeout.
+
+## Debugging Guest Boot Issues
+
+### Known flaky test patterns
+
+- **virtio-blk probe failure**: `/dev/vda` never appears in
+  guest. Root cause: guest kernel's virtio-blk driver probe
+  can fail if IRQs are not reliably delivered or IO
+  responses are stale (cached by OS). The `.bashrc` in the
+  initrd retries mount for up to 60s.
+- **HTTP 404 after ping OK**: `/dev/vda` mounted but
+  srvfiles started before mount completed. Fixed by
+  starting srvfiles after mount in `.bashrc`.
+
+### How to debug
+
+1. **Serial output**: Tests capture serial console output
+   via `syncBuf`. On failure, the full serial log is printed
+   in test cleanup. Look for `dmesg virtio` diagnostics.
+2. **Guest diagnostics**: `.bashrc` prints dmesg virtio
+   grep, /proc/partitions, ls /dev/vd*, and lsblk on boot.
+3. **virtio-blk logs**: `IOThreadEntry` logs queue setup
+   (PFN write), IO operations (type/sector/len), and kick
+   events. The 1ms ticker polls for missed IRQs.
+4. **file.Sync()**: After read IO, `file.Sync()` ensures
+   the host OS flushes any cached data before the guest
+   sees the response. Removing this can cause stale reads.

@@ -140,9 +140,6 @@ func (v *Blk) IOThreadEntry() {
 			}
 
 			if v.Hdr.commonHeader.isr != 0 {
-				log.Println("virtio-blk: ticker " +
-					"re-injecting IRQ")
-
 				_ = v.IRQInjector.InjectVirtioBlkIRQ()
 			}
 		}
@@ -217,6 +214,10 @@ func (v *Blk) IO() error {
 				data,
 				int64(blkReq.Sector*SectorSize),
 			)
+
+			if ioErr == nil {
+				ioErr = v.file.Sync()
+			}
 		}
 
 		// Write status byte per virtio spec.
@@ -250,7 +251,11 @@ func (v *Blk) Write(port uint64, bytes []byte) error {
 		}
 
 		physAddr := uint32(pci.BytesToNum(bytes) * 4096)
-		v.VirtQueue[sel] = (*VirtQueue)(unsafe.Pointer(&v.Mem[physAddr]))
+		v.VirtQueue[sel] = (*VirtQueue)(
+			unsafe.Pointer(&v.Mem[physAddr]))
+
+		log.Printf("virtio-blk: queue %d PFN set,"+
+			" physAddr=0x%x", sel, physAddr)
 	case 14:
 		v.Hdr.commonHeader.queueSEL = uint16(pci.BytesToNum(bytes))
 	case 16:
