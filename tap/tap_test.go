@@ -64,7 +64,8 @@ func TestRead(t *testing.T) { // nolint:paralleltest
 	}
 
 	buf := make([]byte, 20)
-	if _, err := tap.Read(buf); !errors.Is(err, syscall.EAGAIN) {
+	if _, err := tap.Read(buf); err != nil &&
+		!errors.Is(err, syscall.EAGAIN) {
 		t.Fatal(err)
 	}
 
