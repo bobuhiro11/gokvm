@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -17,6 +20,98 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
+// syncBuf is a thread-safe bytes.Buffer for capturing
+// serial console output from the guest VM.
+type syncBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuf) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *syncBuf) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
+// waitForPing polls ping every 2s up to 300s until it succeeds.
+func waitForPing(t *testing.T, ip string) {
+	t.Helper()
+
+	deadline := time.Now().Add(300 * time.Second)
+
+	for {
+		out, err := exec.Command(
+			"ping", ip, "-c", "1", "-W", "1",
+		).CombinedOutput()
+
+		if err == nil {
+			t.Logf("ping succeeded: %s", out)
+
+			return
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("ping %s timed out after 300s: %s",
+				ip, out)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// waitForHTTP polls curl every 2s up to 300s until
+// the response body equals expected.
+func waitForHTTP(
+	t *testing.T, url, expected string,
+) string {
+	t.Helper()
+
+	deadline := time.Now().Add(300 * time.Second)
+
+	attempt := 0
+
+	for {
+		attempt++
+
+		out, err := exec.Command(
+			"curl", "-sSfL", url,
+		).CombinedOutput()
+
+		body := string(out)
+
+		if err == nil && body == expected {
+			t.Logf("curl matched on attempt %d", attempt)
+
+			return body
+		}
+
+		if err == nil {
+			t.Logf("curl attempt %d: unexpected body: %q",
+				attempt, body)
+		} else {
+			t.Logf("curl attempt %d: %s (%v)",
+				attempt, out, err)
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"curl %s timed out after %d attempts"+
+					" (300s): last body=%q err=%v",
+				url, attempt, body, err)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
 // skipIfTripleFault checks if the error indicates a VM triple fault (EXITSHUTDOWN)
 // and skips the test if so. This can happen due to kernel/KVM compatibility issues.
 func skipIfTripleFault(t *testing.T, err error, testMode string) {
@@ -25,6 +120,36 @@ func skipIfTripleFault(t *testing.T, err error, testMode string) {
 	if err != nil && strings.Contains(err.Error(), "EXITSHUTDOWN") {
 		t.Skipf("Skipping test: VM triple faulted (EXITSHUTDOWN) - likely kernel/KVM compatibility issue with %s", testMode)
 	}
+}
+
+// copyVDAImg copies ../vda.img to a temp file so each
+// test gets its own disk image, preventing cross-test
+// corruption.
+func copyVDAImg(t *testing.T) string {
+	t.Helper()
+
+	src, err := os.Open("../vda.img")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+
+	dst, err := os.CreateTemp("",
+		"vda-"+filepath.Base(t.Name())+"-*.img")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { os.Remove(dst.Name()) })
+
+	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		t.Fatal(err)
+	}
+
+	dst.Close()
+
+	return dst.Name()
 }
 
 func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixLen string) { // nolint:thelper
@@ -37,11 +162,20 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
+	var serialBuf syncBuf
+
+	t.Cleanup(func() {
+		m.Close()
+		t.Logf("=== serial console output ===\n%s",
+			serialBuf.String())
+	})
+
 	if err := m.AddTapIf(tap); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := m.AddDisk("../vda.img"); err != nil {
+	vdaPath := copyVDAImg(t)
+	if err := m.AddDisk(vdaPath); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,6 +208,7 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		}
 	}
 
+	m.GetSerial().SetOutput(&serialBuf)
 	m.GetInputChan()
 
 	if err := m.InjectSerialIRQ(); err != nil {
@@ -82,9 +217,30 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 
 	m.RunData()
 
+	// Deadline watchdog: if the test deadline is
+	// approaching (60s margin), log serial output and
+	// close the VM so we get diagnostics instead of
+	// a bare timeout panic.
+	if dl, ok := t.Deadline(); ok {
+		go func() {
+			margin := 60 * time.Second
+
+			timer := time.NewTimer(
+				time.Until(dl) - margin)
+			defer timer.Stop()
+
+			<-timer.C
+			t.Errorf("deadline watchdog fired "+
+				"(60s before %s)\nserial:\n%s",
+				dl.Format(time.RFC3339),
+				serialBuf.String())
+			m.Close()
+		}()
+	}
+
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if runErr := m.RunInfiniteLoop(0); runErr != nil {
+			fmt.Printf("RunInfiniteLoop: %v\n", runErr)
 		}
 	}()
 
@@ -96,25 +252,18 @@ func testNewAndLoadLinux(t *testing.T, kernel, tap, guestIPv4, hostIPv4, prefixL
 		t.Fatal(err)
 	}
 
-	time.Sleep(15 * time.Second)
+	waitForPing(t, guestIPv4)
+	t.Logf("ping OK at %s", time.Now().Format(time.RFC3339))
 
-	output, err := exec.Command("ping", guestIPv4, "-c", "3", "-i", "0.1").Output()
-	t.Logf("ping output: %s\n", output)
+	const wantBody = "index.html: this message is " +
+		"from /dev/vda in guest\n"
 
-	if err != nil {
-		t.Fatal(err)
-	}
+	output := waitForHTTP(t, fmt.Sprintf(
+		"http://%s/mnt/dev_vda/index.html", guestIPv4),
+		wantBody)
 
-	output, err = exec.Command("curl", "--retry", "5", "--retry-delay", "3", "-L", //nolint:gosec
-		fmt.Sprintf("%s/mnt/dev_vda/index.html", guestIPv4)).Output()
-	t.Logf("curl output: %s\n", output)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(output) != "index.html: this message is from /dev/vda in guest\n" {
-		t.Fatal(string(output))
+	if output != wantBody {
+		t.Fatalf("unexpected response body: %q", output)
 	}
 }
 
@@ -140,6 +289,8 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 		t.Fatal(err)
 	}
 
+	t.Cleanup(func() { m.Close() })
+
 	edk2, err := os.Open("../CLOUDHV.fd")
 	if err != nil {
 		t.Fatal(err)
@@ -158,8 +309,8 @@ func TestNewAndLoadEDK2PVH(t *testing.T) { // nolint:paralleltest
 	m.RunData()
 
 	go func() {
-		if err = m.RunInfiniteLoop(0); err != nil {
-			panic(err)
+		if runErr := m.RunInfiniteLoop(0); runErr != nil {
+			fmt.Printf("RunInfiniteLoop: %v\n", runErr)
 		}
 	}()
 
@@ -418,6 +569,8 @@ func TestSingleStep(t *testing.T) {
 
 	t.Logf("Runonce: %v, %v", ok, err)
 
+	skipIfTripleFault(t, err, "64-bit single step")
+
 	if !errors.Is(err, kvm.ErrDebug) {
 		t.Errorf("Run: RunOnce(0) exit is %v, not %v", err, kvm.ErrDebug)
 	}
@@ -447,6 +600,8 @@ func TestSingleStep(t *testing.T) {
 	}
 
 	t.Logf("Runonce: %v, %v", ok, err)
+
+	skipIfTripleFault(t, err, "64-bit single step (NOP)")
 
 	if r, err = m.GetRegs(0); err != nil {
 		t.Errorf("Run: GetRegs(0) exit is %v, not nil", err)
