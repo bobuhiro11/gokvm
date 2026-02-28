@@ -91,7 +91,7 @@ golangci: golangci-lint
 test: bzImage vmlinux vmlinux_PVH initrd vda.img CLOUDHV.fd
 	$(MAKE) generate
 	$(MAKE) golangci
-	go test -timeout 30m -coverprofile c.out ./...
+	unshare --user --net --map-root-user go test -timeout 30m -coverprofile c.out ./...
 	go mod tidy && git diff --no-patch --exit-code go.sum
 
 .PHONY: clean

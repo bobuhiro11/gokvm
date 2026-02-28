@@ -32,7 +32,8 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y qemu-kvm qemu-utils libmnl-dev genext2fs
+        sudo apt-get install -y qemu-kvm qemu-utils libmnl-dev genext2fs util-linux
+        sudo chmod 666 /dev/kvm
 
     - name: Display system information
       run: |
@@ -60,12 +61,12 @@ jobs:
     - name: Build gokvm
       env:
         GOFLAGS: "-buildvcs=false"
-      run: sudo -E env "PATH=$PATH" make gokvm
+      run: make gokvm
 
     - name: Run tests (iteration 1/10 with lint and coverage)
       env:
         GOFLAGS: "-buildvcs=false"
-      run: sudo -E env "PATH=$PATH" make test
+      run: make test
 
     - name: Run stability tests (iterations 2-10)
       env:
@@ -73,8 +74,8 @@ jobs:
       run: |
         for i in $(seq 2 10); do
           echo "=== Test iteration $i/10 ==="
-          sudo -E env "PATH=$PATH" go clean -testcache
-          sudo -E env "PATH=$PATH" go test -timeout 30m ./...
+          go clean -testcache
+          unshare --user --net --map-root-user go test -timeout 30m ./...
           echo "=== Iteration $i/10 passed ==="
         done
 
@@ -82,11 +83,11 @@ jobs:
       if: matrix.go-version == '1.22.x'
       env:
         COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: sudo -E env "PATH=$PATH" goveralls -service=github -coverprofile c.out
+      run: goveralls -service=github -coverprofile c.out
 
     - name: Clean up
       if: always()
-      run: sudo -E env "PATH=$PATH" make clean
+      run: make clean
 
   deploy:
     runs-on: ubuntu-22.04
