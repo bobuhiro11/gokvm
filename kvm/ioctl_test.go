@@ -8,12 +8,6 @@ import (
 )
 
 func TestIoctlEINTRRetry(t *testing.T) {
-	if os.Getuid() != 0 {
-		t.Skipf(
-			"Skipping test since we are not root",
-		)
-	}
-
 	t.Parallel()
 
 	devKVM, err := os.OpenFile(
