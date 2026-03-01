@@ -12,6 +12,7 @@ import (
 
 	"github.com/bobuhiro11/gokvm/kvm"
 	"github.com/bobuhiro11/gokvm/migration"
+	"github.com/bobuhiro11/gokvm/virtio"
 )
 
 // structBytes returns a byte slice that aliases the memory of v.
@@ -312,4 +313,47 @@ func (m *Machine) RestoreCPUState(cpu int, state *migration.VCPUState) error {
 	}
 
 	return nil
+}
+
+// SaveDeviceState captures state for all emulated devices (serial, virtio-net, virtio-blk).
+func (m *Machine) SaveDeviceState() (*migration.DeviceState, error) {
+ds := &migration.DeviceState{}
+
+if m.serial != nil {
+ds.Serial = m.serial.GetState()
+}
+
+for _, dev := range m.pci.Devices {
+switch d := dev.(type) {
+case *virtio.Net:
+ds.Net = d.GetState()
+case *virtio.Blk:
+ds.Blk = d.GetState()
+}
+}
+
+return ds, nil
+}
+
+// RestoreDeviceState applies previously captured device state.
+// Must be called after RestoreMemory so virtqueue pointers are valid.
+func (m *Machine) RestoreDeviceState(ds *migration.DeviceState) error {
+if m.serial != nil {
+m.serial.SetState(ds.Serial)
+}
+
+for _, dev := range m.pci.Devices {
+switch d := dev.(type) {
+case *virtio.Net:
+if ds.Net != nil {
+d.SetState(ds.Net, m.mem)
+}
+case *virtio.Blk:
+if ds.Blk != nil {
+d.SetState(ds.Blk, m.mem)
+}
+}
+}
+
+return nil
 }
