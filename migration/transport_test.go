@@ -108,8 +108,38 @@ func TestSendReceiveMemoryFull(t *testing.T) {
 	}
 }
 
-// TestSendReceiveMemoryDirty verifies that the dirty-page bitmap and page data
-// survive the wire encoding intact.
+// TestSendReceiveDiskFull verifies that disk image bytes survive the wire
+// encoding intact.
+func TestSendReceiveDiskFull(t *testing.T) {
+	t.Parallel()
+
+	const diskSize = 4096 * 2
+	disk := make([]byte, diskSize)
+
+	for i := range disk {
+		disk[i] = byte(i % 199)
+	}
+
+	sender, recv := pipe()
+
+	go func() {
+		if err := sender.SendDiskFull(disk); err != nil {
+			t.Errorf("SendDiskFull: %v", err)
+		}
+	}()
+
+	msgType, payload := mustNext(t, recv)
+
+	if msgType != migration.MsgDiskFull {
+		t.Fatalf("got type %d, want MsgDiskFull (%d)", msgType, migration.MsgDiskFull)
+	}
+
+	if !bytes.Equal(payload, disk) {
+		t.Fatalf("payload mismatch: got %d bytes, want %d", len(payload), len(disk))
+	}
+}
+
+
 func TestSendReceiveMemoryDirty(t *testing.T) {
 	t.Parallel()
 
@@ -256,6 +286,8 @@ func TestFullMigrationProtocol(t *testing.T) {
 
 	snap := makeSnapshot()
 
+	disk := bytes.Repeat([]byte{0xDA}, pageSize*2)
+
 	sender, recv := pipe()
 
 	// Run sender in background.
@@ -276,6 +308,12 @@ func TestFullMigrationProtocol(t *testing.T) {
 			return
 		}
 
+		if err = sender.SendDiskFull(disk); err != nil {
+			errc <- err
+
+			return
+		}
+
 		if err = sender.SendSnapshot(snap); err != nil {
 			errc <- err
 
@@ -290,6 +328,7 @@ func TestFullMigrationProtocol(t *testing.T) {
 	wantTypes := []migration.MsgType{
 		migration.MsgMemoryFull,
 		migration.MsgMemoryDirty,
+		migration.MsgDiskFull,
 		migration.MsgSnapshot,
 		migration.MsgDone,
 	}
@@ -322,6 +361,11 @@ func TestFullMigrationProtocol(t *testing.T) {
 
 			if !bytes.Equal(gd, pageData) {
 				t.Fatalf("dirty page data mismatch")
+			}
+
+		case migration.MsgDiskFull:
+			if !bytes.Equal(payload, disk) {
+				t.Fatalf("MsgDiskFull payload mismatch: got %d bytes, want %d", len(payload), len(disk))
 			}
 
 		case migration.MsgSnapshot:

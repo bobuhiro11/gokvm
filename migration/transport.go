@@ -24,6 +24,7 @@ const (
 	MsgMemoryDirty MsgType = 3 // raw dirty pages preceded by their bitmap
 	MsgDone        MsgType = 4 // source signals end-of-migration
 	MsgReady       MsgType = 5 // destination confirms it is running
+	MsgDiskFull    MsgType = 6 // raw disk image (full copy)
 )
 
 // Sender writes framed messages to an underlying writer (typically a TCP conn).
@@ -96,6 +97,11 @@ func (s *Sender) SendMemoryDirty(bitmapBytes []byte, pageData []byte) error {
 	payload = append(payload, pageData...)
 
 	return s.send(MsgMemoryDirty, payload)
+}
+
+// SendDiskFull sends the raw disk image bytes (full copy).
+func (s *Sender) SendDiskFull(disk []byte) error {
+	return s.send(MsgDiskFull, disk)
 }
 
 // SendDone signals the end of the migration stream.

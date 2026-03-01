@@ -198,6 +198,23 @@ func (v *VMM) MigrateTo(addr string) error {
 	log.Printf("migration: quiescing I/O devices")
 	v.Machine.QuiesceDevices()
 
+	// Step 3c: send disk image if present (after quiesce so all writes are
+	// flushed and the file descriptor is closed by the block device).
+	if v.Disk != "" {
+		log.Printf("migration: sending disk image %s", v.Disk)
+
+		diskData, err := os.ReadFile(v.Disk)
+		if err != nil {
+			return fmt.Errorf("read disk %s: %w", v.Disk, err)
+		}
+
+		if err := sender.SendDiskFull(diskData); err != nil {
+			return fmt.Errorf("SendDiskFull: %w", err)
+		}
+
+		log.Printf("migration: disk image sent (%d MiB)", len(diskData)>>20)
+	}
+
 	// Step 4: final dirty-page pass after pause (captures any writes made by
 	// I/O threads between the pre-copy rounds and quiesce).
 	bitmap, err := v.GetAndClearDirtyBitmap()
@@ -321,6 +338,17 @@ func (v *VMM) Incoming(listenAddr string) error {
 
 			if err := applyDirtyPages(m, bitmapBytes, pageData); err != nil {
 				return fmt.Errorf("applyDirtyPages: %w", err)
+			}
+
+		case migration.MsgDiskFull:
+			if v.Disk == "" {
+				return fmt.Errorf("received disk data but no disk configured")
+			}
+
+			log.Printf("migration: receiving disk image (%d MiB)", len(payload)>>20)
+
+			if err := os.WriteFile(v.Disk, payload, 0o644); err != nil {
+				return fmt.Errorf("write disk %s: %w", v.Disk, err)
 			}
 
 		case migration.MsgSnapshot:
