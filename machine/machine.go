@@ -149,6 +149,7 @@ type Machine struct {
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 	stopped        uint32
 	vcpuWG         sync.WaitGroup // tracks running vCPUs; used by PauseAndWait
+	vcpuTIDs       []int32        // OS thread IDs of running vCPU goroutines
 }
 
 // Close stops vCPU goroutines and releases PCI device
@@ -156,8 +157,16 @@ type Machine struct {
 func (m *Machine) Close() error {
 	atomic.StoreUint32(&m.stopped, 1)
 
-	for _, r := range m.runs {
+	pid := os.Getpid()
+
+	for i, r := range m.runs {
 		r.ImmediateExit = 1
+
+		// Kick vCPUs that are blocked in kvm_vcpu_block (e.g. HLT) so they
+		// can observe the stopped flag and exit.
+		if tid := atomic.LoadInt32(&m.vcpuTIDs[i]); tid != 0 {
+			_ = syscall.Tgkill(pid, int(tid), syscall.SIGURG)
+		}
 	}
 
 	for _, d := range m.pci.Devices {
@@ -195,11 +204,23 @@ func (m *Machine) QuiesceDevices() {
 // Pause stops all vCPUs by setting the stopped flag and requesting
 // immediate exit from KVM_RUN.  It does not wait for vCPUs to actually
 // exit; the vCPU goroutines will return on their next RunOnce iteration.
+// If the guest is executing HLT (kvm_vcpu_block), ImmediateExit alone is
+// not enough to wake the blocked kernel thread; a SIGURG is sent to each
+// vCPU's OS thread to kick it out of kvm_vcpu_block.
 func (m *Machine) Pause() {
 	atomic.StoreUint32(&m.stopped, 1)
 
-	for _, r := range m.runs {
+	pid := os.Getpid()
+
+	for i, r := range m.runs {
 		r.ImmediateExit = 1
+
+		// Kick the vCPU OS thread out of kvm_vcpu_block (reached when the
+		// guest executes HLT).  SIGURG is used because the Go runtime
+		// installs its own SIGURG handler and re-delivers the signal safely.
+		if tid := atomic.LoadInt32(&m.vcpuTIDs[i]); tid != 0 {
+			_ = syscall.Tgkill(pid, int(tid), syscall.SIGURG)
+		}
 	}
 }
 
@@ -250,6 +271,8 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	m.vcpuTIDs = make([]int32, nCpus)
 
 	// initCPUIDs here manually
 	for cpuNr := range m.runs {
@@ -912,6 +935,12 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 	//   was used to create the VM.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+
+	// Record this goroutine's OS thread ID so Pause() can send it a signal
+	// to kick it out of kvm_vcpu_block when the guest executes HLT.
+	tid, _, _ := syscall.Syscall(syscall.SYS_GETTID, 0, 0, 0)
+	atomic.StoreInt32(&m.vcpuTIDs[cpu], int32(tid))
+	defer atomic.StoreInt32(&m.vcpuTIDs[cpu], 0)
 
 	for {
 		isContinue, err := m.RunOnce(cpu)
