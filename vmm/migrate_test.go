@@ -24,15 +24,15 @@ const (
 	migInitrd = "../initrd"
 	migVDA    = "../vda.img"
 
-	migSrcTap      = "tap-mig-src"
-	migSrcGuestIP  = "192.168.50.1"
-	migSrcHostIP   = "192.168.50.2"
-	migPrefixLen   = "24"
-	migListenAddr  = "127.0.0.1:7780"
-	migMarkerOff   = 512 * 1024 // byte offset in disk image for the test marker
+	migSrcTap     = "tap-mig-src"
+	migSrcGuestIP = "192.168.50.1"
+	migSrcHostIP  = "192.168.50.2"
+	migPrefixLen  = "24"
+	migListenAddr = "127.0.0.1:7780"
+	migMarkerOff  = 512 * 1024 // byte offset in disk image for the test marker
 )
 
-var migMarker = []byte("DISK_MIGRATION_CI_MARKER")
+var migMarker = []byte("DISK_MIGRATION_CI_MARKER") //nolint:gochecknoglobals
 
 func TestDiskMigration(t *testing.T) { //nolint:paralleltest
 	if os.Getuid() != 0 {
@@ -86,9 +86,9 @@ func TestDiskMigration(t *testing.T) { //nolint:paralleltest
 
 	// ── Boot src VMM ─────────────────────────────────────────────────────────
 	src := vmm.New(vmm.Config{
-		Dev:     "/dev/kvm",
-		Kernel:  migKernel,
-		Initrd:  migInitrd,
+		Dev:    "/dev/kvm",
+		Kernel: migKernel,
+		Initrd: migInitrd,
 		Params: fmt.Sprintf(`console=ttyS0 earlyprintk=serial noapic noacpi notsc `+
 			`lapic tsc_early_khz=2000 pci=realloc=off virtio_pci.force_legacy=1 `+
 			`rdinit=/init init=/init gokvm.ipv4_addr=%s/%s`,
@@ -135,6 +135,7 @@ func TestDiskMigration(t *testing.T) { //nolint:paralleltest
 		go func() {
 			margin := 60 * time.Second
 			timer := time.NewTimer(time.Until(dl) - margin)
+
 			defer timer.Stop()
 
 			<-timer.C
@@ -157,7 +158,7 @@ func TestDiskMigration(t *testing.T) { //nolint:paralleltest
 		{"ip", "link", "set", migSrcTap, "up"},
 		{"ip", "addr", "add", migSrcHostIP + "/" + migPrefixLen, "dev", migSrcTap},
 	} {
-		if err := exec.Command(args[0], args[1:]...).Run(); err != nil {
+		if err := exec.Command(args[0], args[1:]...).Run(); err != nil { //nolint:gosec
 			t.Fatalf("network setup %v: %v", args, err)
 		}
 	}

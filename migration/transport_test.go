@@ -139,7 +139,6 @@ func TestSendReceiveDiskFull(t *testing.T) {
 	}
 }
 
-
 func TestSendReceiveMemoryDirty(t *testing.T) {
 	t.Parallel()
 

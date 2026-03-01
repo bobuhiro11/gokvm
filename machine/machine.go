@@ -941,6 +941,7 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 	// to kick it out of kvm_vcpu_block when the guest executes HLT.
 	tid, _, _ := syscall.Syscall(syscall.SYS_GETTID, 0, 0, 0)
 	atomic.StoreInt32(&m.vcpuTIDs[cpu], int32(tid))
+
 	defer atomic.StoreInt32(&m.vcpuTIDs[cpu], 0)
 
 	for {

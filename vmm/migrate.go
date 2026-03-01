@@ -53,6 +53,7 @@ var (
 	errUnexpectedMessageType = errors.New("unexpected message type")
 	errBitmapLengthNotMult8  = errors.New("bitmap length not a multiple of 8")
 	errPageDataTruncated     = errors.New("page data truncated")
+	errNoDiskConfigured      = errors.New("received disk data but no disk configured")
 )
 
 // controlSocketPath returns the Unix socket path for the given PID.
@@ -342,12 +343,12 @@ func (v *VMM) Incoming(listenAddr string) error {
 
 		case migration.MsgDiskFull:
 			if v.Disk == "" {
-				return fmt.Errorf("received disk data but no disk configured")
+				return errNoDiskConfigured
 			}
 
 			log.Printf("migration: receiving disk image (%d MiB)", len(payload)>>20)
 
-			if err := os.WriteFile(v.Disk, payload, 0o644); err != nil {
+			if err := os.WriteFile(v.Disk, payload, 0o600); err != nil {
 				return fmt.Errorf("write disk %s: %w", v.Disk, err)
 			}
 
