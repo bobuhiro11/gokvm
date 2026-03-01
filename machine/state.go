@@ -371,3 +371,75 @@ func (m *Machine) RestoreMemory(r io.Reader) error {
 _, err := io.ReadFull(r, m.mem)
 return err
 }
+
+// EnableDirtyTracking re-registers the guest memory region with
+// KVM_MEM_LOG_DIRTY_PAGES so that subsequent writes can be detected.
+// This must be called before the pre-copy migration loop starts.
+func (m *Machine) EnableDirtyTracking() error {
+region := &kvm.UserspaceMemoryRegion{
+Slot:          0,
+GuestPhysAddr: 0,
+MemorySize:    uint64(len(m.mem)),
+UserspaceAddr: uint64(uintptr(unsafe.Pointer(&m.mem[0]))),
+}
+region.SetMemLogDirtyPages()
+
+return kvm.SetUserMemoryRegion(m.vmFd, region)
+}
+
+// GetAndClearDirtyBitmap retrieves the dirty-page bitmap for slot 0 and
+// returns it as a slice of uint64 words (one bit per 4 KiB page).
+// KVM atomically clears the bitmap on each call.
+func (m *Machine) GetAndClearDirtyBitmap() ([]uint64, error) {
+pageSize := 4096
+numPages := (len(m.mem) + pageSize - 1) / pageSize
+bitmapWords := (numPages + 63) / 64
+
+bitmap := make([]uint64, bitmapWords)
+
+dl := &kvm.DirtyLog{
+Slot:   0,
+BitMap: uint64(uintptr(unsafe.Pointer(&bitmap[0]))),
+}
+
+if err := kvm.GetDirtyLog(m.vmFd, dl); err != nil {
+return nil, fmt.Errorf("GetDirtyLog: %w", err)
+}
+
+return bitmap, nil
+}
+
+// TransferDirtyPages writes only the pages marked in bitmap to w.
+// The bitmap format is the same as returned by GetAndClearDirtyBitmap.
+func (m *Machine) TransferDirtyPages(w io.Writer, bitmap []uint64) (int, error) {
+const pageSize = 4096
+
+count := 0
+
+for wordIdx, word := range bitmap {
+if word == 0 {
+continue
+}
+
+for bit := 0; bit < 64; bit++ {
+if word&(1<<uint(bit)) == 0 {
+continue
+}
+
+pageIdx := wordIdx*64 + bit
+offset := pageIdx * pageSize
+
+if offset+pageSize > len(m.mem) {
+break
+}
+
+if _, err := w.Write(m.mem[offset : offset+pageSize]); err != nil {
+return count, fmt.Errorf("write page %d: %w", pageIdx, err)
+}
+
+count++
+}
+}
+
+return count, nil
+}
