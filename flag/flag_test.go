@@ -61,7 +61,7 @@ func TestParseBootArgs(t *testing.T) {
 		"1M",
 	}
 
-	c, _, err := flag.ParseArgs(args)
+	c, _, _, _, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestParseBootArgsWithDefaults(t *testing.T) {
 		"boot",
 	}
 
-	c, _, err := flag.ParseArgs(args)
+	c, _, _, _, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestParseProbeArgs(t *testing.T) {
 		"probe",
 	}
 
-	_, probeConfig, err := flag.ParseArgs(args)
+	_, probeConfig, _, _, err := flag.ParseArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
