@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"os"
 
 	"github.com/bobuhiro11/gokvm/flag"
@@ -10,7 +12,7 @@ import (
 )
 
 func main() {
-	bootArgs, probeArgs, err := flag.ParseArgs(os.Args)
+	bootArgs, probeArgs, incomingArgs, migrateArgs, err := flag.ParseArgs(os.Args)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -28,17 +30,24 @@ func main() {
 			TraceCount: bootArgs.TraceCount,
 		}
 
-		vmm := vmm.New(*c)
+		v := vmm.New(*c)
 
-		if err := vmm.Init(); err != nil {
+		if err := v.Init(); err != nil {
 			log.Fatal(err)
 		}
 
-		if err := vmm.Setup(); err != nil {
+		if err := v.Setup(); err != nil {
 			log.Fatal(err)
 		}
 
-		if err := vmm.Boot(); err != nil {
+		sockPath, err := v.StartControlSocket()
+		if err != nil {
+			log.Printf("warning: control socket unavailable: %v", err)
+		} else {
+			fmt.Printf("control socket: %s\r\n", sockPath)
+		}
+
+		if err := v.Boot(); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -51,5 +60,41 @@ func main() {
 		if err := probe.CPUID(); err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	if incomingArgs != nil {
+		c := vmm.Config{
+			Dev:       incomingArgs.Dev,
+			NCPUs:     incomingArgs.NCPUs,
+			MemSize:   incomingArgs.MemSize,
+			TapIfName: incomingArgs.TapIfName,
+			Disk:      incomingArgs.Disk,
+		}
+
+		v := vmm.New(c)
+
+		if err := v.Incoming(incomingArgs.Listen); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if migrateArgs != nil {
+		conn, err := net.Dial("unix", migrateArgs.Sock)
+		if err != nil {
+			log.Fatalf("connect to control socket %s: %v", migrateArgs.Sock, err)
+		}
+
+		defer conn.Close()
+
+		cmd := fmt.Sprintf("MIGRATE %s\n", migrateArgs.To)
+		if _, err := fmt.Fprint(conn, cmd); err != nil {
+			log.Fatal(err)
+		}
+
+		resp := make([]byte, 256)
+
+		n, _ := conn.Read(resp)
+
+		fmt.Printf("%s", resp[:n])
 	}
 }
