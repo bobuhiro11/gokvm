@@ -166,6 +166,21 @@ func (m *Machine) Close() error {
 	return nil
 }
 
+// Mem returns a direct slice of guest physical memory.
+// Callers must not resize the slice.
+func (m *Machine) Mem() []byte { return m.mem }
+
+// Pause stops all vCPUs by setting the stopped flag and requesting
+// immediate exit from KVM_RUN.  It does not wait for vCPUs to actually
+// exit; the vCPU goroutines will return on their next RunOnce iteration.
+func (m *Machine) Pause() {
+	atomic.StoreUint32(&m.stopped, 1)
+
+	for _, r := range m.runs {
+		r.ImmediateExit = 1
+	}
+}
+
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
 // vCPUs, and attaching memory, disk (if needed), and tap (if needed).
 func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
