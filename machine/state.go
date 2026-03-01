@@ -153,6 +153,76 @@ func (m *Machine) SaveCPUState(cpu int) (*migration.VCPUState, error) {
 	return state, nil
 }
 
+// SaveVMState captures VM-level (non-per-vCPU) hardware state.
+func (m *Machine) SaveVMState() (*migration.VMState, error) {
+	state := &migration.VMState{}
+
+	// KVM clock (kvmclock) — must be saved for monotonicity.
+	cd := &kvm.ClockData{}
+	if err := kvm.GetClock(m.vmFd, cd); err != nil {
+		return nil, fmt.Errorf("GetClock: %w", err)
+	}
+
+	state.Clock = cloneBytes(structBytes(cd))
+
+	// IRQ chip: master PIC (0), slave PIC (1), IOAPIC (2).
+	for chipID, dest := range [](*[]byte){&state.IRQChipPIC0, &state.IRQChipPIC1, &state.IRQChipIOAPIC} {
+		chip := &kvm.IRQChip{ChipID: uint32(chipID)}
+		if err := kvm.GetIRQChip(m.vmFd, chip); err != nil {
+			return nil, fmt.Errorf("GetIRQChip(%d): %w", chipID, err)
+		}
+
+		*dest = cloneBytes(structBytes(chip))
+	}
+
+	// PIT (programmable interval timer).
+	pit := &kvm.PITState2{}
+	if err := kvm.GetPIT2(m.vmFd, pit); err != nil {
+		return nil, fmt.Errorf("GetPIT2: %w", err)
+	}
+
+	state.PIT2 = cloneBytes(structBytes(pit))
+
+	return state, nil
+}
+
+// RestoreVMState applies previously saved VM-level hardware state.
+func (m *Machine) RestoreVMState(state *migration.VMState) error {
+	// KVM clock.
+	var cd kvm.ClockData
+	if err := copyStruct(&cd, state.Clock); err != nil {
+		return fmt.Errorf("decode ClockData: %w", err)
+	}
+
+	if err := kvm.SetClock(m.vmFd, &cd); err != nil {
+		return fmt.Errorf("SetClock: %w", err)
+	}
+
+	// IRQ chips.
+	for _, src := range [][]byte{state.IRQChipPIC0, state.IRQChipPIC1, state.IRQChipIOAPIC} {
+		var chip kvm.IRQChip
+		if err := copyStruct(&chip, src); err != nil {
+			return fmt.Errorf("decode IRQChip: %w", err)
+		}
+
+		if err := kvm.SetIRQChip(m.vmFd, &chip); err != nil {
+			return fmt.Errorf("SetIRQChip(%d): %w", chip.ChipID, err)
+		}
+	}
+
+	// PIT.
+	var pit kvm.PITState2
+	if err := copyStruct(&pit, state.PIT2); err != nil {
+		return fmt.Errorf("decode PITState2: %w", err)
+	}
+
+	if err := kvm.SetPIT2(m.vmFd, &pit); err != nil {
+		return fmt.Errorf("SetPIT2: %w", err)
+	}
+
+	return nil
+}
+
 // RestoreCPUState applies a previously saved vCPU state.
 func (m *Machine) RestoreCPUState(cpu int, state *migration.VCPUState) error {
 	fd, err := m.CPUToFD(cpu)
