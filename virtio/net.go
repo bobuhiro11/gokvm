@@ -48,6 +48,7 @@ type Net struct {
 	rxKick    chan os.Signal
 	done      chan struct{}
 	closeOnce sync.Once
+	threadWG  sync.WaitGroup // tracks TxThread + RxThread goroutines
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -113,6 +114,8 @@ func (v *Net) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Net) RxThreadEntry() {
+	defer v.threadWG.Done()
+
 	log.Println("virtio-net: RxThreadEntry started")
 
 	for {
@@ -207,6 +210,8 @@ func (v *Net) Rx() error {
 }
 
 func (v *Net) TxThreadEntry() {
+	defer v.threadWG.Done()
+
 	log.Println("virtio-net: TxThreadEntry started")
 
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -349,6 +354,14 @@ func (v *Net) Close() error {
 
 	return nil
 }
+
+// ThreadWGAdd registers n goroutines with the internal WaitGroup.
+// Must be called before the corresponding goroutines are started.
+func (v *Net) ThreadWGAdd(n int) { v.threadWG.Add(n) }
+
+// WaitStopped blocks until both TxThread and RxThread have exited.
+// Call after Close() to ensure threads are no longer writing to guest memory.
+func (v *Net) WaitStopped() { v.threadWG.Wait() }
 
 // GetState returns the host-side state of the virtio-net device.
 // The caller must ensure Tx/Rx threads are not running concurrently.

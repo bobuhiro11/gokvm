@@ -10,6 +10,7 @@ package migration
 import (
 	"encoding/binary"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -61,6 +62,7 @@ func (s *Sender) SendSnapshot(snap *Snapshot) error {
 	go func() {
 		enc := gob.NewEncoder(pw)
 		errCh <- enc.Encode(snap)
+
 		pw.Close()
 	}()
 
@@ -88,7 +90,9 @@ func (s *Sender) SendMemoryDirty(bitmapBytes []byte, pageData []byte) error {
 	// Message layout: [8-byte bitmap length][bitmap][page data]
 	hdr := make([]byte, 8)
 	binary.BigEndian.PutUint64(hdr, uint64(len(bitmapBytes)))
-	payload := append(hdr, bitmapBytes...)
+	payload := make([]byte, 0, 8+len(bitmapBytes)+len(pageData))
+	payload = append(payload, hdr...)
+	payload = append(payload, bitmapBytes...)
 	payload = append(payload, pageData...)
 
 	return s.send(MsgMemoryDirty, payload)
@@ -142,16 +146,22 @@ func DecodeSnapshot(payload []byte) (*Snapshot, error) {
 	return snap, nil
 }
 
+// sentinel errors for DecodeDirtyPayload.
+var (
+	errDirtyPayloadTooShort  = errors.New("dirty payload too short")
+	errDirtyPayloadTruncated = errors.New("dirty payload truncated")
+)
+
 // DecodeDirtyPayload splits a MsgMemoryDirty payload into the bitmap bytes
 // and the packed page data bytes.
 func DecodeDirtyPayload(payload []byte) (bitmapBytes []byte, pageData []byte, err error) {
 	if len(payload) < 8 {
-		return nil, nil, fmt.Errorf("dirty payload too short: %d bytes", len(payload))
+		return nil, nil, fmt.Errorf("%w: %d bytes", errDirtyPayloadTooShort, len(payload))
 	}
 
 	bitmapLen := binary.BigEndian.Uint64(payload[0:8])
 	if uint64(len(payload)) < 8+bitmapLen {
-		return nil, nil, fmt.Errorf("dirty payload truncated")
+		return nil, nil, errDirtyPayloadTruncated
 	}
 
 	return payload[8 : 8+bitmapLen], payload[8+bitmapLen:], nil

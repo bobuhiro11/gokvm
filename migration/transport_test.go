@@ -15,6 +15,7 @@ import (
 // pipe returns a connected (Sender, Receiver) pair backed by an in-memory pipe.
 func pipe() (*migration.Sender, *migration.Receiver) {
 	pr, pw := io.Pipe()
+
 	return migration.NewSender(pw), migration.NewReceiver(pr)
 }
 
@@ -119,7 +120,9 @@ func TestSendReceiveMemoryDirty(t *testing.T) {
 
 	page0 := bytes.Repeat([]byte{0xAA}, 4096)
 	page2 := bytes.Repeat([]byte{0xBB}, 4096)
-	pageData := append(page0, page2...)
+	pageData := make([]byte, 0, 8192)
+	pageData = append(pageData, page0...)
+	pageData = append(pageData, page2...)
 
 	sender, recv := pipe()
 
@@ -232,6 +235,7 @@ func TestFullMigrationProtocol(t *testing.T) {
 	t.Parallel()
 
 	const pageSize = 4096
+
 	const pages = 4
 
 	mem := make([]byte, pageSize*pages)
@@ -243,9 +247,12 @@ func TestFullMigrationProtocol(t *testing.T) {
 	dirtyBitmapWord := uint64(0xA)
 	bitmapBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(bitmapBytes, dirtyBitmapWord)
+
 	dirtyPage1 := bytes.Repeat([]byte{0x11}, pageSize)
 	dirtyPage3 := bytes.Repeat([]byte{0x33}, pageSize)
-	pageData := append(dirtyPage1, dirtyPage3...)
+	pageData := make([]byte, 0, pageSize*2)
+	pageData = append(pageData, dirtyPage1...)
+	pageData = append(pageData, dirtyPage3...)
 
 	snap := makeSnapshot()
 
@@ -259,16 +266,19 @@ func TestFullMigrationProtocol(t *testing.T) {
 
 		if err = sender.SendMemoryFull(mem); err != nil {
 			errc <- err
+
 			return
 		}
 
 		if err = sender.SendMemoryDirty(bitmapBytes, pageData); err != nil {
 			errc <- err
+
 			return
 		}
 
 		if err = sender.SendSnapshot(snap); err != nil {
 			errc <- err
+
 			return
 		}
 
@@ -328,6 +338,12 @@ func TestFullMigrationProtocol(t *testing.T) {
 			if len(payload) != 0 {
 				t.Fatalf("MsgDone should have no payload")
 			}
+
+		case migration.MsgReady:
+			// Unexpected in this test but handled for completeness
+
+		default:
+			t.Fatalf("unexpected message type: %v", msgType)
 		}
 	}
 
@@ -353,7 +369,10 @@ func TestDecodeDirtyPayloadTruncatedBitmap(t *testing.T) {
 	// Announce 100 bytes of bitmap but provide only 4.
 	hdr := make([]byte, 8)
 	binary.BigEndian.PutUint64(hdr, 100)
-	payload := append(hdr, 0x01, 0x02, 0x03, 0x04)
+
+	payload := make([]byte, 0, 12)
+	payload = append(payload, hdr...)
+	payload = append(payload, 0x01, 0x02, 0x03, 0x04)
 
 	_, _, err := migration.DecodeDirtyPayload(payload)
 	if err == nil {
@@ -366,7 +385,9 @@ func TestDecodeDirtyPayloadEmptyBitmap(t *testing.T) {
 
 	// Zero-length bitmap with non-empty page data.
 	hdr := make([]byte, 8) // bitmapLen = 0
-	payload := append(hdr, 0xDE, 0xAD)
+	payload := make([]byte, 0, 10)
+	payload = append(payload, hdr...)
+	payload = append(payload, 0xDE, 0xAD)
 
 	bitmapBytes, pageData, err := migration.DecodeDirtyPayload(payload)
 	if err != nil {
@@ -409,8 +430,8 @@ func TestSnapshotGobRoundTrip(t *testing.T) {
 	}
 
 	recv := migration.NewReceiver(&buf)
-	msgType, payload, err := recv.Next()
 
+	msgType, payload, err := recv.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
@@ -487,8 +508,8 @@ func TestSnapshotWithNilDevices(t *testing.T) {
 	}
 
 	recv := migration.NewReceiver(&buf)
-	_, payload, err := recv.Next()
 
+	_, payload, err := recv.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
@@ -549,5 +570,101 @@ func TestReceiverEOF(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected error on empty stream, got nil")
+	}
+}
+
+// TestReceiverTruncatedHeader verifies that Next returns an error when the
+// stream ends in the middle of a 12-byte header.
+func TestReceiverTruncatedHeader(t *testing.T) {
+	t.Parallel()
+
+	// Write only 6 bytes (less than the 12-byte header).
+	var buf bytes.Buffer
+
+	buf.Write([]byte{0x00, 0x00, 0x00, 0x01, 0x00, 0x00})
+
+	recv := migration.NewReceiver(&buf)
+	_, _, err := recv.Next()
+
+	if err == nil {
+		t.Fatal("expected error for truncated header, got nil")
+	}
+}
+
+// TestReceiverTruncatedPayload verifies that Next returns an error when the
+// header claims N bytes of payload but fewer are available in the stream.
+func TestReceiverTruncatedPayload(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	// Header: type=MsgMemoryFull (2), length=1000
+	hdr := make([]byte, 12)
+	binary.BigEndian.PutUint32(hdr[0:4], uint32(migration.MsgMemoryFull))
+	binary.BigEndian.PutUint64(hdr[4:12], 1000)
+	buf.Write(hdr)
+	buf.Write([]byte{0x01, 0x02, 0x03}) // only 3 bytes instead of 1000
+
+	recv := migration.NewReceiver(&buf)
+	_, _, err := recv.Next()
+
+	if err == nil {
+		t.Fatal("expected error for truncated payload, got nil")
+	}
+}
+
+// TestSendMemoryFullEmpty verifies that an empty memory slice is transported
+// without error and that the receiver sees a zero-length payload.
+func TestSendMemoryFullEmpty(t *testing.T) {
+	t.Parallel()
+
+	sender, recv := pipe()
+
+	go func() {
+		if err := sender.SendMemoryFull([]byte{}); err != nil {
+			t.Errorf("SendMemoryFull(empty): %v", err)
+		}
+	}()
+
+	msgType, payload := mustNext(t, recv)
+
+	if msgType != migration.MsgMemoryFull {
+		t.Fatalf("got type %d, want MsgMemoryFull", msgType)
+	}
+
+	if len(payload) != 0 {
+		t.Fatalf("expected empty payload, got %d bytes", len(payload))
+	}
+}
+
+// TestSendMemoryDirtyEmptyInputs verifies that SendMemoryDirty with nil bitmap
+// and nil page data round-trips without error.
+func TestSendMemoryDirtyEmptyInputs(t *testing.T) {
+	t.Parallel()
+
+	sender, recv := pipe()
+
+	go func() {
+		if err := sender.SendMemoryDirty(nil, nil); err != nil {
+			t.Errorf("SendMemoryDirty(nil,nil): %v", err)
+		}
+	}()
+
+	msgType, payload := mustNext(t, recv)
+
+	if msgType != migration.MsgMemoryDirty {
+		t.Fatalf("got type %d, want MsgMemoryDirty", msgType)
+	}
+
+	bitmapBytes, pageData, err := migration.DecodeDirtyPayload(payload)
+	if err != nil {
+		t.Fatalf("DecodeDirtyPayload: %v", err)
+	}
+
+	if len(bitmapBytes) != 0 {
+		t.Fatalf("expected empty bitmap, got %d bytes", len(bitmapBytes))
+	}
+
+	if len(pageData) != 0 {
+		t.Fatalf("expected empty page data, got %d bytes", len(pageData))
 	}
 }

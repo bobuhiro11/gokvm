@@ -22,11 +22,14 @@ func structBytes[T any](v *T) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(v)), unsafe.Sizeof(*v))
 }
 
+// sentinel error for copyStruct.
+var errStateBufferTooSmall = errors.New("state buffer too small")
+
 // copyStruct fills *dst from a byte slice produced by structBytes.
 func copyStruct[T any](dst *T, b []byte) error {
 	size := int(unsafe.Sizeof(*dst))
 	if len(b) < size {
-		return fmt.Errorf("state buffer too small: got %d want %d", len(b), size)
+		return fmt.Errorf("%w: got %d want %d", errStateBufferTooSmall, len(b), size)
 	}
 
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(dst)), size), b[:size])
@@ -283,6 +286,16 @@ func (m *Machine) RestoreCPUState(cpu int, state *migration.VCPUState) error {
 		return fmt.Errorf("decode VCPUEvents cpu%d: %w", cpu, err)
 	}
 
+	// Clear any in-flight injection flags.  Leaving I.Inject=1 would cause
+	// KVM to immediately inject the interrupt on the first vCPU execution
+	// cycle, potentially before the guest interrupt handlers are reachable,
+	// leading to a NULL-pointer dereference at RIP=0x0.  Dropping a single
+	// in-flight injection is safe; the device will re-assert its IRQ line
+	// through the normal path once the vCPU is running.
+	events.I.Inject = 0
+	events.E.Inject = 0
+	events.N.Inject = 0
+
 	if err := kvm.SetVCPUEvents(fd, &events); err != nil {
 		return fmt.Errorf("SetVCPUEvents cpu%d: %w", cpu, err)
 	}
@@ -318,128 +331,130 @@ func (m *Machine) RestoreCPUState(cpu int, state *migration.VCPUState) error {
 
 // SaveDeviceState captures state for all emulated devices (serial, virtio-net, virtio-blk).
 func (m *Machine) SaveDeviceState() (*migration.DeviceState, error) {
-ds := &migration.DeviceState{}
+	ds := &migration.DeviceState{}
 
-if m.serial != nil {
-ds.Serial = m.serial.GetState()
-}
+	if m.serial != nil {
+		ds.Serial = m.serial.GetState()
+	}
 
-for _, dev := range m.pci.Devices {
-switch d := dev.(type) {
-case *virtio.Net:
-ds.Net = d.GetState()
-case *virtio.Blk:
-ds.Blk = d.GetState()
-}
-}
+	for _, dev := range m.pci.Devices {
+		switch d := dev.(type) {
+		case *virtio.Net:
+			ds.Net = d.GetState()
+		case *virtio.Blk:
+			ds.Blk = d.GetState()
+		}
+	}
 
-return ds, nil
+	return ds, nil
 }
 
 // RestoreDeviceState applies previously captured device state.
 // Must be called after RestoreMemory so virtqueue pointers are valid.
 func (m *Machine) RestoreDeviceState(ds *migration.DeviceState) error {
-if m.serial != nil {
-m.serial.SetState(ds.Serial)
-}
+	if m.serial != nil {
+		m.serial.SetState(ds.Serial)
+	}
 
-for _, dev := range m.pci.Devices {
-switch d := dev.(type) {
-case *virtio.Net:
-if ds.Net != nil {
-d.SetState(ds.Net, m.mem)
-}
-case *virtio.Blk:
-if ds.Blk != nil {
-d.SetState(ds.Blk, m.mem)
-}
-}
-}
+	for _, dev := range m.pci.Devices {
+		switch d := dev.(type) {
+		case *virtio.Net:
+			if ds.Net != nil {
+				d.SetState(ds.Net, m.mem)
+			}
+		case *virtio.Blk:
+			if ds.Blk != nil {
+				d.SetState(ds.Blk, m.mem)
+			}
+		}
+	}
 
-return nil
+	return nil
 }
 
 // SaveMemory writes the full guest physical memory to w as a raw byte stream.
 func (m *Machine) SaveMemory(w io.Writer) error {
-_, err := w.Write(m.mem)
-return err
+	_, err := w.Write(m.mem)
+
+	return err
 }
 
 // RestoreMemory reads len(m.mem) bytes from r and fills guest physical memory.
 // m.mem must already be allocated (e.g. by New) with the same size as the source.
 func (m *Machine) RestoreMemory(r io.Reader) error {
-_, err := io.ReadFull(r, m.mem)
-return err
+	_, err := io.ReadFull(r, m.mem)
+
+	return err
 }
 
 // EnableDirtyTracking re-registers the guest memory region with
 // KVM_MEM_LOG_DIRTY_PAGES so that subsequent writes can be detected.
 // This must be called before the pre-copy migration loop starts.
 func (m *Machine) EnableDirtyTracking() error {
-region := &kvm.UserspaceMemoryRegion{
-Slot:          0,
-GuestPhysAddr: 0,
-MemorySize:    uint64(len(m.mem)),
-UserspaceAddr: uint64(uintptr(unsafe.Pointer(&m.mem[0]))),
-}
-region.SetMemLogDirtyPages()
+	region := &kvm.UserspaceMemoryRegion{
+		Slot:          0,
+		GuestPhysAddr: 0,
+		MemorySize:    uint64(len(m.mem)),
+		UserspaceAddr: uint64(uintptr(unsafe.Pointer(&m.mem[0]))),
+	}
+	region.SetMemLogDirtyPages()
 
-return kvm.SetUserMemoryRegion(m.vmFd, region)
+	return kvm.SetUserMemoryRegion(m.vmFd, region)
 }
 
 // GetAndClearDirtyBitmap retrieves the dirty-page bitmap for slot 0 and
 // returns it as a slice of uint64 words (one bit per 4 KiB page).
 // KVM atomically clears the bitmap on each call.
 func (m *Machine) GetAndClearDirtyBitmap() ([]uint64, error) {
-pageSize := 4096
-numPages := (len(m.mem) + pageSize - 1) / pageSize
-bitmapWords := (numPages + 63) / 64
+	pageSize := 4096
+	numPages := (len(m.mem) + pageSize - 1) / pageSize
+	bitmapWords := (numPages + 63) / 64
 
-bitmap := make([]uint64, bitmapWords)
+	bitmap := make([]uint64, bitmapWords)
 
-dl := &kvm.DirtyLog{
-Slot:   0,
-BitMap: uint64(uintptr(unsafe.Pointer(&bitmap[0]))),
-}
+	dl := &kvm.DirtyLog{
+		Slot:   0,
+		BitMap: uint64(uintptr(unsafe.Pointer(&bitmap[0]))),
+	}
 
-if err := kvm.GetDirtyLog(m.vmFd, dl); err != nil {
-return nil, fmt.Errorf("GetDirtyLog: %w", err)
-}
+	if err := kvm.GetDirtyLog(m.vmFd, dl); err != nil {
+		return nil, fmt.Errorf("GetDirtyLog: %w", err)
+	}
 
-return bitmap, nil
+	return bitmap, nil
 }
 
 // TransferDirtyPages writes only the pages marked in bitmap to w.
 // The bitmap format is the same as returned by GetAndClearDirtyBitmap.
 func (m *Machine) TransferDirtyPages(w io.Writer, bitmap []uint64) (int, error) {
-const pageSize = 4096
+	const pageSize = 4096
 
-count := 0
+	count := 0
 
-for wordIdx, word := range bitmap {
-if word == 0 {
-continue
-}
+	for wordIdx, word := range bitmap {
+		if word == 0 {
+			continue
+		}
 
-for bit := 0; bit < 64; bit++ {
-if word&(1<<uint(bit)) == 0 {
-continue
-}
+		for bit := 0; bit < 64; bit++ {
+			if word&(1<<uint(bit)) == 0 {
+				continue
+			}
 
-pageIdx := wordIdx*64 + bit
-offset := pageIdx * pageSize
+			pageIdx := wordIdx*64 + bit
+			offset := pageIdx * pageSize
 
-if offset+pageSize > len(m.mem) {
-break
-}
+			if offset+pageSize > len(m.mem) {
+				break
+			}
 
-if _, err := w.Write(m.mem[offset : offset+pageSize]); err != nil {
-return count, fmt.Errorf("write page %d: %w", pageIdx, err)
-}
+			if _, err := w.Write(m.mem[offset : offset+pageSize]); err != nil {
+				return count, fmt.Errorf("write page %d: %w", pageIdx, err)
+			}
 
-count++
-}
-}
+			count++
+		}
+	}
 
-return count, nil
+	return count, nil
 }

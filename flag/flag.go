@@ -10,6 +10,8 @@ import (
 
 var ErrorInvalidSubcommands = errors.New("expected 'boot', 'probe', 'incoming', or 'migrate' subcommands")
 
+var errMigrateRequiredArgs = errors.New("migrate: -s <sock> and -to <addr> are required")
+
 type BootArgs struct {
 	Kernel     string
 	MemSize    int
@@ -122,7 +124,7 @@ func parseMigrateArgs(args []string) (*MigrateArgs, error) {
 	}
 
 	if c.Sock == "" || c.To == "" {
-		return nil, errors.New("migrate: -s <sock> and -to <addr> are required")
+		return nil, errMigrateRequiredArgs
 	}
 
 	return c, nil

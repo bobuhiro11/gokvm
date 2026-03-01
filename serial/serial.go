@@ -163,11 +163,11 @@ func (s *Serial) Start(in bufio.Reader, restoreMode func(), irqInject func() err
 
 // GetState returns the host-side state of the serial device.
 func (s *Serial) GetState() migration.SerialState {
-return migration.SerialState{IER: s.IER, LCR: s.LCR}
+	return migration.SerialState{IER: s.IER, LCR: s.LCR}
 }
 
 // SetState restores the host-side state of the serial device.
 func (s *Serial) SetState(state migration.SerialState) {
-s.IER = state.IER
-s.LCR = state.LCR
+	s.IER = state.IER
+	s.LCR = state.LCR
 }

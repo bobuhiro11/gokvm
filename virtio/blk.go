@@ -49,6 +49,7 @@ type Blk struct {
 	kick      chan interface{}
 	done      chan struct{}
 	closeOnce sync.Once
+	threadWG  sync.WaitGroup // tracks IOThread goroutine
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -117,6 +118,8 @@ func (v *Blk) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Blk) IOThreadEntry() {
+	defer v.threadWG.Done()
+
 	log.Println("virtio-blk: IOThreadEntry started")
 
 	ticker := time.NewTicker(1 * time.Millisecond)
@@ -293,6 +296,14 @@ func (v *Blk) Close() error {
 
 	return v.file.Close()
 }
+
+// ThreadWGAdd registers n goroutines with the internal WaitGroup.
+// Must be called before the corresponding goroutines are started.
+func (v *Blk) ThreadWGAdd(n int) { v.threadWG.Add(n) }
+
+// WaitStopped blocks until the IOThread has exited.
+// Call after Close() to ensure the thread is no longer writing to guest memory.
+func (v *Blk) WaitStopped() { v.threadWG.Wait() }
 
 // GetState returns the host-side state of the virtio-blk device.
 // The caller must ensure the I/O thread is not running concurrently.

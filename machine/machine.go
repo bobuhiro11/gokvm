@@ -12,8 +12,10 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
@@ -146,6 +148,7 @@ type Machine struct {
 	devices        []iodev.Device
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 	stopped        uint32
+	vcpuWG         sync.WaitGroup // tracks running vCPUs; used by PauseAndWait
 }
 
 // Close stops vCPU goroutines and releases PCI device
@@ -170,6 +173,25 @@ func (m *Machine) Close() error {
 // Callers must not resize the slice.
 func (m *Machine) Mem() []byte { return m.mem }
 
+// ioDeviceQuiescer is implemented by virtio devices that can synchronously
+// stop their background I/O goroutines.
+type ioDeviceQuiescer interface {
+	io.Closer
+	WaitStopped()
+}
+
+// QuiesceDevices closes all PCI I/O devices and blocks until their background
+// goroutines have exited.  This must be called (after PauseAndWait) before
+// snapshotting device state so that GetState is not racing with I/O threads.
+func (m *Machine) QuiesceDevices() {
+	for _, d := range m.pci.Devices {
+		if q, ok := d.(ioDeviceQuiescer); ok {
+			_ = q.Close()
+			q.WaitStopped()
+		}
+	}
+}
+
 // Pause stops all vCPUs by setting the stopped flag and requesting
 // immediate exit from KVM_RUN.  It does not wait for vCPUs to actually
 // exit; the vCPU goroutines will return on their next RunOnce iteration.
@@ -179,6 +201,36 @@ func (m *Machine) Pause() {
 	for _, r := range m.runs {
 		r.ImmediateExit = 1
 	}
+}
+
+// PauseAndWait stops all vCPUs and blocks until every vCPU goroutine that was
+// registered via vcpuWG has exited.  Use this before snapshotting CPU state
+// during live migration so that KVM register reads are not racing with KVM_RUN.
+func (m *Machine) PauseAndWait() {
+	m.Pause()
+
+	// Wait for all tracked vCPU goroutines to exit, with a diagnostic
+	// timeout so we don't hang silently.
+	done := make(chan struct{})
+
+	go func() {
+		m.vcpuWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		log.Printf("PauseAndWait: timed out after 5s waiting for vCPUs to stop (proceeding)")
+	}
+}
+
+// TrackVCPU registers a vCPU goroutine with the WaitGroup so that
+// PauseAndWait can synchronise on all vCPUs stopping.
+func (m *Machine) TrackVCPU() func() {
+	m.vcpuWG.Add(1)
+
+	return m.vcpuWG.Done
 }
 
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
@@ -239,6 +291,8 @@ func (m *Machine) AddTapIf(tapIfName string) error {
 	}
 
 	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+
+	v.ThreadWGAdd(2)
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 	// 00:01.0 for Virtio net
@@ -253,6 +307,7 @@ func (m *Machine) AddDisk(diskPath string) error {
 		return err
 	}
 
+	v.ThreadWGAdd(1)
 	go v.IOThreadEntry()
 	// 00:02.0 for Virtio blk
 	m.pci.Devices = append(m.pci.Devices, v)
@@ -1295,6 +1350,9 @@ func initVMandVCPU(
 }
 
 func (m *Machine) VCPU(stdout io.Writer, cpu, traceCount int) error {
+	done := m.TrackVCPU()
+	defer done()
+
 	trace := traceCount > 0
 
 	var err error
@@ -1334,4 +1392,26 @@ func (m *Machine) GetSerial() *serial.Serial {
 
 func (m *Machine) AddDevice(dev iodev.Device) {
 	m.devices = append(m.devices, dev)
+}
+
+// InitForMigration initialises the serial device and IO-port handlers on a
+// machine that was created by New() without loading a kernel.  It must be
+// called on the migration destination before restoring device state and
+// starting the vCPU goroutines.
+func (m *Machine) InitForMigration() error {
+	var err error
+
+	if m.serial, err = serial.New(m); err != nil {
+		return fmt.Errorf("serial.New: %w", err)
+	}
+
+	// Register the same non-PCI devices as LoadLinux so that IO-port
+	// accesses from the already-running guest are handled correctly.
+	m.AddDevice(&iodev.FWDebug{})
+	m.AddDevice(iodev.NewCMOS(0xC000000, 0x0))
+	m.AddDevice(iodev.NewACPIPMTimer())
+
+	m.initIOPortHandlers()
+
+	return nil
 }

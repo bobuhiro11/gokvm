@@ -24,6 +24,7 @@ package vmm
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -44,6 +45,14 @@ const (
 	// preCopyThreshold is the fraction of total pages below which we
 	// stop pre-copying and proceed to the pause-and-finalize step.
 	preCopyThreshold = 0.01
+)
+
+var (
+	errExpectedMsgReady      = errors.New("expected MsgReady")
+	errMsgDoneBeforeSnapshot = errors.New("received MsgDone before Snapshot")
+	errUnexpectedMessageType = errors.New("unexpected message type")
+	errBitmapLengthNotMult8  = errors.New("bitmap length not a multiple of 8")
+	errPageDataTruncated     = errors.New("page data truncated")
 )
 
 // controlSocketPath returns the Unix socket path for the given PID.
@@ -178,11 +187,19 @@ func (v *VMM) MigrateTo(addr string) error {
 		}
 	}
 
-	// Step 3: pause all vCPUs.
+	// Step 3: pause all vCPUs and wait for them to actually stop so that
+	// register reads below are not racing with KVM_RUN.
 	log.Printf("migration: pausing vCPUs")
-	v.Machine.Pause()
+	v.Machine.PauseAndWait()
 
-	// Step 4: final dirty-page pass after pause.
+	// Step 3b: quiesce all I/O device threads so they cannot write to guest
+	// memory after we take the final dirty-page snapshot.  This also ensures
+	// GetState is not racing with the background threads.
+	log.Printf("migration: quiescing I/O devices")
+	v.Machine.QuiesceDevices()
+
+	// Step 4: final dirty-page pass after pause (captures any writes made by
+	// I/O threads between the pre-copy rounds and quiesce).
 	bitmap, err := v.GetAndClearDirtyBitmap()
 	if err != nil {
 		return err
@@ -222,7 +239,7 @@ func (v *VMM) MigrateTo(addr string) error {
 	}
 
 	if t != migration.MsgReady {
-		return fmt.Errorf("expected MsgReady, got %v", t)
+		return fmt.Errorf("%w: got %v", errExpectedMsgReady, t)
 	}
 
 	log.Printf("migration: complete – destination is running")
@@ -272,6 +289,11 @@ func (v *VMM) Incoming(listenAddr string) error {
 
 	v.Machine = m
 
+	// Initialise serial and IO-port handlers (normally done by LoadLinux/LoadPVH).
+	if err := m.InitForMigration(); err != nil {
+		return fmt.Errorf("InitForMigration: %w", err)
+	}
+
 	recv := migration.NewReceiver(conn)
 	sender := migration.NewSender(conn)
 
@@ -309,7 +331,7 @@ func (v *VMM) Incoming(listenAddr string) error {
 
 		case migration.MsgDone:
 			if snap == nil {
-				return fmt.Errorf("received MsgDone before Snapshot")
+				return fmt.Errorf("%w", errMsgDoneBeforeSnapshot)
 			}
 
 			if err := applySnapshot(m, snap); err != nil {
@@ -324,8 +346,12 @@ func (v *VMM) Incoming(listenAddr string) error {
 
 			return v.runRestoredVM()
 
+		case migration.MsgReady:
+			// Not expected on destination side
+			return fmt.Errorf("%w: %v", errUnexpectedMessageType, msgType)
+
 		default:
-			return fmt.Errorf("unexpected message type %v", msgType)
+			return fmt.Errorf("%w: %v", errUnexpectedMessageType, msgType)
 		}
 	}
 }
@@ -431,7 +457,7 @@ func applyDirtyPages(m *machine.Machine, bitmapBytes []byte, pageData []byte) er
 	const pageSize = 4096
 
 	if len(bitmapBytes)%8 != 0 {
-		return fmt.Errorf("bitmap length %d not a multiple of 8", len(bitmapBytes))
+		return fmt.Errorf("%w: %d", errBitmapLengthNotMult8, len(bitmapBytes))
 	}
 
 	mem := m.Mem()
@@ -446,7 +472,7 @@ func applyDirtyPages(m *machine.Machine, bitmapBytes []byte, pageData []byte) er
 
 			if word&(1<<uint(bit)) != 0 {
 				if offset+pageSize > len(pageData) {
-					return fmt.Errorf("page data truncated at page %d", pageIdx)
+					return fmt.Errorf("%w: at page %d", errPageDataTruncated, pageIdx)
 				}
 
 				if pageBase+pageSize <= len(mem) {
