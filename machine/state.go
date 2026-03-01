@@ -7,6 +7,7 @@ package machine
 import (
 	"errors"
 	"fmt"
+	"io"
 	"syscall"
 	"unsafe"
 
@@ -356,4 +357,17 @@ d.SetState(ds.Blk, m.mem)
 }
 
 return nil
+}
+
+// SaveMemory writes the full guest physical memory to w as a raw byte stream.
+func (m *Machine) SaveMemory(w io.Writer) error {
+_, err := w.Write(m.mem)
+return err
+}
+
+// RestoreMemory reads len(m.mem) bytes from r and fills guest physical memory.
+// m.mem must already be allocated (e.g. by New) with the same size as the source.
+func (m *Machine) RestoreMemory(r io.Reader) error {
+_, err := io.ReadFull(r, m.mem)
+return err
 }
