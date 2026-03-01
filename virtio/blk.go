@@ -118,6 +118,7 @@ func (v *Blk) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Blk) IOThreadEntry() {
+	v.threadWG.Add(1)
 	defer v.threadWG.Done()
 
 	log.Println("virtio-blk: IOThreadEntry started")
@@ -296,10 +297,6 @@ func (v *Blk) Close() error {
 
 	return v.file.Close()
 }
-
-// ThreadWGAdd registers n goroutines with the internal WaitGroup.
-// Must be called before the corresponding goroutines are started.
-func (v *Blk) ThreadWGAdd(n int) { v.threadWG.Add(n) }
 
 // WaitStopped blocks until the IOThread has exited.
 // Call after Close() to ensure the thread is no longer writing to guest memory.

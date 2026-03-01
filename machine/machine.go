@@ -292,7 +292,6 @@ func (m *Machine) AddTapIf(tapIfName string) error {
 
 	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
 
-	v.ThreadWGAdd(2)
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 	// 00:01.0 for Virtio net
@@ -307,7 +306,6 @@ func (m *Machine) AddDisk(diskPath string) error {
 		return err
 	}
 
-	v.ThreadWGAdd(1)
 	go v.IOThreadEntry()
 	// 00:02.0 for Virtio blk
 	m.pci.Devices = append(m.pci.Devices, v)
