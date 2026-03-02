@@ -12,8 +12,10 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/bobuhiro11/gokvm/bootparam"
@@ -138,6 +140,7 @@ var ErrMachineStopped = errors.New("machine stopped")
 
 type Machine struct {
 	kvmFd, vmFd    uintptr
+	kvmFile        *os.File // keeps /dev/kvm fd alive (prevents GC closure)
 	vcpuFds        []uintptr
 	mem            []byte
 	runs           []*kvm.RunData
@@ -146,6 +149,8 @@ type Machine struct {
 	devices        []iodev.Device
 	ioportHandlers [0x10000][2]func(port uint64, bytes []byte) error
 	stopped        uint32
+	vcpuWG         sync.WaitGroup // tracks running vCPUs; used by PauseAndWait
+	vcpuTIDs       []int32        // OS thread IDs of running vCPU goroutines
 }
 
 // Close stops vCPU goroutines and releases PCI device
@@ -153,8 +158,16 @@ type Machine struct {
 func (m *Machine) Close() error {
 	atomic.StoreUint32(&m.stopped, 1)
 
-	for _, r := range m.runs {
+	pid := os.Getpid()
+
+	for i, r := range m.runs {
 		r.ImmediateExit = 1
+
+		// Kick vCPUs that are blocked in kvm_vcpu_block (e.g. HLT) so they
+		// can observe the stopped flag and exit.
+		if tid := atomic.LoadInt32(&m.vcpuTIDs[i]); tid != 0 {
+			_ = syscall.Tgkill(pid, int(tid), syscall.SIGURG)
+		}
 	}
 
 	for _, d := range m.pci.Devices {
@@ -164,6 +177,82 @@ func (m *Machine) Close() error {
 	}
 
 	return nil
+}
+
+// Mem returns a direct slice of guest physical memory.
+// Callers must not resize the slice.
+func (m *Machine) Mem() []byte { return m.mem }
+
+// ioDeviceQuiescer is implemented by virtio devices that can synchronously
+// stop their background I/O goroutines.
+type ioDeviceQuiescer interface {
+	io.Closer
+	WaitStopped()
+}
+
+// QuiesceDevices closes all PCI I/O devices and blocks until their background
+// goroutines have exited.  This must be called (after PauseAndWait) before
+// snapshotting device state so that GetState is not racing with I/O threads.
+func (m *Machine) QuiesceDevices() {
+	for _, d := range m.pci.Devices {
+		if q, ok := d.(ioDeviceQuiescer); ok {
+			_ = q.Close()
+			q.WaitStopped()
+		}
+	}
+}
+
+// Pause stops all vCPUs by setting the stopped flag and requesting
+// immediate exit from KVM_RUN.  It does not wait for vCPUs to actually
+// exit; the vCPU goroutines will return on their next RunOnce iteration.
+// If the guest is executing HLT (kvm_vcpu_block), ImmediateExit alone is
+// not enough to wake the blocked kernel thread; a SIGURG is sent to each
+// vCPU's OS thread to kick it out of kvm_vcpu_block.
+func (m *Machine) Pause() {
+	atomic.StoreUint32(&m.stopped, 1)
+
+	pid := os.Getpid()
+
+	for i, r := range m.runs {
+		r.ImmediateExit = 1
+
+		// Kick the vCPU OS thread out of kvm_vcpu_block (reached when the
+		// guest executes HLT).  SIGURG is used because the Go runtime
+		// installs its own SIGURG handler and re-delivers the signal safely.
+		if tid := atomic.LoadInt32(&m.vcpuTIDs[i]); tid != 0 {
+			_ = syscall.Tgkill(pid, int(tid), syscall.SIGURG)
+		}
+	}
+}
+
+// PauseAndWait stops all vCPUs and blocks until every vCPU goroutine that was
+// registered via vcpuWG has exited.  Use this before snapshotting CPU state
+// during live migration so that KVM register reads are not racing with KVM_RUN.
+func (m *Machine) PauseAndWait() {
+	m.Pause()
+
+	// Wait for all tracked vCPU goroutines to exit, with a diagnostic
+	// timeout so we don't hang silently.
+	done := make(chan struct{})
+
+	go func() {
+		m.vcpuWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		log.Printf("PauseAndWait: timed out after 5s waiting for vCPUs to stop (proceeding)")
+	}
+}
+
+// TrackVCPU registers a vCPU goroutine with the WaitGroup so that
+// PauseAndWait can synchronise on all vCPUs stopping.
+func (m *Machine) TrackVCPU() func() {
+	m.vcpuWG.Add(1)
+
+	return m.vcpuWG.Done
 }
 
 // New creates a new KVM. This includes opening the kvm device, creating VM, creating
@@ -179,10 +268,12 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 
 	var err error
 
-	m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, nCpus)
+	m.kvmFile, m.kvmFd, m.vmFd, m.vcpuFds, m.runs, err = initVMandVCPU(kvmPath, nCpus)
 	if err != nil {
 		return nil, err
 	}
+
+	m.vcpuTIDs = make([]int32, nCpus)
 
 	// initCPUIDs here manually
 	for cpuNr := range m.runs {
@@ -224,6 +315,7 @@ func (m *Machine) AddTapIf(tapIfName string) error {
 	}
 
 	v := virtio.NewNet(virtioNetIRQ, m, t, m.mem)
+
 	go v.TxThreadEntry()
 	go v.RxThreadEntry()
 	// 00:01.0 for Virtio net
@@ -845,6 +937,13 @@ func (m *Machine) RunInfiniteLoop(cpu int) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	// Record this goroutine's OS thread ID so Pause() can send it a signal
+	// to kick it out of kvm_vcpu_block when the guest executes HLT.
+	tid, _, _ := syscall.Syscall(syscall.SYS_GETTID, 0, 0, 0)
+	atomic.StoreInt32(&m.vcpuTIDs[cpu], int32(tid))
+
+	defer atomic.StoreInt32(&m.vcpuTIDs[cpu], 0)
+
 	for {
 		isContinue, err := m.RunOnce(cpu)
 		if isContinue {
@@ -1221,12 +1320,12 @@ func GetReg(r *kvm.Regs, reg x86asm.Reg) (*uint64, error) {
 func initVMandVCPU(
 	kvmPath string,
 	nCpus int,
-) (uintptr, uintptr, []uintptr, []*kvm.RunData, error) {
+) (*os.File, uintptr, uintptr, []uintptr, []*kvm.RunData, error) {
 	var err error
 
 	devKVM, err := os.OpenFile(kvmPath, os.O_RDWR, 0o644)
 	if err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	kvmFd := devKVM.Fd()
@@ -1235,51 +1334,54 @@ func initVMandVCPU(
 	runs := make([]*kvm.RunData, nCpus)
 
 	if vmFd, err = kvm.CreateVM(kvmFd); err != nil {
-		return 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
+		return nil, 0, 0, nil, nil, fmt.Errorf("CreateVM: %w", err)
 	}
 
 	if err := kvm.SetTSSAddr(vmFd, pvh.KVMTSSStart); err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.SetIdentityMapAddr(vmFd, pvh.KVMIdentityMapStart); err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.CreateIRQChip(vmFd); err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	if err := kvm.CreatePIT2(vmFd); err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	mmapSize, err := kvm.GetVCPUMMmapSize(kvmFd)
 	if err != nil {
-		return 0, 0, nil, nil, err
+		return nil, 0, 0, nil, nil, err
 	}
 
 	for cpu := 0; cpu < nCpus; cpu++ {
 		// Create vCPU
 		vcpuFds[cpu], err = kvm.CreateVCPU(vmFd, cpu)
 		if err != nil {
-			return 0, 0, nil, nil, err
+			return nil, 0, 0, nil, nil, err
 		}
 
 		// init kvm_run structure
 		r, err := syscall.Mmap(int(vcpuFds[cpu]), 0, int(mmapSize),
 			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
-			return 0, 0, nil, nil, err
+			return nil, 0, 0, nil, nil, err
 		}
 
 		runs[cpu] = (*kvm.RunData)(unsafe.Pointer(&r[0]))
 	}
 
-	return kvmFd, vmFd, vcpuFds, runs, nil
+	return devKVM, kvmFd, vmFd, vcpuFds, runs, nil
 }
 
 func (m *Machine) VCPU(stdout io.Writer, cpu, traceCount int) error {
+	done := m.TrackVCPU()
+	defer done()
+
 	trace := traceCount > 0
 
 	var err error
@@ -1319,4 +1421,26 @@ func (m *Machine) GetSerial() *serial.Serial {
 
 func (m *Machine) AddDevice(dev iodev.Device) {
 	m.devices = append(m.devices, dev)
+}
+
+// InitForMigration initialises the serial device and IO-port handlers on a
+// machine that was created by New() without loading a kernel.  It must be
+// called on the migration destination before restoring device state and
+// starting the vCPU goroutines.
+func (m *Machine) InitForMigration() error {
+	var err error
+
+	if m.serial, err = serial.New(m); err != nil {
+		return fmt.Errorf("serial.New: %w", err)
+	}
+
+	// Register the same non-PCI devices as LoadLinux so that IO-port
+	// accesses from the already-running guest are handled correctly.
+	m.AddDevice(&iodev.FWDebug{})
+	m.AddDevice(iodev.NewCMOS(0xC000000, 0x0))
+	m.AddDevice(iodev.NewACPIPMTimer())
+
+	m.initIOPortHandlers()
+
+	return nil
 }
