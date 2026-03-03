@@ -151,6 +151,7 @@ type Machine struct {
 	stopped        uint32
 	vcpuWG         sync.WaitGroup // tracks running vCPUs; used by PauseAndWait
 	vcpuTIDs       []int32        // OS thread IDs of running vCPU goroutines
+	msrIndices     []uint32       // cached MSR index list (immutable after init)
 }
 
 // Close stops vCPU goroutines and releases PCI device
@@ -274,6 +275,11 @@ func New(kvmPath string, nCpus int, memSize int) (*Machine, error) {
 	}
 
 	m.vcpuTIDs = make([]int32, nCpus)
+
+	// Cache the MSR index list immediately while the kvm fd is fresh.
+	if _, err := m.msrIndexList(); err != nil {
+		return nil, fmt.Errorf("msrIndexList init: %w", err)
+	}
 
 	// initCPUIDs here manually
 	for cpuNr := range m.runs {

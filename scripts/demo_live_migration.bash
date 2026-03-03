@@ -295,7 +295,17 @@ dst "waiting to receive VM state + disk ..."
 
 MIGRATE_OUT="$("$GOKVM" migrate -s "$SOCK" -to "$DST_LISTEN" 2>&1)"
 if echo "$MIGRATE_OUT" | grep -q "OK"; then
-    src "migration complete: $MIGRATE_OUT"
+    src "migration complete"
+    # Print each stats line with ok() formatting
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        case "$line" in
+            OK) ;;
+            memory:*) ok "$line" ;;
+            disk:*)   ok "$line" ;;
+            *)        info "  $line" ;;
+        esac
+    done <<< "$MIGRATE_OUT"
 else
     fail "migration returned: $MIGRATE_OUT"
     exit 1
@@ -396,4 +406,10 @@ info "Summary:"
 info "  block storage : src disk marker transferred to dst ✅"
 info "  ping          : DST VM responds at ${GUEST_IP} after migration ✅"
 info "  curl          : HTTP content from disk unchanged after migration ✅"
+echo ""
+info "Transfer statistics:"
+MEM_LINE="$(echo "$MIGRATE_OUT" | grep '^memory:')"
+DISK_LINE="$(echo "$MIGRATE_OUT" | grep '^disk:')"
+[ -n "$MEM_LINE"  ] && info "  $MEM_LINE"
+[ -n "$DISK_LINE" ] && info "  $DISK_LINE"
 echo ""

@@ -37,6 +37,28 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// MigrateStats holds transfer statistics for a completed live migration.
+type MigrateStats struct {
+	MemBytes   int64 // total guest-memory bytes sent (full + dirty rounds)
+	MemPages   int64 // total guest-memory pages sent
+	DiskBytes  int64 // disk image bytes sent (0 if no disk)
+	DiskBlocks int64 // disk image 512-byte blocks sent (0 if no disk)
+}
+
+func (s MigrateStats) String() string {
+	mem := fmt.Sprintf("memory: %d bytes (%d pages, %d MiB)",
+		s.MemBytes, s.MemPages, s.MemBytes>>20)
+
+	if s.DiskBytes == 0 {
+		return mem
+	}
+
+	disk := fmt.Sprintf("disk:   %d bytes (%d blocks, %d MiB)",
+		s.DiskBytes, s.DiskBlocks, s.DiskBytes>>20)
+
+	return mem + "\n" + disk
+}
+
 const (
 	// maxPreCopyRounds is the maximum number of dirty-page iterations
 	// before the VM is paused for the final transfer.
@@ -119,11 +141,12 @@ func (v *VMM) handleControl(conn net.Conn) {
 		addr := strings.TrimPrefix(line, "MIGRATE ")
 		addr = strings.TrimSpace(addr)
 
-		if err := v.MigrateTo(addr); err != nil {
+		stats, err := v.MigrateTo(addr)
+		if err != nil {
 			log.Printf("migration to %q failed: %v", addr, err)
 			_, _ = conn.Write([]byte("ERROR " + err.Error() + "\n"))
 		} else {
-			_, _ = conn.Write([]byte("OK\n"))
+			_, _ = conn.Write([]byte("OK\n" + stats.String() + "\n"))
 		}
 	} else {
 		_, _ = conn.Write([]byte("ERROR unknown command\n"))
@@ -133,21 +156,23 @@ func (v *VMM) handleControl(conn net.Conn) {
 // MigrateTo performs a live migration of the running VM to the given TCP
 // address (host:port).  The source VM is paused for only the final state
 // transfer; memory is streamed to the destination while the VM runs.
-func (v *VMM) MigrateTo(addr string) error {
+func (v *VMM) MigrateTo(addr string) (*MigrateStats, error) {
 	log.Printf("migration: connecting to %s", addr)
 
 	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
-		return fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 
 	defer conn.Close()
 
 	sender := migration.NewSender(conn)
 
+	var stats MigrateStats
+
 	// Step 1: enable dirty-page tracking on the guest memory.
 	if err := v.EnableDirtyTracking(); err != nil {
-		return fmt.Errorf("EnableDirtyTracking: %w", err)
+		return nil, fmt.Errorf("EnableDirtyTracking: %w", err)
 	}
 
 	totalPages := len(v.Machine.Mem()) / 4096
@@ -156,14 +181,17 @@ func (v *VMM) MigrateTo(addr string) error {
 	log.Printf("migration: sending full memory (%d MiB)", len(v.Machine.Mem())>>20)
 
 	if err := sender.SendMemoryFull(v.Machine.Mem()); err != nil {
-		return fmt.Errorf("SendMemoryFull: %w", err)
+		return nil, fmt.Errorf("SendMemoryFull: %w", err)
 	}
+
+	stats.MemBytes += int64(len(v.Machine.Mem()))
+	stats.MemPages += int64(totalPages)
 
 	// Step 2b: iterative dirty-page rounds.
 	for round := 0; round < maxPreCopyRounds; round++ {
 		bitmap, err := v.GetAndClearDirtyBitmap()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// Count dirty pages.
@@ -180,12 +208,15 @@ func (v *VMM) MigrateTo(addr string) error {
 
 		bitmapBytes, pageData, err := collectDirtyPages(v.Machine, bitmap)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := sender.SendMemoryDirty(bitmapBytes, pageData); err != nil {
-			return fmt.Errorf("SendMemoryDirty round %d: %w", round+1, err)
+			return nil, fmt.Errorf("SendMemoryDirty round %d: %w", round+1, err)
 		}
+
+		stats.MemBytes += int64(len(pageData))
+		stats.MemPages += int64(dirty)
 	}
 
 	// Step 3: pause all vCPUs and wait for them to actually stop so that
@@ -206,12 +237,15 @@ func (v *VMM) MigrateTo(addr string) error {
 
 		diskData, err := os.ReadFile(v.Disk)
 		if err != nil {
-			return fmt.Errorf("read disk %s: %w", v.Disk, err)
+			return nil, fmt.Errorf("read disk %s: %w", v.Disk, err)
 		}
 
 		if err := sender.SendDiskFull(diskData); err != nil {
-			return fmt.Errorf("SendDiskFull: %w", err)
+			return nil, fmt.Errorf("SendDiskFull: %w", err)
 		}
+
+		stats.DiskBytes = int64(len(diskData))
+		stats.DiskBlocks = int64(len(diskData)+511) / 512
 
 		log.Printf("migration: disk image sent (%d MiB)", len(diskData)>>20)
 	}
@@ -220,44 +254,48 @@ func (v *VMM) MigrateTo(addr string) error {
 	// I/O threads between the pre-copy rounds and quiesce).
 	bitmap, err := v.GetAndClearDirtyBitmap()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	bitmapBytes, pageData, err := collectDirtyPages(v.Machine, bitmap)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(pageData) > 0 {
 		if err := sender.SendMemoryDirty(bitmapBytes, pageData); err != nil {
-			return fmt.Errorf("SendMemoryDirty final: %w", err)
+			return nil, fmt.Errorf("SendMemoryDirty final: %w", err)
 		}
+
+		finalDirty := len(pageData) / 4096
+		stats.MemBytes += int64(len(pageData))
+		stats.MemPages += int64(finalDirty)
 	}
 
 	// Step 5: collect and send the VM snapshot.
 	snap, err := buildSnapshot(v)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := sender.SendSnapshot(snap); err != nil {
-		return fmt.Errorf("SendSnapshot: %w", err)
+		return nil, fmt.Errorf("SendSnapshot: %w", err)
 	}
 
 	// Step 6: signal done and wait for destination acknowledgement.
 	if err := sender.SendDone(); err != nil {
-		return err
+		return nil, err
 	}
 
 	recv := migration.NewReceiver(conn)
 
 	t, _, err := recv.Next()
 	if err != nil {
-		return fmt.Errorf("waiting for MsgReady: %w", err)
+		return nil, fmt.Errorf("waiting for MsgReady: %w", err)
 	}
 
 	if t != migration.MsgReady {
-		return fmt.Errorf("%w: got %v", errExpectedMsgReady, t)
+		return nil, fmt.Errorf("%w: got %v", errExpectedMsgReady, t)
 	}
 
 	log.Printf("migration: complete – destination is running")
@@ -265,7 +303,7 @@ func (v *VMM) MigrateTo(addr string) error {
 	// Step 7: terminate the source.
 	v.Machine.Close()
 
-	return nil
+	return &stats, nil
 }
 
 // Incoming listens on listenAddr for an incoming migration and, once

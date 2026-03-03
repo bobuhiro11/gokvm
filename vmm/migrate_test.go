@@ -171,10 +171,12 @@ func TestDiskMigration(t *testing.T) { //nolint:paralleltest
 	// ── Trigger live migration ───────────────────────────────────────────────
 	t.Logf("starting live migration to %s …", migListenAddr)
 
-	if err := src.MigrateTo(migListenAddr); err != nil {
+	stats, err := src.MigrateTo(migListenAddr)
+	if err != nil {
 		t.Fatalf("MigrateTo: %v", err)
 	}
 
+	t.Logf("MigrateTo stats: %s", stats)
 	t.Logf("MigrateTo returned (src VM stopped) at %s", time.Now().Format(time.RFC3339))
 
 	// ── Verify disk contents ─────────────────────────────────────────────────

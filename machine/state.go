@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -46,7 +47,12 @@ func cloneBytes(s []byte) []byte {
 }
 
 // msrIndexList retrieves the list of MSR indices supported by this KVM instance.
+// The result is cached after the first call; KVM's MSR list is static per instance.
 func (m *Machine) msrIndexList() ([]uint32, error) {
+	if m.msrIndices != nil {
+		return m.msrIndices, nil
+	}
+
 	list := &kvm.MSRList{}
 
 	// First call: E2BIG tells us how many entries are available.
@@ -60,10 +66,13 @@ func (m *Machine) msrIndexList() ([]uint32, error) {
 		return nil, fmt.Errorf("GetMSRIndexList fetch: %w", err)
 	}
 
-	indices := make([]uint32, list.NMSRs)
-	copy(indices, list.Indicies[:list.NMSRs])
+	m.msrIndices = make([]uint32, list.NMSRs)
+	copy(m.msrIndices, list.Indicies[:list.NMSRs])
 
-	return indices, nil
+	// Ensure m (and thus m.kvmFile) stays alive until the ioctl is done.
+	runtime.KeepAlive(m)
+
+	return m.msrIndices, nil
 }
 
 // SaveCPUState captures the full architectural state of one vCPU.

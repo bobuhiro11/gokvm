@@ -59,11 +59,22 @@ func main() {
 			log.Fatal(err)
 		}
 
-		resp := make([]byte, 256)
+		var resp []byte
 
-		n, _ := conn.Read(resp)
+		buf := make([]byte, 512)
 
-		fmt.Printf("%s", resp[:n])
+		for {
+			n, readErr := conn.Read(buf)
+			if n > 0 {
+				resp = append(resp, buf[:n]...)
+			}
+
+			if readErr != nil {
+				break
+			}
+		}
+
+		fmt.Printf("%s", resp)
 
 		conn.Close()
 	}
