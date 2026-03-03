@@ -177,15 +177,17 @@ func CreateVCPU(vmFd uintptr, vcpuID int) (uintptr, error) {
 
 // Run runs a single vcpu from the vcpufd from createvcpu.
 func Run(vcpuFd uintptr) error {
-	_, err := Ioctl(vcpuFd, IIO(kvmRun), uintptr(0))
-	if err != nil {
-		// refs: https://github.com/kvmtool/kvmtool/blob/415f92c33a227c02f6719d4594af6fad10f07abf/kvm-cpu.c#L44
-		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
-			return nil
-		}
+	// KVM_RUN must NOT retry on EINTR: EINTR (and EAGAIN) are normal exits
+	// caused by signal delivery or ImmediateExit=1.  The generic Ioctl helper
+	// retries on EINTR, which would spin forever when ImmediateExit is set, so
+	// we call the syscall directly here.
+	// refs: https://github.com/kvmtool/kvmtool/blob/415f92c33a227c02f6719d4594af6fad10f07abf/kvm-cpu.c#L44
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, vcpuFd, IIO(kvmRun), 0)
+	if errno == syscall.EAGAIN || errno == syscall.EINTR || errno == 0 {
+		return nil
 	}
 
-	return err
+	return errno
 }
 
 // GetVCPUMmapSize returns the size of the VCPU region. This size is

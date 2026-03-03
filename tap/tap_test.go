@@ -9,9 +9,18 @@ import (
 	"github.com/bobuhiro11/gokvm/tap"
 )
 
+func requireCAP(t *testing.T, err error) {
+	t.Helper()
+
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		t.Skip("requires CAP_NET_ADMIN: ", err)
+	}
+}
+
 func TestNew(t *testing.T) { // nolint:paralleltest
 	tap, err := tap.New("test_tap")
 	if err != nil {
+		requireCAP(t, err)
 		t.Fatal(err)
 	}
 
@@ -24,6 +33,7 @@ func TestNew(t *testing.T) { // nolint:paralleltest
 func TestWrite(t *testing.T) { // nolint:paralleltest
 	tap, err := tap.New("test_write")
 	if err != nil {
+		requireCAP(t, err)
 		t.Fatal(err)
 	}
 
@@ -43,6 +53,7 @@ func TestWrite(t *testing.T) { // nolint:paralleltest
 func TestRead(t *testing.T) { // nolint:paralleltest
 	tap, err := tap.New("test_read")
 	if err != nil {
+		requireCAP(t, err)
 		t.Fatal(err)
 	}
 

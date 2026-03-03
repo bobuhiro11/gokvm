@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-var ErrorInvalidSubcommands = errors.New("expected 'boot' or 'probe' subcommands")
+var ErrorInvalidSubcommands = errors.New("expected 'boot', 'probe', 'incoming', or 'migrate' subcommands")
+
+var errMigrateRequiredArgs = errors.New("migrate: -s <sock> and -to <addr> are required")
 
 type BootArgs struct {
 	Kernel     string
@@ -69,6 +71,65 @@ func parseBootArgs(args []string) (*BootArgs, error) {
 
 type ProbeArgs struct{}
 
+// IncomingArgs holds arguments for the 'incoming' subcommand (migration destination).
+type IncomingArgs struct {
+	Listen    string // TCP address to listen on, e.g. ":4444"
+	Dev       string
+	MemSize   int
+	NCPUs     int
+	TapIfName string
+	Disk      string
+}
+
+// MigrateArgs holds arguments for the 'migrate' subcommand.
+type MigrateArgs struct {
+	Sock string // path to the source VM control socket
+	To   string // destination address, e.g. "host:4444"
+}
+
+func parseIncomingArgs(args []string) (*IncomingArgs, error) {
+	cmd := flag.NewFlagSet("incoming subcommand", flag.ExitOnError)
+	c := &IncomingArgs{}
+
+	cmd.StringVar(&c.Listen, "l", ":4444", "TCP address to listen for incoming migration")
+	cmd.StringVar(&c.Dev, "D", "/dev/kvm", "path of kvm device")
+	cmd.StringVar(&c.TapIfName, "t", "", "name of tap interface")
+	cmd.StringVar(&c.Disk, "d", "", "path of disk file (for /dev/vda)")
+	cmd.IntVar(&c.NCPUs, "c", 1, "number of cpus (must match source)")
+
+	msize := cmd.String("m", "1G", "memory size (must match source)")
+
+	if err := cmd.Parse(args); err != nil {
+		return nil, err
+	}
+
+	var err error
+
+	if c.MemSize, err = ParseSize(*msize, "g"); err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func parseMigrateArgs(args []string) (*MigrateArgs, error) {
+	cmd := flag.NewFlagSet("migrate subcommand", flag.ExitOnError)
+	c := &MigrateArgs{}
+
+	cmd.StringVar(&c.Sock, "s", "", "path to the source VM control socket (e.g. /tmp/gokvm-<pid>.sock)")
+	cmd.StringVar(&c.To, "to", "", "destination address (host:port)")
+
+	if err := cmd.Parse(args); err != nil {
+		return nil, err
+	}
+
+	if c.Sock == "" || c.To == "" {
+		return nil, errMigrateRequiredArgs
+	}
+
+	return c, nil
+}
+
 func parseProbeArgs(args []string) (*ProbeArgs, error) {
 	probeCmd := flag.NewFlagSet("probe subcommand", flag.ExitOnError)
 	c := &ProbeArgs{}
@@ -80,24 +141,34 @@ func parseProbeArgs(args []string) (*ProbeArgs, error) {
 	return c, nil
 }
 
-func ParseArgs(args []string) (*BootArgs, *ProbeArgs, error) {
+func ParseArgs(args []string) (*BootArgs, *ProbeArgs, *IncomingArgs, *MigrateArgs, error) {
 	if len(args) < 2 {
-		return nil, nil, ErrorInvalidSubcommands
+		return nil, nil, nil, nil, ErrorInvalidSubcommands
 	}
 
 	switch args[1] {
 	case "boot":
 		conf, err := parseBootArgs(args[2:])
 
-		return conf, nil, err
+		return conf, nil, nil, nil, err
 
 	case "probe":
 		conf, err := parseProbeArgs(args[2:])
 
-		return nil, conf, err
+		return nil, conf, nil, nil, err
+
+	case "incoming":
+		conf, err := parseIncomingArgs(args[2:])
+
+		return nil, nil, conf, nil, err
+
+	case "migrate":
+		conf, err := parseMigrateArgs(args[2:])
+
+		return nil, nil, nil, conf, err
 	}
 
-	return nil, nil, ErrorInvalidSubcommands
+	return nil, nil, nil, nil, ErrorInvalidSubcommands
 }
 
 // ParseSize parses a size string as number[gGmMkK]. The multiplier is optional,
