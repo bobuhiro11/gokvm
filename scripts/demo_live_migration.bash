@@ -38,6 +38,7 @@ info()  { echo -e "  $*"; }
 ok()    { echo -e "  ${GREEN}✅ $*${RESET}"; }
 fail()  { echo -e "  ${RED}❌ $*${RESET}"; }
 banner(){ echo -e "${CYAN}${BOLD}$*${RESET}"; }
+cmd()   { printf "    \033[1m%s\033[0m\n" "$*"; }
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -155,6 +156,14 @@ dst "tap $TAP_DST up  (host ${DST_HOST_IP}/24 ↔ guest ${GUEST_IP}/24 after mig
 # ── STEP 2: Start DST VM (incoming migration listener) ────────────────────────
 step "STEP 2: Starting DST VM (waiting for incoming migration)"
 
+DST_CMD="$GOKVM incoming -l $DST_LISTEN -c 1 -m 512M -t $TAP_DST -d $DST_DISK"
+dst "command:"
+cmd "$GOKVM incoming \\"
+cmd "  -l $DST_LISTEN \\"
+cmd "  -c 1 -m 512M \\"
+cmd "  -t $TAP_DST \\"
+cmd "  -d $DST_DISK"
+
 "$GOKVM" incoming \
     -l "$DST_LISTEN" \
     -c 1 -m 512M \
@@ -168,6 +177,17 @@ sleep 0.5
 
 # ── STEP 3: Boot SRC VM ───────────────────────────────────────────────────────
 step "STEP 3: Booting SRC VM"
+
+src "command:"
+cmd "$GOKVM boot \\"
+cmd "  -c 1 -m 512M \\"
+cmd "  -k $BZIMAGE \\"
+cmd "  -i $INITRD \\"
+cmd "  -t $TAP_SRC \\"
+cmd "  -d $SRC_DISK \\"
+cmd "  -p \"console=ttyS0 earlyprintk=serial noapic noacpi notsc lapic tsc_early_khz=2000\""
+cmd "     \"pci=realloc=off virtio_pci.force_legacy=1 rdinit=/init init=/init\""
+cmd "     \"gokvm.ipv4_addr=${GUEST_IP}/${PREFIX}\""
 
 # shellcheck disable=SC2086
 "$GOKVM" boot \
@@ -269,6 +289,8 @@ fi
 
 src "control socket: $SOCK"
 src "migrating to $DST_LISTEN ..."
+src "command:"
+cmd "$GOKVM migrate -s $SOCK -to $DST_LISTEN"
 dst "waiting to receive VM state + disk ..."
 
 MIGRATE_OUT="$("$GOKVM" migrate -s "$SOCK" -to "$DST_LISTEN" 2>&1)"
