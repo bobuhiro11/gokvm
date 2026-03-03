@@ -9,11 +9,13 @@ package machine_test
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"os"
 	"testing"
 
 	"github.com/bobuhiro11/gokvm/machine"
+	"github.com/bobuhiro11/gokvm/migration"
 )
 
 // newTestMachine creates a minimal KVM machine for state tests.
@@ -265,6 +267,233 @@ func TestRestoreMemoryShortRead(t *testing.T) { //nolint:paralleltest
 
 	if err := m.RestoreMemory(short); err == nil {
 		t.Fatal("expected error for short read, got nil")
+	}
+}
+
+// TestSaveCPUStateInvalidCPU verifies that SaveCPUState returns an error when
+// the cpu index is out of range (CPUToFD fails).
+func TestSaveCPUStateInvalidCPU(t *testing.T) { //nolint:paralleltest
+	m := newTestMachine(t)
+
+	if _, err := m.SaveCPUState(99); err == nil {
+		t.Fatal("expected error for cpu=99, got nil")
+	}
+}
+
+// TestRestoreVMStateDecodeClock verifies that RestoreVMState returns an error
+// when the Clock field bytes are nil (too few bytes for kvm.ClockData).
+func TestRestoreVMStateDecodeClock(t *testing.T) { //nolint:paralleltest
+	m := newTestMachine(t)
+
+	if err := m.RestoreVMState(&migration.VMState{}); err == nil {
+		t.Fatal("expected error from nil Clock, got nil")
+	}
+}
+
+// TestRestoreVMStateDecodeIRQChip verifies an error when IRQChipPIC0 is nil
+// but Clock bytes are valid (SetClock succeeds, IRQChip decode fails).
+func TestRestoreVMStateDecodeIRQChip(t *testing.T) { //nolint:paralleltest
+	src := newTestMachine(t)
+
+	vmState, err := src.SaveVMState()
+	if err != nil {
+		t.Fatalf("SaveVMState: %v", err)
+	}
+
+	dst := newTestMachine(t)
+
+	// Valid clock but nil PIC0 → decode IRQChip fails.
+	if err := dst.RestoreVMState(&migration.VMState{Clock: vmState.Clock}); err == nil {
+		t.Fatal("expected error for nil IRQChipPIC0, got nil")
+	}
+}
+
+// TestRestoreVMStateDecodePIT2 verifies an error when PIT2 is nil but Clock
+// and all IRQChip bytes are valid.
+func TestRestoreVMStateDecodePIT2(t *testing.T) { //nolint:paralleltest
+	src := newTestMachine(t)
+
+	vmState, err := src.SaveVMState()
+	if err != nil {
+		t.Fatalf("SaveVMState: %v", err)
+	}
+
+	dst := newTestMachine(t)
+
+	// Valid clock + IRQChips but nil PIT2 → decode PIT2 fails.
+	bad := &migration.VMState{
+		Clock:         vmState.Clock,
+		IRQChipPIC0:   vmState.IRQChipPIC0,
+		IRQChipPIC1:   vmState.IRQChipPIC1,
+		IRQChipIOAPIC: vmState.IRQChipIOAPIC,
+	}
+
+	if err := dst.RestoreVMState(bad); err == nil {
+		t.Fatal("expected error for nil PIT2, got nil")
+	}
+}
+
+// TestRestoreCPUStateInvalidCPU verifies CPUToFD returns an error for an
+// out-of-range CPU index.
+func TestRestoreCPUStateInvalidCPU(t *testing.T) { //nolint:paralleltest
+	m := newTestMachine(t)
+
+	if err := m.RestoreCPUState(-1, &migration.VCPUState{}); err == nil {
+		t.Fatal("expected error for cpu=-1, got nil")
+	}
+}
+
+// TestRestoreCPUStateNilFields exercises each copyStruct decode error path in
+// RestoreCPUState by leaving one field nil while providing valid bytes for
+// all preceding fields.
+func TestRestoreCPUStateNilFields(t *testing.T) { //nolint:paralleltest
+	src := newTestMachine(t)
+
+	state, err := src.SaveCPUState(0)
+	if err != nil {
+		t.Fatalf("SaveCPUState: %v", err)
+	}
+
+	dst := newTestMachine(t)
+
+	// Nil Regs → decode Regs fails.
+	if err := dst.RestoreCPUState(0, &migration.VCPUState{}); err == nil {
+		t.Error("expected error for nil Regs, got nil")
+	}
+
+	// Nil Sregs → decode Sregs fails (Regs valid).
+	if err := dst.RestoreCPUState(0, &migration.VCPUState{
+		Regs: state.Regs,
+	}); err == nil {
+		t.Error("expected error for nil Sregs, got nil")
+	}
+
+	// Nil LAPIC → decode LAPIC fails (Regs, Sregs, MSRs valid).
+	if err := dst.RestoreCPUState(0, &migration.VCPUState{
+		Regs: state.Regs, Sregs: state.Sregs, MSRs: state.MSRs,
+	}); err == nil {
+		t.Error("expected error for nil LAPIC, got nil")
+	}
+
+	// Nil Events → decode Events fails (Regs through LAPIC valid).
+	if err := dst.RestoreCPUState(0, &migration.VCPUState{
+		Regs: state.Regs, Sregs: state.Sregs, MSRs: state.MSRs,
+		LAPIC: state.LAPIC,
+	}); err == nil {
+		t.Error("expected error for nil Events, got nil")
+	}
+
+	// Nil DebugRegs → decode DebugRegs fails (Regs through Events valid).
+	if err := dst.RestoreCPUState(0, &migration.VCPUState{
+		Regs: state.Regs, Sregs: state.Sregs, MSRs: state.MSRs,
+		LAPIC: state.LAPIC, Events: state.Events,
+	}); err == nil {
+		t.Error("expected error for nil DebugRegs, got nil")
+	}
+
+	// Nil XCRS → decode XCRS fails (Regs through DebugRegs valid).
+	if err := dst.RestoreCPUState(0, &migration.VCPUState{
+		Regs: state.Regs, Sregs: state.Sregs, MSRs: state.MSRs,
+		LAPIC: state.LAPIC, Events: state.Events, DebugRegs: state.DebugRegs,
+	}); err == nil {
+		t.Error("expected error for nil XCRS, got nil")
+	}
+}
+
+// errWriter is an io.Writer that always returns an error.
+type errWriter struct{}
+
+var errSimulatedWrite = errors.New("simulated write error")
+
+func (errWriter) Write([]byte) (int, error) {
+	return 0, errSimulatedWrite
+}
+
+// TestTransferDirtyPagesOutOfRange verifies that TransferDirtyPages skips
+// (breaks) when a set bitmap bit would map to a page beyond guest memory.
+func TestTransferDirtyPagesOutOfRange(t *testing.T) { //nolint:paralleltest
+	m := newTestMachine(t)
+
+	// MinMemSize = 32 MiB → 8192 pages → 128 bitmap words.
+	// Adding word 128 with bit 0 set → page 8192 → offset = 32 MiB → out of range.
+	bitmap := make([]uint64, 129)
+	bitmap[128] = 1
+
+	count, err := m.TransferDirtyPages(&bytes.Buffer{}, bitmap)
+	if err != nil {
+		t.Fatalf("TransferDirtyPages: %v", err)
+	}
+
+	if count != 0 {
+		t.Errorf("expected 0 pages transferred (out-of-range skipped), got %d", count)
+	}
+}
+
+// TestTransferDirtyPagesWriteError verifies that TransferDirtyPages propagates
+// a writer error when a dirty page cannot be written.
+func TestTransferDirtyPagesWriteError(t *testing.T) { //nolint:paralleltest
+	m := newTestMachine(t)
+
+	// Mark page 0 as dirty.
+	bitmap := make([]uint64, (len(m.Mem())/4096+63)/64)
+	bitmap[0] = 1
+
+	_, err := m.TransferDirtyPages(errWriter{}, bitmap)
+	if err == nil {
+		t.Fatal("expected write error, got nil")
+	}
+}
+
+// TestSaveRestoreDeviceStateWithDevices exercises the serial, Net, and Blk
+// branches of SaveDeviceState and RestoreDeviceState using a machine that has
+// all three device types attached.
+func TestSaveRestoreDeviceStateWithDevices(t *testing.T) { //nolint:paralleltest
+	m := newTestMachine(t)
+
+	// InitForMigration attaches serial.
+	if err := m.InitForMigration(); err != nil {
+		t.Fatalf("InitForMigration: %v", err)
+	}
+
+	// AddTapIf attaches a virtio-net device.
+	if err := m.AddTapIf("tap-state-test"); err != nil {
+		t.Fatalf("AddTapIf: %v", err)
+	}
+
+	// AddDisk attaches a virtio-blk device.
+	tmp, err := os.CreateTemp(t.TempDir(), "disk*.img")
+	if err != nil {
+		t.Fatalf("create tmp disk: %v", err)
+	}
+
+	// Minimum disk size for virtio-blk (at least one sector).
+	if err := tmp.Truncate(512); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	tmp.Close()
+
+	if err := m.AddDisk(tmp.Name()); err != nil {
+		t.Fatalf("AddDisk: %v", err)
+	}
+
+	// SaveDeviceState should capture serial, net, and blk state.
+	ds, err := m.SaveDeviceState()
+	if err != nil {
+		t.Fatalf("SaveDeviceState: %v", err)
+	}
+
+	if ds.Net == nil {
+		t.Error("SaveDeviceState: Net state is nil")
+	}
+
+	if ds.Blk == nil {
+		t.Error("SaveDeviceState: Blk state is nil")
+	}
+
+	// RestoreDeviceState should apply all non-nil device states.
+	if err := m.RestoreDeviceState(ds); err != nil {
+		t.Fatalf("RestoreDeviceState: %v", err)
 	}
 }
 

@@ -6,4 +6,5 @@ package vmm
 var (
 	ControlSocketPath = controlSocketPath //nolint:gochecknoglobals
 	ApplyDirtyPages   = applyDirtyPages   //nolint:gochecknoglobals
+	ApplySnapshot     = applySnapshot     //nolint:gochecknoglobals
 )
