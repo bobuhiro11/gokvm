@@ -1216,8 +1216,8 @@ func show(indent string, l ...interface{}) string {
 
 // CPUToFD translates a CPU number to an fd.
 func (m *Machine) CPUToFD(cpu int) (uintptr, error) {
-	if cpu > len(m.vcpuFds) {
-		return 0, fmt.Errorf("cpu %d out of range 0-%d:%w", cpu, len(m.vcpuFds), ErrBadCPU)
+	if cpu < 0 || cpu >= len(m.vcpuFds) {
+		return 0, fmt.Errorf("cpu %d out of range 0-%d:%w", cpu, len(m.vcpuFds)-1, ErrBadCPU)
 	}
 
 	return m.vcpuFds[cpu], nil
