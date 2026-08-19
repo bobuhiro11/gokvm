@@ -697,6 +697,15 @@ func TestCPUtoFD(t *testing.T) {
 	if _, err := m.CPUToFD(42); !errors.Is(err, machine.ErrBadCPU) {
 		t.Errorf("m.CPUtoFD(42): got nil, want %v", machine.ErrBadCPU)
 	}
+
+	// The machine has a single vCPU, so index 1 is one past the end.
+	if _, err := m.CPUToFD(1); !errors.Is(err, machine.ErrBadCPU) {
+		t.Errorf("m.CPUtoFD(1): got %v, want %v", err, machine.ErrBadCPU)
+	}
+
+	if _, err := m.CPUToFD(-1); !errors.Is(err, machine.ErrBadCPU) {
+		t.Errorf("m.CPUtoFD(-1): got %v, want %v", err, machine.ErrBadCPU)
+	}
 }
 
 func TestVtoP(t *testing.T) {

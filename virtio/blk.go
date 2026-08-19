@@ -9,6 +9,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/bobuhiro11/gokvm/migration"
 	"github.com/bobuhiro11/gokvm/pci"
 )
 
@@ -48,6 +49,7 @@ type Blk struct {
 	kick      chan interface{}
 	done      chan struct{}
 	closeOnce sync.Once
+	threadWG  sync.WaitGroup // tracks IOThread goroutine
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -116,6 +118,9 @@ func (v *Blk) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Blk) IOThreadEntry() {
+	v.threadWG.Add(1)
+	defer v.threadWG.Done()
+
 	log.Println("virtio-blk: IOThreadEntry started")
 
 	ticker := time.NewTicker(1 * time.Millisecond)
@@ -291,6 +296,53 @@ func (v *Blk) Close() error {
 	v.closeOnce.Do(func() { close(v.done) })
 
 	return v.file.Close()
+}
+
+// WaitStopped blocks until the IOThread has exited.
+// Call after Close() to ensure the thread is no longer writing to guest memory.
+func (v *Blk) WaitStopped() { v.threadWG.Wait() }
+
+// GetState returns the host-side state of the virtio-blk device.
+// The caller must ensure the I/O thread is not running concurrently.
+func (v *Blk) GetState() *migration.BlkState {
+	s := &migration.BlkState{}
+
+	// Capture header as raw bytes (preserves blank-identifier padding fields).
+	hdrBytes := make([]byte, unsafe.Sizeof(v.Hdr))
+	copy(hdrBytes, unsafe.Slice((*byte)(unsafe.Pointer(&v.Hdr)), unsafe.Sizeof(v.Hdr)))
+	s.HdrBytes = hdrBytes
+
+	s.LastAvailIdx = v.LastAvailIdx
+
+	// Record the guest physical address of each initialised virtqueue.
+	for i, vq := range v.VirtQueue {
+		if vq != nil {
+			s.QueuePhysAddr[i] = uint64(uintptr(unsafe.Pointer(vq)) - uintptr(unsafe.Pointer(&v.Mem[0])))
+		}
+	}
+
+	return s
+}
+
+// SetState restores the host-side state of the virtio-blk device.
+// mem must be the fully restored guest memory for this machine.
+// The caller must ensure the I/O thread is not running concurrently.
+func (v *Blk) SetState(s *migration.BlkState, mem []byte) {
+	if len(s.HdrBytes) > 0 {
+		sz := int(unsafe.Sizeof(v.Hdr))
+		if len(s.HdrBytes) >= sz {
+			copy(unsafe.Slice((*byte)(unsafe.Pointer(&v.Hdr)), sz), s.HdrBytes[:sz])
+		}
+	}
+
+	v.Mem = mem
+	v.LastAvailIdx = s.LastAvailIdx
+
+	for i, pa := range s.QueuePhysAddr {
+		if pa != 0 {
+			v.VirtQueue[i] = (*VirtQueue)(unsafe.Pointer(&mem[pa]))
+		}
+	}
 }
 
 func NewBlk(path string, irq uint8, irqInjector IRQInjector, mem []byte) (*Blk, error) {

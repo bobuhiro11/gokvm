@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/bobuhiro11/gokvm/migration"
 	"github.com/bobuhiro11/gokvm/pci"
 )
 
@@ -47,6 +48,7 @@ type Net struct {
 	rxKick    chan os.Signal
 	done      chan struct{}
 	closeOnce sync.Once
+	threadWG  sync.WaitGroup // tracks TxThread + RxThread goroutines
 
 	irq         uint8
 	IRQInjector IRQInjector
@@ -112,6 +114,9 @@ func (v *Net) Read(port uint64, bytes []byte) error {
 }
 
 func (v *Net) RxThreadEntry() {
+	v.threadWG.Add(1)
+	defer v.threadWG.Done()
+
 	log.Println("virtio-net: RxThreadEntry started")
 
 	for {
@@ -206,6 +211,9 @@ func (v *Net) Rx() error {
 }
 
 func (v *Net) TxThreadEntry() {
+	v.threadWG.Add(1)
+	defer v.threadWG.Done()
+
 	log.Println("virtio-net: TxThreadEntry started")
 
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -347,6 +355,50 @@ func (v *Net) Close() error {
 	}
 
 	return nil
+}
+
+// WaitStopped blocks until both TxThread and RxThread have exited.
+// Call after Close() to ensure threads are no longer writing to guest memory.
+func (v *Net) WaitStopped() { v.threadWG.Wait() }
+
+// GetState returns the host-side state of the virtio-net device.
+// The caller must ensure Tx/Rx threads are not running concurrently.
+func (v *Net) GetState() *migration.NetState {
+	s := &migration.NetState{}
+
+	hdrBytes := make([]byte, unsafe.Sizeof(v.Hdr))
+	copy(hdrBytes, unsafe.Slice((*byte)(unsafe.Pointer(&v.Hdr)), unsafe.Sizeof(v.Hdr)))
+	s.HdrBytes = hdrBytes
+
+	s.LastAvailIdx = v.LastAvailIdx
+
+	for i, vq := range v.VirtQueue {
+		if vq != nil {
+			s.QueuePhysAddr[i] = uint64(uintptr(unsafe.Pointer(vq)) - uintptr(unsafe.Pointer(&v.Mem[0])))
+		}
+	}
+
+	return s
+}
+
+// SetState restores the host-side state of the virtio-net device.
+// mem must be the fully restored guest memory for this machine.
+func (v *Net) SetState(s *migration.NetState, mem []byte) {
+	if len(s.HdrBytes) > 0 {
+		sz := int(unsafe.Sizeof(v.Hdr))
+		if len(s.HdrBytes) >= sz {
+			copy(unsafe.Slice((*byte)(unsafe.Pointer(&v.Hdr)), sz), s.HdrBytes[:sz])
+		}
+	}
+
+	v.Mem = mem
+	v.LastAvailIdx = s.LastAvailIdx
+
+	for i, pa := range s.QueuePhysAddr {
+		if pa != 0 {
+			v.VirtQueue[i] = (*VirtQueue)(unsafe.Pointer(&mem[pa]))
+		}
+	}
 }
 
 func NewNet(irq uint8, irqInjector IRQInjector, tap io.ReadWriter, mem []byte) *Net {
